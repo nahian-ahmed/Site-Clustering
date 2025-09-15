@@ -1,0 +1,20 @@
+# Python bytecode
+*.pyc
+__pycache__/
+
+# macOS specific files
+.DS_Store
+
+# Virtual environments
+Python/venv/
+
+# IDE files
+.idea/
+.vscode/
+
+
+/occupancy_feature_raster/
+/checklist_data/
+
+/results/
+
