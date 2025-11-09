@@ -1,0 +1,32 @@
+Species,Latin,Abbreviation,Prevalence,Habitat,Generalist/Specialist,Home Range,Territory Size
+Cooper’s Hawk,Accipiter cooperii,COHA,0.36%,e,s,l,1000
+Northern Pygmy-Owl,Glaucidium gnoma,NOOW,0.60%,f,s,l,50
+Mountain Quail,Oreortyx pictus,MOQU,1.04%,e,s,l,1000
+Bald Eagle,Haliaeetus leucocephalus,BAEA,1.36%,e,g,l,2500
+Hammond’s Flycatcher,Empidonax hammondii,HAFL,1.72%,f,s,s,1
+Yellow Warbler,Setophaga petechia,YEWA,1.84%,e,s,s,0.5
+Bushtit,Psaltriparus minimus,BUTI,2.20%,e,g,s,1
+Hairy Woodpecker,Dryobates villosus,HAWO,2.64%,f,s,m,2.5
+Pileated Woodpecker,Dryocopus pileatus,PIWO,2.64%,f,g,l,250
+Olive-sided Flycatcher,Contopus cooperi,OLFL,2.80%,f,s,l,40
+Red-tailed Hawk,Buteo jamaicensis,REHA,2.84%,e,g,l,2300
+Brown Creeper,Certhia americana,BRCR,4.04%,f,s,m,5
+Yellow-breasted Chat,Icteria virens,YEBCHA,4.57%,e,s,s,2
+MacGillivray’s Warbler,Geothlypis tolmiei,MAWA,6.09%,e,s,s,2
+Pacific Wren,Troglodytes pacificus,PAWR,7.17%,f,s,m,2.5
+Wrentit,Chamaea fasciata,WRENTI,9.01%,e,s,s,2
+Northern Flicker,Colaptes auratus,NOFL,9.29%,e,g,m,100
+Hermit Warbler,Setophaga occidentalis,HEWA,10.13%,f,s,s,0.5
+California Scrub-Jay,Aphelocoma californica,CASC,11.25%,e,g,m,4
+Chestnut-backed Chickadee,Poecile rufescens,CHBCHI,13.14%,f,s,s,1
+Pacific-slope Flycatcher,Empidonax difficilis,PAFL,14.42%,f,s,m,2.5
+Western Tanager,Piranga ludoviciana,WETA,15.14%,f,g,m,5
+Warbling Vireo,Vireo gilvus,WAVI,15.54%,f,s,s,1.5
+Wilson’s Warbler,Cardellina pusilla,WIWA,16.18%,f,g,s,1
+Western Wood-Pewee,Contopus sordidulus,WEPE,17.10%,f,g,s,2
+Spotted Towhee,Pipilo maculatus,SPTO,18.94%,e,g,s,2
+Black-headed Grosbeak,Pheucticus melanocephalus,BKHGRO,25.67%,f,g,m,3
+Swainson’s Thrush,Catharus ustulatus,SWTH,27.51%,f,g,s,2
+American Robin,Turdus migratorius,AMRO,28.19%,e,g,s,1
+Song Sparrow,Melospiza melodia,SOSP,30.88%,e,g,s,0.5
+American Crow,Corvus brachyrhynchos,AMCR,33.04%,e,g,l,2500
