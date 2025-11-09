@@ -5,17 +5,17 @@ print("--- 1. Setting up ---")
 # Load libraries
 options(repos = c(CRAN = "https://cloud.r-project.org/"))
 
-# # --- Install/Load devtools ---
-# if (!requireNamespace("devtools", quietly = TRUE)) {
-#   install.packages("devtools")
-# }
+# --- Install/Load devtools ---
+if (!requireNamespace("devtools", quietly = TRUE)) {
+  install.packages("devtools")
+}
 
-# # --- Install forked 'unmarked' package ---
-# # This ensures your occuN version is available
-# print("Installing/updating unmarked package with occuN...")
-# suppressMessages(
-#   devtools::install_github("nahian-ahmed/unmarked", ref = "occuN", force = TRUE, quiet = FALSE)
-# )
+# --- Install forked 'unmarked' package ---
+# This ensures your occuN version is available
+print("Installing/updating unmarked package with occuN...")
+suppressMessages(
+  devtools::install_github("anonymous97331/unmarked", ref = "main", force = TRUE, quiet = FALSE)
+)
 
 # --- Load all required libraries ---
 library(unmarked) # Your custom occuN version
