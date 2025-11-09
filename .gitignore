@@ -16,5 +16,7 @@ Python/venv/
 /occupancy_feature_raster/
 /checklist_data/
 
-/results/
+/simulation_experiments/results/
+/species_experiments/results/
 
+/OLD_code/
