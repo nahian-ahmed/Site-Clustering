@@ -1,27 +1,22 @@
 ###########################
 # BayesOptClustGeo helper
-
-# December 10, 2024
+# (Refactored for performance and safety)
+#
+# November 9, 2025
 ###########################
 
 library(rBayesianOptimization) # bayesian optimization library
-library(cluster) # silhouette width calculation
+library(cluster)               # silhouette width calculation
+library(dplyr)                 # For distinct() and %>%
 
-
-
-
-train_data <- NA
-occ_covs <- NA
-det_covs <- NA
-fit_func <- NA
-
+# --- Helper Functions ---
+# (These are fine as-is)
 
 normalize <- function(x) {
     return((x- min(x)) /(max(x)-min(x)))
 }
 
 get_pairwise_distances <- function(df, sp_features, env_features, normalize = TRUE) {
-    
     
     if (normalize){
         for (sp_feature in sp_features){
@@ -30,108 +25,140 @@ get_pairwise_distances <- function(df, sp_features, env_features, normalize = TR
     }
     df <- df[,c(sp_features,env_features)]
     
-
-
     m_dist <- distances::distances(df)
     
     return(m_dist)
 }
 
-# Fitness function for clustGeo
-clustGeo_fit <- function(alpha, lambda){
 
+# --- Main Bayesian Optimization Function ---
 
-    og_data_cgul <- train_data
+bayesianOptimizedClustGeo <- function(
+    train_data, 
+    state_covs, 
+    obs_covs, 
+    fit_func,
+    n_init = 20,
+    n_iter = 10  
+){
+    
+    # --- 1. PRE-CALCULATE ALL STATIC DATA ---
+    # This data doesn't change between iterations,
+    # so we compute it ONCE.
+    
+    message("BayesOpt: Pre-processing data...")
 
-    og_data_cgul$lat_long <- paste0(og_data_cgul$latitude, "_", og_data_cgul$longitude)
-    uniq_loc_df <- dplyr::distinct(og_data_cgul, lat_long, .keep_all = T)
+    # Create the dataframe for linking full data to unique locations
+    train_data_cgul <- train_data
+    train_data_cgul$lat_long <- paste0(train_data_cgul$latitude, "_", train_data_cgul$longitude)
     
+    # Get the unique locations to be clustered
+    uniq_loc_df <- dplyr::distinct(train_data_cgul, lat_long, .keep_all = T)
     
-    percent <- lambda/100
+    # Pre-calculate the expensive distance matrix ONCE
+    # This matrix is used for the silhouette score
+    message("BayesOpt: Pre-calculating pairwise distance matrix...")
+    m_dist <- get_pairwise_distances(train_data_cgul, c("latitude","longitude"), state_covs)
     
-    clustGeo_df_i <- clustGeoSites(alpha = alpha, uniq_loc_df, occ_covs, det_covs, num_sites = round(nrow(uniq_loc_df)*percent))
-    
-    # link un labeled, but lat-long duplicated checklists to the correct site
-    og_data_cgul$site <- -1
-    for(j in seq(1:nrow(clustGeo_df_i))){
-        og_data_cgul[og_data_cgul$lat_long == clustGeo_df_i[j,]$lat_long,]$site <- clustGeo_df_i[j,]$site
+    # Pre-calculate prevalence if using that fitness function
+    prevalence_val <- NA
+    if (fit_func == "prevalence") {
+        prevalence_val <- mean(train_data_cgul$species_observed)
     }
 
-    # Calculate Silhouette width
-    m_dist <- get_pairwise_distances(og_data_cgul, c("latitude","longitude"), occ_covs)
-    m_sil <- silhouette(og_data_cgul$site, m_dist)
+    # --- 2. DEFINE THE FITNESS FUNCTION (as a Closure) ---
+    #
+    # By defining `clustGeo_fit` *inside* this function, it gains
+    # access to all the pre-calculated data (m_dist, uniq_loc_df, etc.)
+    # and function arguments (state_covs, fit_func, etc.)
+    # *without* needing any global variables (`<<-`).
+    #
+    clustGeo_fit <- function(alpha, lambda) {
 
-    silh <- mean(m_sil[, 3]) # third column is silhoutte widths of instances
-    if (fit_func == "silhouette"){ # Silhouette width
-
-        result <- list(Score = silh, 
-                Pred = 0)
-
-        return(result)
-    }
-    
-    else if (fit_func == "prevalence"){ # sum of "silhouette" and "prevalence"
-
-        n_sites <- length(unique(og_data_cgul$site))
-        n_occ_sites <- og_data_cgul %>%
-            group_by(site) %>%
-            summarize(has_true = any(species_observed == TRUE)) %>%
-            filter(has_true) %>%
-            nrow()
-
-        site_occ_rate <- n_occ_sites/n_sites
-
+        percent <- lambda / 100.0
         
-        prevalence <- mean(og_data_cgul$species_observed)
+        # Run the clustering (this is the part that must be dynamic)
+        clustGeo_df_i <- clustGeoSites(
+            alpha = alpha, 
+            uniq_loc_df, # Use pre-calculated unique locations
+            state_covs, 
+            obs_covs, 
+            num_sites = round(nrow(uniq_loc_df) * percent)
+        )
+        
+        # Link the *full* dataset back to the new cluster IDs
+        # We create a simple lookup table from the cluster results
+        site_lookup <- clustGeo_df_i[, c("lat_long", "site")]
+        
+        # This join is much faster than the original for-loop
+        joined_data <- dplyr::left_join(train_data_cgul, site_lookup, by = "lat_long")
+        current_sites <- joined_data$site
+        current_sites[is.na(current_sites)] <- -1 # Handle any NAs
+        
+        # Calculate Silhouette width using the pre-calculated distance matrix
+        m_sil <- silhouette(current_sites, m_dist) 
+        silh <- mean(m_sil[, 3], na.rm = TRUE) # Added na.rm for safety
+        
+        # Return score based on the chosen fitness function
+        if (fit_func == "silhouette") {
+            result <- list(Score = silh, Pred = 0)
+            return(result)
+        } 
+        else if (fit_func == "prevalence") {
+            
+            # Combine site IDs and observation status
+            temp_df <- data.frame(site = current_sites, 
+                                  observed = train_data_cgul$species_observed)
+            
+            n_sites <- length(unique(temp_df$site))
+            
+            # Calculate site occupancy rate for this clustering
+            site_occ_rate <- temp_df %>%
+              group_by(site) %>%
+              summarize(has_true = any(observed == TRUE), .groups = 'drop') %>%
+              filter(has_true) %>%
+              nrow() / n_sites
 
-        sp_objective <- -abs(prevalence - site_occ_rate)  
+            sp_objective <- -abs(prevalence_val - site_occ_rate)  
+            
+            result <- list(Score = sp_objective + silh, Pred = 0)
+            return(result)
+        }
+    } # --- End of nested clustGeo_fit function ---
 
-        # Fitness function = -|(Prevalence) - (Site Occupancy Rate)| + Average Silhouette width
-        result <- list(Score =  sp_objective + silh,
-                Pred = 0)
 
-        return(result)
-    }
+    # --- 3. DEFINE SEARCH AND RUN OPTIMIZATION ---
     
-}
-
-
-
-bayesianOptimizedClustGeo <- function(train_data_p, occ_covs_p, det_covs_p, fit_func_p){
-    
-    train_data <<- train_data_p
-    occ_covs <<- occ_covs_p
-    det_covs <<- det_covs_p
-    fit_func <<- fit_func_p
-
-
-
-    
-    n_init <- 20 # Number of initial samples
-    n_iter <- 10 # Number of iterations
-
- 
-
     # Define the search boundary
     search_bound <- list(alpha = c(0.01, 0.99),
-                           lambda = c(10, 90))
-
+                         lambda = c(10, 90))
 
     # Define initial search sample
-    # set.seed(1)
-    search_grid <- data.frame(alpha = runif(n_init, search_bound$alpha[1], search_bound$alpha[2]),
-                                lambda = runif(n_init, search_bound$lambda[1], search_bound$lambda[2]))
+    search_grid <- data.frame(
+        alpha = runif(n_init, search_bound$alpha[1], search_bound$alpha[2]),
+        lambda = runif(n_init, search_bound$lambda[1], search_bound$lambda[2])
+    )
     
+    message("BayesOpt: Starting optimization...")
     
     # Bayesian Optimization
-    bayesianOptimized <- rBayesianOptimization::BayesianOptimization(FUN = clustGeo_fit, bounds = search_bound, 
-                     init_points = 0, init_grid_dt = search_grid, 
-                     n_iter = n_iter, acq = "ucb")
+    bayesianOptimized <- rBayesianOptimization::BayesianOptimization(
+        FUN = clustGeo_fit, # Use the *local* fitness function
+        bounds = search_bound, 
+        init_grid_dt = search_grid, 
+        init_points = 0, # We are using the grid, so no random init points
+        n_iter = n_iter, 
+        acq = "ucb",
+        verbose = TRUE # Good to see progress
+    )
     
+    message("BayesOpt: Optimization complete.")
 
-    return (list(Best_Value = bayesianOptimized$Best_Value,
-                 Best_Pars = list(alpha = bayesianOptimized$Best_Par[1], 
-                                  lambda = bayesianOptimized$Best_Par[2])
-                )
-            )
+    return (list(
+        Best_Value = bayesianOptimized$Best_Value,
+        Best_Pars = list(
+            alpha = bayesianOptimized$Best_Par[1], 
+            lambda = bayesianOptimized$Best_Par[2]
+        )
+    ))
 }

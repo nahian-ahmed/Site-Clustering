@@ -18,7 +18,7 @@ library(dplyr)
 # 2. INTERNAL HELPER FOR CLUSTGEO
 # This logic is used by both clustGeo and BayesOptClustGeo,
 # so we make it a reusable internal function.
-.run_clustgeo_internal <- function(data, alpha, percent, occ_covs, det_covs) {
+.run_clustgeo_internal <- function(data, alpha, percent, state_covs, obs_covs) {
   
   data_cgul <- data
   data_cgul$lat_long <- paste0(data_cgul$latitude, "_", data_cgul$longitude)
@@ -29,8 +29,8 @@ library(dplyr)
   clustGeo_df_i <- clustGeoSites(
     alpha = alpha,
     checklists = uniq_loc_df,
-    occ_covs = occ_covs,
-    det_covs = det_covs,
+    state_covs = state_covs,
+    obs_covs = obs_covs,
     num_sites = num_sites
   )
   
@@ -47,7 +47,7 @@ library(dplyr)
 # This new function parses the method name and calls the
 # correct clustering code. It returns the clustered data
 # and the canonical name for the results list.
-run_clustering_method <- function(method_name, og_data, occ_covs, det_covs, truth_df = NULL) {
+run_clustering_method <- function(method_name, og_data, state_covs, obs_covs, truth_df = NULL) {
   
   set.seed(1) # Ensure reproducibility for each method
   
@@ -83,24 +83,24 @@ run_clustering_method <- function(method_name, og_data, occ_covs, det_covs, trut
     alpha <- as.double(parts[2]) / 100.0
     percent <- as.double(parts[3]) / 100.0
     
-    result_df <- .run_clustgeo_internal(og_data, alpha, percent, occ_covs, det_covs)
+    result_df <- .run_clustgeo_internal(og_data, alpha, percent, state_covs, obs_covs)
     return(list(name = method_name, data = result_df))
   
   # ---
   # B. Complex, self-contained methods (DBSC, BayesOpt)
   # ---
   } else if (method_name == "DBSC") {
-    result_df <- runDBSC(og_data, occ_covs, det_covs)
+    result_df <- runDBSC(og_data, state_covs, obs_covs)
     return(list(name = "DBSC", data = result_df))
     
   } else if (method_name == "BayesOptClustGeo") {
     # Run Bayesian Optimization to find parameters
-    bayes_result <- bayesianOptimizedClustGeo(og_data, occ_covs, det_covs, "silhouette")
+    bayes_result <- bayesianOptimizedClustGeo(og_data, state_covs, obs_covs, "silhouette")
     alpha <- bayes_result$Best_Pars$alpha
     percent <- bayes_result$Best_Pars$lambda / 100.0
     
     # Run clustering with the optimized parameters
-    final_df <- .run_clustgeo_internal(og_data, alpha, percent, occ_covs, det_covs)
+    final_df <- .run_clustgeo_internal(og_data, alpha, percent, state_covs, obs_covs)
     
     # Special return format for this method, as it also returns the parameters
     return(list(
@@ -168,7 +168,7 @@ run_clustering_method <- function(method_name, og_data, occ_covs, det_covs, trut
 # It takes the simple list of names from your run_*.R file
 # and uses the dispatcher to get the results.
 
-get_clusterings <- function(method_names, og_data, occ_covs, det_covs, truth_df = data.frame()) {
+get_clusterings <- function(method_names, og_data, state_covs, obs_covs, truth_df = data.frame()) {
   
   results <- list()
   
@@ -179,8 +179,8 @@ get_clusterings <- function(method_names, og_data, occ_covs, det_covs, truth_df 
     clustering_result <- run_clustering_method(
       method_config_name,
       og_data,
-      occ_covs,
-      det_covs,
+      state_covs,
+      obs_covs,
       truth_df
     )
     
