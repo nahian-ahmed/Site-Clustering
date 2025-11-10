@@ -7,7 +7,7 @@
 library(ClustGeo) # spatial clustering with clustGeo
 
 
-clustGeoSites <- function(alpha, checklists, occ_covs, det_covs, num_sites=NULL, ratio=NULL, filter = TRUE){
+clustGeoSites <- function(alpha, checklists, occ_covs, num_sites=NULL, ratio=NULL, filter = TRUE){
     
     checklists_filtered <- checklists    
     

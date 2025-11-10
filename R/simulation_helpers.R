@@ -2,10 +2,8 @@ library(dplyr)
 library(rje) # For expit()
 
 source(file.path("R","utils.R"))
-
-# Note: This script assumes that 'clustering_helpers.R' and 'model_helpers.R'
-# have already been sourced by the main script (e.g., run_simulations.R),
-# as it relies on get_clusterings(), enforceClosure(), and calculate_weighted_sum().
+source(file.path("R","clustering_helpers.R"))
+source(file.path("R","model_helpers.R"))
 
 
 prepare_train_data <- function (

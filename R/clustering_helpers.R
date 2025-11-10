@@ -5,7 +5,6 @@
 ##############################################
 
 # 1. SOURCE MODULAR CLUSTERING LOGIC
-# (You already do this, which is great!)
 source("R/clustering/bayesopt.R")
 source("R/clustering/clustgeo.R")
 source("R/clustering/dbsc.R")
@@ -14,10 +13,10 @@ source("R/clustering/kmsq.R")
 # Load required libraries
 library(auk)
 library(dplyr)
+library(plyr) # For round_any
 
 # 2. INTERNAL HELPER FOR CLUSTGEO
-# This logic is used by both clustGeo and BayesOptClustGeo,
-# so we make it a reusable internal function.
+# UPDATED CALL: Now correctly passes *only* state_covs
 .run_clustgeo_internal <- function(data, alpha, percent, state_covs, obs_covs) {
   
   data_cgul <- data
@@ -29,24 +28,27 @@ library(dplyr)
   clustGeo_df_i <- clustGeoSites(
     alpha = alpha,
     checklists = uniq_loc_df,
-    state_covs = state_covs,
-    obs_covs = obs_covs,
+    occ_covs = state_covs, # <-- CORRECTED: Pass state_covs to occ_covs
     num_sites = num_sites
+    # det_covs is no longer needed
   )
   
   # Link un-labeled, but lat-long duplicated checklists to the correct site
   data_cgul$site <- -1
-  for(j in seq(1:nrow(clustGeo_df_i))){
-    data_cgul[data_cgul$lat_long == clustGeo_df_i[j,]$lat_long, ]$site <- clustGeo_df_i[j,]$site
-  }
+  # Use a faster join instead of a for-loop
+  site_lookup <- clustGeo_df_i[, c("lat_long", "site")]
+  data_cgul <- dplyr::left_join(data_cgul, site_lookup, by = "lat_long", suffix = c("", ".new"))
+  
+  # Coalesce the new site IDs back into the main 'site' column
+  data_cgul$site <- ifelse(!is.na(data_cgul$site.new), data_cgul$site.new, data_cgul$site)
+  data_cgul$site.new <- NULL # Clean up
+  data_cgul$site[is.na(data_cgul$site)] <- -1 # Ensure no NAs
+  
   return(data_cgul)
 }
 
 
 # 3. THE SMART DISPATCHER FUNCTION
-# This new function parses the method name and calls the
-# correct clustering code. It returns the clustered data
-# and the canonical name for the results list.
 run_clustering_method <- function(method_name, og_data, state_covs, obs_covs, truth_df = NULL) {
   
   set.seed(1) # Ensure reproducibility for each method
@@ -57,20 +59,33 @@ run_clustering_method <- function(method_name, og_data, state_covs, obs_covs, tr
   # ---
   # A. Parameter-based methods (kmSq, rounded, clustGeo)
   # ---
+  
   if (base_method == "kmSq") {
+    # Format is "kmSq-[radius_m]", e.g., "kmSq-1000"
     rad_m <- as.double(parts[2])
     result_df <- kmsq.Sites(og_data, rad_m = rad_m)
     
     # Convert config name (kmSq-1000) to canonical name (1-kmSq)
-    # to match your old analysis scripts.
-    km_area <- round_any((rad_m / 1000)^2, 0.125, ceiling)
+    km_area <- plyr::round_any((rad_m / 1000)^2, 0.125, ceiling)
     canonical_name <- paste0(km_area, "-kmSq")
     
     return(list(name = canonical_name, data = result_df))
     
+  } else if (length(parts) == 2 && parts[2] == "kmSq") {
+    # *** NEW BLOCK ***
+    # Handles "area-style" names like "2-kmSq" from your config
+    area_kmSq <- as.numeric(base_method)
+    rad_m <- as.integer(sqrt(area_kmSq) * 1000) # Translate area to radius
+    
+    message(paste("Translating reference method", method_name, "to radius:", rad_m, "m"))
+    
+    result_df <- kmsq.Sites(og_data, rad_m = rad_m)
+    
+    # Return with the *original* name as the key
+    return(list(name = method_name, data = result_df))
+    
   } else if (base_method == "rounded") {
     digits <- as.integer(parts[2])
-    # Assuming you have round_lat_long in R/utils.R
     rounded_data <- round_lat_long(og_data, rounding_degree = digits) 
     result_df <- auk::filter_repeat_visits(
       rounded_data,
@@ -90,19 +105,19 @@ run_clustering_method <- function(method_name, og_data, state_covs, obs_covs, tr
   # B. Complex, self-contained methods (DBSC, BayesOpt)
   # ---
   } else if (method_name == "DBSC") {
+    # DBSC uses *both* state and obs covs in its old implementation, 
+    # but the new one seems to only use state_covs inside formatVert.
+    # We pass state_covs to its 'occ_covs' param to match dbsc.R
     result_df <- runDBSC(og_data, state_covs, obs_covs)
     return(list(name = "DBSC", data = result_df))
     
   } else if (method_name == "BayesOptClustGeo") {
-    # Run Bayesian Optimization to find parameters
     bayes_result <- bayesianOptimizedClustGeo(og_data, state_covs, obs_covs, "silhouette")
     alpha <- bayes_result$Best_Pars$alpha
     percent <- bayes_result$Best_Pars$lambda / 100.0
     
-    # Run clustering with the optimized parameters
     final_df <- .run_clustgeo_internal(og_data, alpha, percent, state_covs, obs_covs)
     
-    # Special return format for this method, as it also returns the parameters
     return(list(
       name = "BayesOptClustGeo",
       data = list(result_df = final_df, Best_Pars = bayes_result$Best_Pars)
@@ -148,7 +163,7 @@ run_clustering_method <- function(method_name, og_data, state_covs, obs_covs, tr
       result_df <- df_1_UL_t %>% 
         group_by(site) %>% 
         filter(row_number() == 1) %>%
-        ungroup() # Always good to ungroup after
+        ungroup() 
       return(list(name = "1-UL", data = result_df))
     }
     
@@ -164,10 +179,6 @@ run_clustering_method <- function(method_name, og_data, state_covs, obs_covs, tr
 
 
 # 4. THE NEW, CLEAN getClusterings FUNCTION
-# This replaces the old genExp + getClusterings
-# It takes the simple list of names from your run_*.R file
-# and uses the dispatcher to get the results.
-
 get_clusterings <- function(method_names, og_data, state_covs, obs_covs, truth_df = data.frame()) {
   
   results <- list()
@@ -185,7 +196,6 @@ get_clusterings <- function(method_names, og_data, state_covs, obs_covs, truth_d
     )
     
     if (!is.null(clustering_result)) {
-      # Use the canonical name returned by the dispatcher as the key
       results[[clustering_result$name]] <- clustering_result$data
       cat(paste("--- Completed. Stored result as:", clustering_result$name, "---\n"))
     }
