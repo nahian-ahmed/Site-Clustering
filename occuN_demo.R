@@ -14,7 +14,7 @@ for(p in packages){
 
 # Quietly install forked 'unmarked' package
 suppressMessages(
-    devtools::install_github("nahian-ahmed/unmarked", ref = "occuN", force = TRUE, quiet = FALSE)
+    devtools::install_github("anonymous97331/unmarked", ref = "main", force = TRUE, quiet = FALSE)
 )
 
 # --- Load required libraries ---

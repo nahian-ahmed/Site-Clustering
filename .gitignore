@@ -13,10 +13,10 @@ Python/venv/
 .vscode/
 
 
-/occupancy_feature_raster/
+/state_covariate_raster/
 /checklist_data/
 
-/simulation_experiments/results/
-/species_experiments/results/
+/simulation_experiments/output/
+/species_experiments/output/
 
 /OLD_code/results/
