@@ -34,14 +34,8 @@ prepare_train_data <- function (
   # Use standardized var names
   norm_res <- norm_ds(train_df, obs_covs, state_covs) 
 
-  train_df_unnorm <- train_df[,c(obs_covs, state_covs)]
-
   train_df <- norm_res$df
   norm_list <- norm_res$n_l
-  
-  for(name in c(obs_covs, state_covs)){
-    train_df[,paste("unnorm_",name)] = train_df_unnorm[,name]
-  }
 
   train_df$species_observed <- -1
   train_df$occupied_prob <- -1
@@ -106,18 +100,6 @@ simulate_train_data <-  function (
   # === 7. FINAL OBSERVATION ===
   res_df$species_observed <- res_df$occupied * res_df$detection
   
-  
-  # === 8. UN-NORMALIZE COVARIATES ===
-  cov_names <- c(state_cov_names, obs_cov_names)
-  res_df <- res_df[,!names(res_df) %in% cov_names] # Drop normalized columns
-  
-  # Rename 'unnorm_' columns back to original names
-  for(name in cov_names){
-    res_df[,name] = res_df[,paste("unnorm_",name)]
-    # Drop the 'unnorm_' column
-    res_df[,paste("unnorm_",name)] <- NULL 
-  }
-  
   return (res_df)
 }
 
@@ -155,14 +137,7 @@ simulate_test_data <- function (
   # Use standardized var names
   norm_res <- norm_ds(test_df, obs_cov_names, state_cov_names, norm_list = norm_list)
   
-  test_df_unnorm <- test_df[,c(obs_cov_names, state_cov_names)]
   test_df <- norm_res$df
-
-  # Store unnormalized values
-  for(name in c(obs_cov_names, state_cov_names)){
-    test_df[,paste("unnorm_",name)] = test_df_unnorm[,name]
-  }
-  
   
   # === 3. EXTRACT PARAMETERS ===
   state_par_list <- as.list(parameter_set_row[, c("state_intercept", state_cov_names)])
@@ -186,16 +161,6 @@ simulate_test_data <- function (
   
   # === 5. FINAL OBSERVATION ===
   test_df$species_observed <- test_df$occupied * test_df$detection
-
-  
-  # === 6. UN-NORMALIZE COVARIATES ===
-  cov_names <- c(state_cov_names, obs_cov_names)
-  test_df <- test_df[,!names(test_df) %in% cov_names]
-  
-  for(name in cov_names){
-    test_df[,name] = test_df[,paste("unnorm_",name)]
-    test_df[,paste("unnorm_",name)] <- NULL
-  }
 
   return (test_df)
 }
