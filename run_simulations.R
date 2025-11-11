@@ -60,8 +60,8 @@ selected_optimizer <- "nlminb"
 ###########
 # 2. LOAD CONFIGURATION
 ###########
-sim_params <- read.csv(file.path("config","simulation_parameters.csv"))
-sim_clusterings <- read.csv(file.path("config","simulation_clusterings.csv"))
+sim_params <- read.delim(file.path("config","simulation_parameters.csv"), sep = ",", header = T)
+sim_clusterings <- read.delim(file.path("config","simulation_clusterings.csv"), sep = ",", header = T)
 
 
 n_simulations <- 25 
