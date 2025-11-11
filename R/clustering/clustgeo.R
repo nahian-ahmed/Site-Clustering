@@ -7,7 +7,7 @@
 library(ClustGeo) # spatial clustering with clustGeo
 
 
-clustGeoSites <- function(alpha, checklists, occ_covs, num_sites=NULL, ratio=NULL, filter = TRUE){
+clustGeoSites <- function(alpha, checklists, state_covs, num_sites=NULL, ratio=NULL, filter = TRUE){
     
     checklists_filtered <- checklists    
     
@@ -15,7 +15,7 @@ clustGeoSites <- function(alpha, checklists, occ_covs, num_sites=NULL, ratio=NUL
         num_sites = round(nrow(checklists_filtered)/ratio)
     }
     
-    env_data <- dist(subset(checklists_filtered, select = unlist(occ_covs)))
+    env_data <- dist(subset(checklists_filtered, select = unlist(state_covs)))
     geo_data <- dist(subset(checklists_filtered, select = c("latitude", "longitude")))
     
     tree <- hclustgeo(env_data, geo_data, alpha = alpha)

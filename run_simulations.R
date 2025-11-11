@@ -121,7 +121,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
           parameter_set_row = current_parameter_set, 
           state_cov_names = state_cov_names, 
           obs_cov_names = obs_cov_names,
-          cov_tif = state_cov_raster # <-- Pass in the raster object
+          cov_tif = state_cov_raster
       )
 
       
@@ -131,8 +131,8 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
       grouped_sites <- get_clusterings(
           method_names = comparison_method_list,
           og_data = train_data_for_clustering,
-          occ_covs = state_cov_names,
-          det_covs = obs_cov_names,
+          state_covs = state_cov_names,
+          obs_covs = obs_cov_names,
           truth_df = train_data
       )
       

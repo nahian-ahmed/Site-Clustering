@@ -11,8 +11,8 @@ library(igraph) # graph node and edge operations
 
 
 # extracts and formats vertex points
-formatVert <- function(species_df, occ_covs){
-    v_pts <- subset(species_df, select = c("latitude", "longitude", "checklist_id", occ_covs))
+formatVert <- function(species_df, state_covs){
+    v_pts <- subset(species_df, select = c("latitude", "longitude", "checklist_id", state_covs))
  
     v_pts$checklist_id <- as.character(v_pts$checklist_id)
     v_pts$latlong <- paste0(v_pts$latitude, v_pts$longitude)
@@ -478,8 +478,8 @@ createClusters <- function(de_new_graphs, v_pts, T1){
 
 
 
-runDBSC <- function(species_df, occ_covs, det_covs){
-    v_pts <- formatVert(species_df, occ_covs)
+runDBSC <- function(species_df, state_covs){
+    v_pts <- formatVert(species_df, state_covs)
     
     DT = RTriangle::triangulate(RTriangle::pslg(v_pts[c("latitude", "longitude")]))
     

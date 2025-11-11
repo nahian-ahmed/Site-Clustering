@@ -26,7 +26,7 @@ extract_state_covs <- function(df, cov_tif, x = "longitude", y = "latitude", crs
 #######
 # normalize dataset
 #######
-norm_ds <- function(df, obs_covs, state_covs, test = FALSE, norm_list = list()){
+norm_ds <- function(df, obs_covs, state_covs, norm_list = list()){
 
   if(length(norm_list) == 0){
     for(name in c(obs_covs, state_covs)){

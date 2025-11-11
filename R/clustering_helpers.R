@@ -28,9 +28,8 @@ library(plyr) # For round_any
   clustGeo_df_i <- clustGeoSites(
     alpha = alpha,
     checklists = uniq_loc_df,
-    occ_covs = state_covs, # <-- CORRECTED: Pass state_covs to occ_covs
+    state_covs = state_covs,
     num_sites = num_sites
-    # det_covs is no longer needed
   )
   
   # Link un-labeled, but lat-long duplicated checklists to the correct site
@@ -108,7 +107,7 @@ run_clustering_method <- function(method_name, og_data, state_covs, obs_covs, tr
     # DBSC uses *both* state and obs covs in its old implementation, 
     # but the new one seems to only use state_covs inside formatVert.
     # We pass state_covs to its 'occ_covs' param to match dbsc.R
-    result_df <- runDBSC(og_data, state_covs, obs_covs)
+    result_df <- runDBSC(og_data, state_covs)
     return(list(name = "DBSC", data = result_df))
     
   } else if (method_name == "BayesOptClustGeo") {
