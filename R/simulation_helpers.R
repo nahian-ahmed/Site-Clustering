@@ -18,9 +18,6 @@ prepare_train_data <- function (
     file.path("checklist_data","species", placeholder_spec_name, train_filename), 
     sep = ",", header = T
   )
-  
-  train_df_og$latitude <- as.numeric(as.character(train_df_og$latitude))
-  train_df_og$longitude <- as.numeric(as.character(train_df_og$longitude))
 
   train_df_og <- train_df_og[!is.na(train_df_og$duration_minutes),]
   train_df_og <- train_df_og[
