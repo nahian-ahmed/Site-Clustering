@@ -53,10 +53,7 @@ bayesianOptimizedClustGeo <- function(
     message("BayesOpt: Pre-calculating pairwise distance matrix...")
     m_dist <- get_pairwise_distances(train_data_cgul, c("latitude","longitude"), state_covs)
     
-    prevalence_val <- NA
-    if (fit_func == "prevalence") {
-        prevalence_val <- mean(train_data_cgul$species_observed)
-    }
+    
 
     # --- 2. DEFINE THE FITNESS FUNCTION (as a Closure) ---
     clustGeo_fit <- function(alpha, lambda) {
@@ -83,24 +80,6 @@ bayesianOptimizedClustGeo <- function(
         
         if (fit_func == "silhouette") {
             result <- list(Score = silh, Pred = 0)
-            return(result)
-        } 
-        else if (fit_func == "prevalence") {
-            
-            temp_df <- data.frame(site = current_sites, 
-                                  observed = train_data_cgul$species_observed)
-            
-            n_sites <- length(unique(temp_df$site))
-            
-            site_occ_rate <- temp_df %>%
-              group_by(site) %>%
-              summarize(has_true = any(observed == TRUE), .groups = 'drop') %>%
-              filter(has_true) %>%
-              nrow() / n_sites
-
-            sp_objective <- -abs(prevalence_val - site_occ_rate)  
-            
-            result <- list(Score = sp_objective + silh, Pred = 0)
             return(result)
         }
     } # --- End of nested clustGeo_fit function ---

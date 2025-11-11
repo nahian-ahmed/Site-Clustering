@@ -17,7 +17,7 @@ library(plyr) # For round_any
 
 # 2. INTERNAL HELPER FOR CLUSTGEO
 # UPDATED CALL: Now correctly passes *only* state_covs
-.run_clustgeo_internal <- function(data, alpha, percent, state_covs, obs_covs) {
+.run_clustgeo_internal <- function(data, alpha, percent, state_covs) {
   
   data_cgul <- data
   data_cgul$lat_long <- paste0(data_cgul$latitude, "_", data_cgul$longitude)
@@ -48,7 +48,7 @@ library(plyr) # For round_any
 
 
 # 3. THE SMART DISPATCHER FUNCTION
-run_clustering_method <- function(method_name, og_data, state_covs, obs_covs, truth_df = NULL) {
+run_clustering_method <- function(method_name, og_data, state_covs, truth_df = NULL) {
   
   set.seed(1) # Ensure reproducibility for each method
   
@@ -97,7 +97,7 @@ run_clustering_method <- function(method_name, og_data, state_covs, obs_covs, tr
     alpha <- as.double(parts[2]) / 100.0
     percent <- as.double(parts[3]) / 100.0
     
-    result_df <- .run_clustgeo_internal(og_data, alpha, percent, state_covs, obs_covs)
+    result_df <- .run_clustgeo_internal(og_data, alpha, percent, state_covs)
     return(list(name = method_name, data = result_df))
   
   # ---
@@ -111,11 +111,11 @@ run_clustering_method <- function(method_name, og_data, state_covs, obs_covs, tr
     return(list(name = "DBSC", data = result_df))
     
   } else if (method_name == "BayesOptClustGeo") {
-    bayes_result <- bayesianOptimizedClustGeo(og_data, state_covs, obs_covs, "silhouette")
+    bayes_result <- bayesianOptimizedClustGeo(og_data, state_covs, "silhouette")
     alpha <- bayes_result$Best_Pars$alpha
     percent <- bayes_result$Best_Pars$lambda / 100.0
     
-    final_df <- .run_clustgeo_internal(og_data, alpha, percent, state_covs, obs_covs)
+    final_df <- .run_clustgeo_internal(og_data, alpha, percent, state_covs)
     
     return(list(
       name = "BayesOptClustGeo",
@@ -178,7 +178,7 @@ run_clustering_method <- function(method_name, og_data, state_covs, obs_covs, tr
 
 
 # 4. THE NEW, CLEAN getClusterings FUNCTION
-get_clusterings <- function(method_names, og_data, state_covs, obs_covs, truth_df = data.frame()) {
+get_clusterings <- function(method_names, og_data, state_covs, truth_df = data.frame()) {
   
   results <- list()
   
@@ -190,7 +190,6 @@ get_clusterings <- function(method_names, og_data, state_covs, obs_covs, truth_d
       method_config_name,
       og_data,
       state_covs,
-      obs_covs,
       truth_df
     )
     

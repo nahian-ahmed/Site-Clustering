@@ -37,16 +37,16 @@ source(file.path("R", "analysis_helpers.R"))
 set.seed(123) # For reproducibility
 
 comparison_method_list <- c(
-    "reference_clustering",
-    "one_to_10",
-    "two_to_10",
-    "two_to_10_sameObs",
-    "kmSq-1000",
-    "lat_long",
-    "rounded-4",
-    "svs",
-    "one_UL",
-    "DBSC",
+    # "reference_clustering",
+    # "one_to_10",
+    # "two_to_10",
+    # "two_to_10_sameObs",
+    # "kmSq-1000",
+    # "lat_long",
+    # "rounded-4",
+    # "svs",
+    # "one_UL",
+    # "DBSC",
     "BayesOptClustGeo"
 )
 
@@ -64,7 +64,7 @@ sim_params <- read.csv(file.path("config","simulation_parameters.csv"))
 sim_clusterings <- read.csv(file.path("config","simulation_clusterings.csv"))
 
 
-n_simulations <- 50 
+n_simulations <- 25 
 n_fit_repeats <- 25
 n_test_repeats <- 25
 
@@ -90,7 +90,6 @@ all_reference_clusterings <- get_clusterings(
     method_names = reference_method_list,
     og_data = base_train_df,
     state_covs = state_cov_names,
-    obs_covs = obs_cov_names,
     truth_df = NULL
 )
 cat(sprintf("--- Pre-computing complete. Found %d reference clusterings. ---\n", length(all_reference_clusterings)))
@@ -145,7 +144,6 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
           method_names = comparison_method_list,
           og_data = train_data_for_clustering,
           state_covs = state_cov_names,
-          obs_covs = obs_cov_names,
           truth_df = train_data
       )
       
