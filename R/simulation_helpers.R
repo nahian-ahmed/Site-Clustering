@@ -19,6 +19,9 @@ prepare_train_data <- function (
     sep = ",", header = T
   )
   
+  train_df_og$latitude <- as.numeric(as.character(train_df_og$latitude))
+  train_df_og$longitude <- as.numeric(as.character(train_df_og$longitude))
+
   train_df_og <- train_df_og[!is.na(train_df_og$duration_minutes),]
   train_df_og <- train_df_og[
     train_df_og$observation_date >= "2017-05-15" & 
@@ -30,14 +33,8 @@ prepare_train_data <- function (
   # Use the standardized function name from utils.R
   train_env_df <- extract_state_covs(train_df, cov_tif) 
 
-  cols_to_remove <- c(state_cov_names, "ID")
-  
-  # Select all columns from train_df *except* the ones we're about to add
-  cols_to_keep <- names(train_df)[!names(train_df) %in% cols_to_remove]
-  train_df_pruned <- train_df[, cols_to_keep, drop = FALSE]
-  
-  # Now, join the pruned original data with the new, numeric covariate data
-  train_df <- inner_join(train_df_pruned, train_env_df, by = "checklist_id")
+  # Now, join the original data with the new, numeric covariate data
+  train_df <- inner_join(train_df, train_env_df, by = "checklist_id")
   
   # Use standardized var names
   norm_res <- norm_ds(train_df, obs_covs, state_covs) 
