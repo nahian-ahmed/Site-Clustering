@@ -84,6 +84,18 @@ base_train_df <- base_train_data$train_df
 norm_list <- base_train_data$norm_list
 
 
+cat("--- Pre-computing all reference clusterings... ---\n")
+reference_method_list <- sim_clusterings$method
+all_reference_clusterings <- get_clusterings(
+    method_names = reference_method_list,
+    og_data = base_train_df,
+    state_covs = state_cov_names,
+    obs_covs = obs_cov_names,
+    truth_df = NULL
+)
+cat(sprintf("--- Pre-computing complete. Found %d reference clusterings. ---\n", length(all_reference_clusterings)))
+
+
 
 all_results <- list()
 
@@ -93,6 +105,8 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
   current_clustering_method <- sim_clusterings$method[cluster_idx]
   print(paste("STARTING REFERENCE CLUSTERING:", current_clustering_method))
   
+  current_reference_dataframe <- all_reference_clusterings[[current_clustering_method]]
+
   # Loop over reference parameters (iterating by row index)
   for (param_idx in seq_len(nrow(sim_params))) {
 
@@ -108,8 +122,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
       # === 1. SIMULATE DATA ===
       # NEW CALL 1:
       train_data <- simulate_train_data(
-          base_train_df = base_train_df, 
-          clustering_method_name = current_clustering_method, 
+          reference_clustering_df = current_reference_dataframe, 
           parameter_set_row = current_parameter_set, 
           state_cov_names = state_cov_names, 
           obs_cov_names = obs_cov_names

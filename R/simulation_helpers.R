@@ -55,25 +55,14 @@ prepare_train_data <- function (
 
 
 simulate_train_data <-  function (
-    base_train_df, 
-    clustering_method_name, 
+    reference_clustering_df, 
     parameter_set_row, 
     state_cov_names, 
     obs_cov_names
 ) {
   
   # === 1. GET REFERENCE CLUSTERING ===
-  # Use the dispatcher to run the *single* reference clustering method
-  ref_clustering_list <- get_clusterings(
-      method_names = list(clustering_method_name), # Must be a list
-      og_data = base_train_df,
-      state_covs = state_cov_names,
-      obs_covs = obs_cov_names,
-      truth_df = NULL # No truth_df when generating the reference
-  )
-  
-  # Get the resulting data frame (it's the first and only item in the list)
-  sites_df <- ref_clustering_list[[1]] 
+  sites_df <- reference_clustering_df
   
   
   # === 2. EXTRACT PARAMETERS ===
