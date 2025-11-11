@@ -17,7 +17,7 @@ library(plyr) # For round_any
 
 # 2. INTERNAL HELPER FOR CLUSTGEO
 # UPDATED CALL: Now correctly passes *only* state_covs
-.run_clustgeo_internal <- function(data, alpha, percent, state_covs) {
+.run_clustgeo_internal <- function(data, rho, percent, state_covs) {
   
   data_cgul <- data
   data_cgul$lat_long <- paste0(data_cgul$latitude, "_", data_cgul$longitude)
@@ -26,7 +26,7 @@ library(plyr) # For round_any
   num_sites <- round(nrow(uniq_loc_df) * percent)
   
   clustGeo_df_i <- clustGeoSites(
-    alpha = alpha,
+    alpha = rho,
     checklists = uniq_loc_df,
     state_covs = state_covs,
     num_sites = num_sites
@@ -94,10 +94,10 @@ run_clustering_method <- function(method_name, og_data, state_covs, truth_df = N
     return(list(name = method_name, data = result_df))
     
   } else if (base_method == "clustGeo") {
-    alpha <- as.double(parts[2]) / 100.0
+    rho <- as.double(parts[2]) / 100.0
     percent <- as.double(parts[3]) / 100.0
     
-    result_df <- .run_clustgeo_internal(og_data, alpha, percent, state_covs)
+    result_df <- .run_clustgeo_internal(og_data, rho, percent, state_covs)
     return(list(name = method_name, data = result_df))
   
   # ---
@@ -112,10 +112,10 @@ run_clustering_method <- function(method_name, og_data, state_covs, truth_df = N
     
   } else if (method_name == "BayesOptClustGeo") {
     bayes_result <- bayesianOptimizedClustGeo(og_data, state_covs, "silhouette")
-    alpha <- bayes_result$Best_Pars$alpha
-    percent <- bayes_result$Best_Pars$lambda / 100.0
+    rho <- bayes_result$Best_Pars$rho
+    percent <- bayes_result$Best_Pars$kappa / 100.0
     
-    final_df <- .run_clustgeo_internal(og_data, alpha, percent, state_covs)
+    final_df <- .run_clustgeo_internal(og_data, rho, percent, state_covs)
     
     return(list(
       name = "BayesOptClustGeo",

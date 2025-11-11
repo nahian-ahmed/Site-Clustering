@@ -56,15 +56,15 @@ bayesianOptimizedClustGeo <- function(
     
 
     # --- 2. DEFINE THE FITNESS FUNCTION (as a Closure) ---
-    clustGeo_fit <- function(alpha, lambda) {
+    clustGeo_fit <- function(rho, kappa) {
 
-        percent <- lambda / 100.0
+        percent <- kappa / 100.0
         
-        # UPDATED CALL: Pass state_covs to occ_covs, no det_covs
+
         clustGeo_df_i <- clustGeoSites(
-            alpha = alpha, 
+            alpha = rho, 
             uniq_loc_df,
-            occ_covs = state_covs, 
+            state_covs = state_covs, 
             num_sites = round(nrow(uniq_loc_df) * percent)
         )
         
@@ -86,12 +86,12 @@ bayesianOptimizedClustGeo <- function(
 
 
     # --- 3. DEFINE SEARCH AND RUN OPTIMIZATION ---
-    search_bound <- list(alpha = c(0.01, 0.99),
-                         lambda = c(10, 90))
+    search_bound <- list(rho = c(0.01, 0.99),
+                         kappa = c(10, 90))
 
     search_grid <- data.frame(
-        alpha = runif(n_init, search_bound$alpha[1], search_bound$alpha[2]),
-        lambda = runif(n_init, search_bound$lambda[1], search_bound$lambda[2])
+        rho = runif(n_init, search_bound$rho[1], search_bound$rho[2]),
+        kappa = runif(n_init, search_bound$kappa[1], search_bound$kappa[2])
     )
     
     message("BayesOpt: Starting optimization...")
@@ -111,8 +111,8 @@ bayesianOptimizedClustGeo <- function(
     return (list(
         Best_Value = bayesianOptimized$Best_Value,
         Best_Pars = list(
-            alpha = bayesianOptimized$Best_Par[1], 
-            lambda = bayesianOptimized$Best_Par[2]
+            rho = bayesianOptimized$Best_Par[1], 
+            kappa = bayesianOptimized$Best_Par[2]
         )
     ))
 }
