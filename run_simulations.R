@@ -37,16 +37,16 @@ source(file.path("R", "analysis_helpers.R"))
 set.seed(123) # For reproducibility
 
 comparison_method_list <- c(
-    # "reference_clustering",
-    # "one_to_10",
-    # "two_to_10",
-    # "two_to_10_sameObs",
-    # "kmSq-1000",
-    # "lat_long",
-    # "rounded-4",
-    # "svs",
-    # "one_UL",
-    # "DBSC",
+    "reference_clustering",
+    "one_to_10",
+    "two_to_10",
+    "two_to_10_sameObs",
+    "kmSq-1000",
+    "lat_long",
+    "rounded-4",
+    "svs",
+    "one_UL",
+    "DBSC",
     "BayesOptClustGeo"
 )
 
@@ -106,7 +106,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
   current_clustering_method <- sim_clusterings$method[cluster_idx]
   print(paste("STARTING REFERENCE CLUSTERING:", current_clustering_method))
   
-  current_reference_dataframe <- all_reference_clusterings[[current_clustering_method]]
+  current_reference_dataframe <- all_clusterings[[current_clustering_method]]
 
   # Loop over reference parameters (iterating by row index)
   for (param_idx in seq_len(nrow(sim_params))) {
@@ -253,7 +253,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
     } # End simulation loop (sim_num)
   } # End parameter loop (param_idx)
 } # End clustering loop (cluster_idx)
-
+print("Done")
 
 output_dir <- file.path("simulation_experiments", "output")
 if (!dir.exists(output_dir)) {
