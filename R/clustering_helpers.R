@@ -5,10 +5,11 @@
 ##############################################
 
 # 1. SOURCE MODULAR CLUSTERING LOGIC
-source("R/clustering/bayesopt.R")
-source("R/clustering/clustgeo.R")
-source("R/clustering/dbsc.R")
 source("R/clustering/kmsq.R")
+source("R/clustering/dbsc.R")
+source("R/clustering/clustgeo.R")
+source("R/clustering/bayesopt.R")
+
 
 # Load required libraries
 library(auk)

@@ -64,9 +64,9 @@ sim_params <- read.delim(file.path("config","simulation_parameters.csv"), sep = 
 sim_clusterings <- read.delim(file.path("config","simulation_clusterings.csv"), sep = ",", header = T)
 
 
-n_simulations <- 25 
-n_fit_repeats <- 25
-n_test_repeats <- 25
+n_simulations <- 5
+n_fit_repeats <- 5
+n_test_repeats <- 5
 
 
 
@@ -87,6 +87,8 @@ norm_list <- base_train_data$norm_list
 
 reference_method_list <- sim_clusterings$method
 all_method_names <- unique(c(reference_method_list, comparison_method_list))
+
+print(all_method_names)
 
 cat("--- Pre-computing ALL clusterings... ---\n")
 all_clusterings <- get_clusterings(
