@@ -8,7 +8,7 @@
 library(sqldf) # sql operation on dataframes
 library(RTriangle) # Triangle geometry operations
 library(igraph) # graph node and edge operations
-
+library(data.table)
 
 # extracts and formats vertex points
 formatVert <- function(species_df, state_covs){

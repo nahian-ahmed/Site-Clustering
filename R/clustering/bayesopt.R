@@ -8,6 +8,7 @@
 library(rBayesianOptimization) # bayesian optimization library
 library(cluster)               # silhouette width calculation
 library(dplyr)                 # For distinct() and %>%
+library(distances)
 
 # --- Helper Functions ---
 # (These are fine as-is)
