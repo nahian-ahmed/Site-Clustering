@@ -24,9 +24,8 @@ get_pairwise_distances <- function(df, sp_features, env_features, normalize = TR
         }
     }
     df <- df[,c(sp_features,env_features)]
-    print(dim(df))
-    print(df)
-    m_dist <- distances::distances(df)
+    
+    m_dist <- distances::distances(as.data.frame(df))
     
     return(m_dist)
 }
