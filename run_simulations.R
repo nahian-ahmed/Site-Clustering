@@ -84,16 +84,18 @@ base_train_df <- base_train_data$train_df
 norm_list <- base_train_data$norm_list
 
 
-cat("--- Pre-computing all reference clusterings... ---\n")
+
 reference_method_list <- sim_clusterings$method
-all_reference_clusterings <- get_clusterings(
-    method_names = reference_method_list,
+all_method_names <- unique(c(reference_method_list, comparison_method_list))
+
+cat("--- Pre-computing ALL clusterings... ---\n")
+all_clusterings <- get_clusterings(
+    method_names = all_method_names,
     og_data = base_train_df,
     state_covs = state_cov_names,
-    truth_df = NULL
+    truth_df = NULL # truth_df is now just another method
 )
-cat(sprintf("--- Pre-computing complete. Found %d reference clusterings. ---\n", length(all_reference_clusterings)))
-
+cat(sprintf("--- Pre-computing complete. Found %d total clusterings. ---\n", length(all_clusterings)))
 
 
 all_results <- list()
@@ -140,12 +142,6 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
       # === 2. GET ALL CLUSTERINGS ===
       train_data_for_clustering <- subset(train_data, select = -c(site))
       
-      grouped_sites <- get_clusterings(
-          method_names = comparison_method_list,
-          og_data = train_data_for_clustering,
-          state_covs = state_cov_names,
-          truth_df = train_data
-      )
       
       # This model_list should be *inside* the sim_num loop
       # to get fresh models for each stochastic replicate.
@@ -181,9 +177,9 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
 
         # # === 4. LOOP OVER EACH CLUSTERING METHOD ===
         # # This is the logic adapted from your `OLD_code/simulation_experiments/run_experiments.R`
+        # for(method_name in names(all_clusterings)){
         
-        # for(method_name in names(groupedSite)){
-          
+        #   current_clustering_df <- all_clusterings[[method_name]]
         #   set.seed(1) # Consistent seed for modeling
           
         #   # --- This logic is for the *first* test repeat only ---
@@ -195,18 +191,18 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
         #         # ... code to write best_par_df to a CSV ...
                 
         #         # IMPORTANT: Overwrite the list entry with just the dataframe
-        #         groupedSite[[method_name]] <- groupedSite[[method_name]]$result_df 
+        #         current_clustering_df <- all_clusterings[[method_name]]$result_df
         #     }
 
         #     # Calculate clustering stats (ARI, etc.) against the ground truth
         #     # We use `train_data` as the ground truth here.
         #     if (!(method_name %in% c("1to10", "2to10", "2to10-sameObs", "1-UL"))){
-        #         cl_stats <- calcClusteringStats(groupedSite[[method_name]], train_data) # from R/analysis_helpers.R
+        #         cl_stats <- calcClusteringStats(current_clustering_df, train_data) # from R/analysis_helpers.R
         #     } else {
         #         cl_stats <- list(ari=NA, ami=NA , nid=NA)
         #     }
 
-        #     cl_stats_desc <- calcDescriptiveClusteringStatsWithReference(groupedSite[[method_name]], "site", state_cov_names, normalize = FALSE) # from R/analysis_helpers.R
+        #     cl_stats_desc <- calcDescriptiveClusteringStatsWithReference(current_clustering_df, "site", state_cov_names, normalize = FALSE) # from R/analysis_helpers.R
         #     cl_stats <- c(cl_stats, cl_stats_desc)
             
         #     # ... code to write cl_stats to a CSV ...
@@ -214,7 +210,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
 
         #     # Fit the occupancy model
         #     model_list[[method_name]] <- list()
-        #     test.formula <- calcOccModel(groupedSite[[method_name]], state_cov_names, obs_cov_names) # from R/model_helpers.R
+        #     test.formula <- calcOccModel(current_clustering_df, state_cov_names, obs_cov_names) # from R/model_helpers.R
 
         #     occ_par_list <- test.formula@estimates@estimates$state@estimates 
         #     det_par_list <- test.formula@estimates@estimates$det@estimates
