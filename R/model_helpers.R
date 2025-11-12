@@ -258,7 +258,7 @@ create_site_geometries <- function(
         hull_albers <- sf::st_transform(hull_wgs84, crs = albers_crs_str)
         
         # 5. Apply the buffer and wrap in a list to store in the cell
-        list(sf::st_buffer(hull_albers, dist = buffer_dist))
+        sf::st_buffer(hull_albers, dist = buffer_dist)
       }
     ) %>%
     # Unpack the geometry from the list
