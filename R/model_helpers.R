@@ -238,7 +238,7 @@ create_site_geometries <- function(
   site_geoms_albers <- reference_clustering_df %>%
     group_by(site) %>%
     # Use summarise to create one geometry per site
-    summarise(
+    dplyr::summarise(
       .groups = "drop",
       geometry = {
         # 1. Get unique (lon, lat) pairs for the site
