@@ -100,6 +100,30 @@ all_clusterings <- get_clusterings(
 cat(sprintf("--- Pre-computing complete. Found %d total clusterings. ---\n", length(all_clusterings)))
 
 
+cat("--- Pre-computing site geometries for ALL clustering methods... ---\n")
+all_site_geometries <- list() # Renamed list for clarity
+for (method_name in all_method_names) {
+    cat(paste("    - Generating geometries for:", method_name, "\n"))
+    
+    # Get the correct data (handles BayesOpt list structure)
+    cluster_data <- all_clusterings[[method_name]]
+    if (is.list(cluster_data) && "result_df" %in% names(cluster_data)) {
+      cluster_data <- cluster_data$result_df
+    }
+    
+    # Handle cases where a method might have failed (e.g., reference_clustering)
+    if (is.null(cluster_data)) {
+        cat(paste("    - WARNING: No clustering data found for", method_name, ". Skipping geometry creation.\n"))
+        next
+    }
+    
+    all_site_geometries[[method_name]] <- create_site_geometries(
+        cluster_data, 
+        state_cov_raster
+    )
+}
+cat("--- Geometry pre-computing complete. ---\n")
+
 all_results <- list()
 
 
@@ -109,6 +133,8 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
   print(paste("STARTING REFERENCE CLUSTERING:", current_clustering_method))
   
   current_reference_dataframe <- all_clusterings[[current_clustering_method]]
+
+  current_site_geometries <- all_site_geometries[[current_clustering_method]]
 
   # Loop over reference parameters (iterating by row index)
   for (param_idx in seq_len(nrow(sim_params))) {
@@ -126,6 +152,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
       # NEW CALL 1:
       train_data <- simulate_train_data(
           reference_clustering_df = current_reference_dataframe, 
+          site_geoms_sf = current_site_geometries,
           parameter_set_row = current_parameter_set, 
           state_cov_names = state_cov_names, 
           obs_cov_names = obs_cov_names,
