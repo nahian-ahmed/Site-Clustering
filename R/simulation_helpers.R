@@ -101,7 +101,8 @@ simulate_train_data <-  function (
   cell_areas_df <- terra::as.data.frame(cell_areas_m2_rast, cells=TRUE)
   # Rename 'area' column to avoid conflicts
   colnames(cell_areas_df)[colnames(cell_areas_df) == 'area'] <- 'cell_area_m2'
-
+  colnames(cell_areas_df)[colnames(cell_areas_df) == 'cell'] <- 'cell_id'
+  
   # 3. Transform site polygons to match the raster's CRS for extraction
   cat("    - (Simulating occuN) Transforming site geometries to raster CRS...\n")
   site_geoms_wgs84 <- sf::st_transform(site_geoms_sf, crs = rast_crs)
@@ -122,15 +123,15 @@ simulate_train_data <-  function (
   # 'cell' is the cell ID
   # 'weight' is the fractional overlap (0 to 1)
   site_cell_map_raw$site <- site_geoms_wgs84$site[site_cell_map_raw$ID]
+  colnames(cell_areas_df)[colnames(cell_areas_df) == 'cell'] <- 'cell_id'
   
   # 6. Calculate the final overlap area in m^2 (fraction * total_cell_area)
   cat("    - (Simulating occuN) Calculating overlap areas in m^2...\n")
-  site_cell_map_with_areas <- merge(site_cell_map_raw, cell_areas_df, by.x="cell", by.y="cell")
+  site_cell_map_with_areas <- merge(site_cell_map_raw, cell_areas_df, by.x="cell_id", by.y="cell_id")
   site_cell_map_with_areas$overlap_area_m2 <- site_cell_map_with_areas$weight * site_cell_map_with_areas$cell_area_m2
 
   # 7. Create the final map for the sparse matrix
-  site_cell_map <- site_cell_map_with_areas[, c("site", "cell", "overlap_area_m2")]
-  colnames(site_cell_map)[colnames(site_cell_map) == 'cell'] <- 'cell_id'
+  site_cell_map <- site_cell_map_with_areas[, c("site", "cell_id", "overlap_area_m2")]
   
   # Make sure site IDs are consistent
   unique_site_ids <- unique(site_geoms_sf$site)
