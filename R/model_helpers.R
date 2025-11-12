@@ -1,4 +1,6 @@
-
+library(sf)
+library(dplyr)
+library(terra)
 
 
 ##########
@@ -174,4 +176,74 @@ get_parameters <- function(df, i, occ_covs, det_covs, occ_intercept = TRUE, det_
 }
 ########
 
+
+
+
+
+
+
+
+
+create_site_geometries <- function(
+    reference_clustering_df, 
+    cov_tif
+) {
+  
+  cat("    - (create_site_geometries) Defining CRS...\n")
+  # CRS definitions from your project (e.g., in kmsq.R)
+  albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
+  wgs84_crs_str <- "+proj=longlat +datum=WGS84"
+
+  cat("    - (create_site_geometries) Calculating buffer distance...\n")
+  # Project raster to Albers to get resolution in meters
+  # Use a coarse resolution for projection to speed it up
+  template_raster_albers <- terra::project(cov_tif, albers_crs_str, res = 1000) 
+  rast_res_m <- terra::res(template_raster_albers)
+  
+  # --- PRINT CELL SIZE (as requested) ---
+  print(paste("Cell size (resolution) in meters (x, y):", rast_res_m[1], rast_res_m[2]))
+  
+  buffer_dist <- mean(rast_res_m) / 2
+  
+  # --- PRINT BUFFER SIZE (as requested) ---
+  print(paste("Buffer size (half cell) in meters:", buffer_dist))
+  
+  cat(sprintf("    - (create_site_geometries) Buffer distance set to: %.2f meters\n", buffer_dist))
+
+  # Group by site and create a geometry for each
+  cat("    - (create_site_geometries) Grouping by site to create hulls...\n")
+  
+  site_geoms_albers <- reference_clustering_df %>%
+    group_by(site) %>%
+    # Use summarise to create one geometry per site
+    summarise(
+      .groups = "drop",
+      geometry = {
+        # 1. Get unique (lon, lat) pairs for the site
+        unique_pts_df <- dplyr::distinct(pick(longitude, latitude))
+        
+        # 2. Create sf object with original WGS84 CRS
+        sf_pts <- sf::st_as_sf(
+          unique_pts_df, 
+          coords = c("longitude", "latitude"), 
+          crs = wgs84_crs_str
+        )
+        
+        # 3. Create convex hull (result is POINT, LINESTRING, or POLYGON)
+        hull_wgs84 <- sf::st_convex_hull(sf::st_combine(sf_pts))
+        
+        # 4. Transform hull to Albers (meters) for buffering
+        hull_albers <- sf::st_transform(hull_wgs84, crs = albers_crs_str)
+        
+        # 5. Apply the buffer and wrap in a list to store in the cell
+        list(sf::st_buffer(hull_albers, dist = buffer_dist))
+      }
+    ) %>%
+    # Unpack the geometry from the list
+    sf::st_as_sf(crs = albers_crs_str)
+
+  cat(sprintf("    - (create_site_geometries) Generated %d buffered site geometries.\n", nrow(site_geoms_albers)))
+  
+  return(site_geoms_albers)
+}
 

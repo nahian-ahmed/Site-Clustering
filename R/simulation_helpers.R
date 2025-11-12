@@ -94,23 +94,47 @@ simulate_train_data <-  function (
 
   # === 4. DEFINE SITES & BUILD 'w' MATRIX ===
   # 'w' maps sites (rows) to cells (columns)
-  # We define a site's area as the *set of cells* containing its checklists
   
-  sites_df <- reference_clustering_df
-  unique_site_ids <- unique(sites_df$site)
-  M <- length(unique_site_ids)
+  # 1. Create the custom site geometries (polygons)
+  cat("    - (Simulating occuN) Calling create_site_geometries...\n")
+  # Note: reference_clustering_df is the full 'sites_df'
+  site_geoms_sf <- create_site_geometries(reference_clustering_df, cov_tif)
+  albers_crs <- sf::st_crs(site_geoms_sf)
   
-  cat(sprintf("    - (Simulating occuN) Building %d x %d 'w' matrix...\n", M, n_cells))
+  # 2. Get cell centroids as an sf object (in original raster CRS)
+  # We use cellCovs (from step 2) which has 'cell_id', 'x', and 'y'
+  cat("    - (Simulating occuN) Converting cell centroids to sf object...\n")
   
-  # Find which cell each checklist belongs to
-  sites_sf <- sf::st_as_sf(sites_df, coords = c("longitude", "latitude"), crs = sf::st_crs(cov_tif))
-  sites_df$cell_id <- terra::extract(cov_tif, sites_sf, cell = TRUE)$cell
+  cell_centroids_sf <- sf::st_as_sf(
+    cellCovs, 
+    coords = c("x", "y"), 
+    crs = terra::crs(cov_tif), 
+    remove = FALSE # Keep all columns like cell_id
+  )
   
-  # Get unique (site, cell) pairs
-  site_cell_map <- unique(sites_df[, c("site", "cell_id")])
+  # 3. Transform cell centroids to match the Albers CRS of the site polygons
+  cat("    - (Simulating occuN) Transforming cell centroids to Albers CRS...\n")
+  cell_centroids_albers <- sf::st_transform(cell_centroids_sf, crs = albers_crs)
+
+  # 4. Find which cells fall inside which site polygons
+  cat("    - (Simulating occuN) Spatially joining sites to cell centroids...\n")
+  # This returns the site polygon info (site) and the cell info (cell_id)
+  site_cell_map_sf <- sf::st_join(
+    site_geoms_sf, 
+    cell_centroids_albers, 
+    join = sf::st_intersects
+  )
+  
+  # 5. Build the sparse 'w' matrix from this map
+  site_cell_map <- as.data.frame(site_cell_map_sf)[, c("site", "cell_id")]
   site_cell_map <- site_cell_map[!is.na(site_cell_map$cell_id), ]
   
-  # Build a sparse w matrix
+  # Make sure site IDs are consistent
+  unique_site_ids <- unique(site_geoms_sf$site)
+  M <- length(unique_site_ids)
+  
+  cat(sprintf("    - (Simulating occuN) Building %d x %d 'w' matrix from geometries...\n", M, n_cells))
+  
   w <- Matrix::sparseMatrix(
       i = match(site_cell_map$site, unique_site_ids),
       j = match(site_cell_map$cell_id, cellCovs$cell_id),
