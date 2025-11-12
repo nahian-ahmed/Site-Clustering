@@ -114,7 +114,7 @@ simulate_train_data <-  function (
     site_geoms_wgs84,
     exact = TRUE,      # <-- This calculates fractional overlap
     weights = TRUE,    # <-- This returns the weights
-    ID = FALSE         # We will use our own site IDs
+    ID = TRUE         # We will use our own site IDs
   )
   
   # 5. Map results back to site and cell IDs
