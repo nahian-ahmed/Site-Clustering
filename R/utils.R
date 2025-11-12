@@ -37,11 +37,16 @@ norm_ds <- function(df, obs_covs, state_covs, norm_list = list()){
     }
   }
   
+  
+  # Get column names that are BOTH in the norm_list AND in the dataframe
+  cols_to_normalize <- intersect(names(norm_list), names(df))
+
   # xi - min(x)/(max(x) - min(x))
-  for(cov in names(norm_list)){
+  # Only loop over the columns that actually exist in df
+  for(cov in cols_to_normalize){
     df[[cov]] <- (df[[cov]] - norm_list[[cov]][[2]])/(norm_list[[cov]][[1]] - norm_list[[cov]][[2]])
   }
-  
+    
   return(list(df=df, n_l=norm_list))
   
 }
