@@ -1,5 +1,8 @@
 library(dplyr)
 library(rje) # For expit()
+library(terra) # Added for raster operations
+library(sf) # Added for spatial operations
+library(Matrix) # Added for sparse 'w' matrix
 
 source(file.path("R","utils.R"))
 source(file.path("R","clustering_helpers.R"))
@@ -49,62 +52,119 @@ prepare_train_data <- function (
 }
 
 
-
+# -----------------------------------------------------------------
+# --- THIS IS THE UPDATED FUNCTION ---
+# -----------------------------------------------------------------
 simulate_train_data <-  function (
     reference_clustering_df, 
     parameter_set_row, 
     state_cov_names, 
     obs_cov_names,
-    cov_tif
+    cov_tif,
+    norm_list # <-- NEW ARGUMENT
 ) {
   
-  # === 1. GET REFERENCE CLUSTERING ===
-  sites_df <- reference_clustering_df
-  
-  
-  # === 2. EXTRACT PARAMETERS ===
-  # Directly extract parameters from the provided data frame row
+  # === 1. EXTRACT PARAMETERS ===
+  # (Same as before)
   state_par_list <- as.list(parameter_set_row[, c("state_intercept", state_cov_names)])
   obs_par_list <- as.list(parameter_set_row[, c("obs_intercept", obs_cov_names)])
   
-  # Rename intercept keys to match what calculate_weighted_sum expects
   names(state_par_list)[1] <- "intercept"
   names(obs_par_list)[1] <- "intercept"
   
+
+  # === 2. GET CELL-LEVEL COVARIATES (cellCovs) ===
+  # Extract all cell values from the raster
+  cat("    - (Simulating occuN) Extracting cellCovs from raster...\n")
+  cell_data <- terra::as.data.frame(cov_tif, xy = TRUE, cells = TRUE)
+  colnames(cell_data)[colnames(cell_data) == 'cell'] <- 'cell_id'
   
-  # === 3. ENFORCE CLOSURE ===
+  # Normalize cell-level covariates using the norm_list from training data
+  # We assume norm_ds can handle NULL obs_covs
+  norm_res <- norm_ds(cell_data, obs_covs = NULL, state_covs = state_cov_names, norm_list = norm_list)
+  cellCovs <- norm_res$df
+  n_cells <- nrow(cellCovs)
+
+
+  # === 3. CALCULATE CELL-LEVEL LAMBDA (lambda_j) ===
+  # Calculate latent abundance for *every cell* in the landscape
+  cat("    - (Simulating occuN) Calculating cell-level lambda...\n")
+  cellCovs$lambda_j <- exp(calculate_weighted_sum(state_par_list, cellCovs))
+
+
+  # === 4. DEFINE SITES & BUILD 'w' MATRIX ===
+  # 'w' maps sites (rows) to cells (columns)
+  # We define a site's area as the *set of cells* containing its checklists
+  
+  sites_df <- reference_clustering_df
+  unique_site_ids <- unique(sites_df$site)
+  M <- length(unique_site_ids)
+  
+  cat(sprintf("    - (Simulating occuN) Building %d x %d 'w' matrix...\n", M, n_cells))
+  
+  # Find which cell each checklist belongs to
+  sites_sf <- sf::st_as_sf(sites_df, coords = c("longitude", "latitude"), crs = sf::st_crs(cov_tif))
+  sites_df$cell_id <- terra::extract(cov_tif, sites_sf, cell = TRUE)$cell
+  
+  # Get unique (site, cell) pairs
+  site_cell_map <- unique(sites_df[, c("site", "cell_id")])
+  site_cell_map <- site_cell_map[!is.na(site_cell_map$cell_id), ]
+  
+  # Build a sparse w matrix
+  w <- Matrix::sparseMatrix(
+      i = match(site_cell_map$site, unique_site_ids),
+      j = match(site_cell_map$cell_id, cellCovs$cell_id),
+      x = 1, # Binary weight: 1 if cell is in site, 0 otherwise
+      dims = c(M, n_cells),
+      dimnames = list(unique_site_ids, cellCovs$cell_id)
+  )
+
+  # === 5. SIMULATE SITE-LEVEL OCCUPANCY (Z_i) ===
+  # \tilde{\lambda}_i = \sum_j w_{ij} \lambda_j
+  cat("    - (Simulating occuN) Aggregating site-level lambda_tilde...\n")
+  lambda_tilde_i <- w %*% cellCovs$lambda_j
+  
+  # \psi_i = 1 - e^{-\tilde{\lambda}_i}
+  psi_i <- 1 - exp(-lambda_tilde_i)
+  
+  # Simulate true occupancy state (Z_i)
+  Z_i <- rbinom(M, 1, psi_i)
+  
+  # Create lookup for site-level values
+  site_lookup <- data.frame(
+      site = unique_site_ids, 
+      occupied_prob = as.numeric(psi_i), 
+      occupied = Z_i
+  )
+
+  # === 6. ENFORCE CLOSURE ===
+  # (Same as before)
+  cat("    - (Simulating occuN) Enforcing closure and simulating detection...\n")
   sites_list <- unique(sites_df$site)
   closed_df <- enforceClosure(sites_df, state_cov_names, sites_list)
   
   
-  # === 4. SIMULATE OCCUPANCY (SITE-LEVEL) ===
-  # Get unique sites *from the closed_df* to ensure mean covariates are used
-  sites_df_u <- subset(closed_df, !duplicated(site)) 
-  
-  sites_df_u$occupied_prob <- calculate_weighted_sum(state_par_list, sites_df_u)
-  sites_df_u$occupied_prob <- rje::expit(sites_df_u$occupied_prob)
-  sites_df_u$occupied <- rbinom(nrow(sites_df_u), 1, sites_df_u$occupied_prob)
-  
-  # Create a simple lookup for site-level values
-  site_lookup <- sites_df_u[, c("site", "occupied_prob", "occupied")]
-  
-  
-  # === 5. MAP SITE-LEVEL OCCUPANCY TO CHECKLISTS ===
-  # A dplyr join is much faster and cleaner than the R-style for-loop
+  # === 7. MAP SITE-LEVEL OCCUPANCY TO CHECKLISTS ===
+  # (Same as before)
   res_df <- dplyr::left_join(closed_df, site_lookup, by = "site")
   
   
-  # === 6. SIMULATE DETECTION (CHECKLIST-LEVEL) ===
+  # === 8. SIMULATE DETECTION (CHECKLIST-LEVEL) ===
+  # (Same as before)
   res_df$det_prob <- calculate_weighted_sum(obs_par_list, res_df)
   res_df$det_prob <- rje::expit(res_df$det_prob)
   res_df$detection <- rbinom(nrow(res_df), 1, res_df$det_prob)
   
   
-  # === 7. FINAL OBSERVATION ===
+  # === 9. FINAL OBSERVATION ===
+  # (Same as before)
   res_df$species_observed <- res_df$occupied * res_df$detection
   
   return (res_df)
 }
+# -----------------------------------------------------------------
+# --- END OF UPDATED FUNCTION ---
+# -----------------------------------------------------------------
 
 
 

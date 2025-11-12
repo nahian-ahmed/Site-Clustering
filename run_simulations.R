@@ -129,7 +129,8 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
           parameter_set_row = current_parameter_set, 
           state_cov_names = state_cov_names, 
           obs_cov_names = obs_cov_names,
-          cov_tif = state_cov_raster
+          cov_tif = state_cov_raster,
+          norm_list = norm_list
       )
             
       # NEW CALL 2:
