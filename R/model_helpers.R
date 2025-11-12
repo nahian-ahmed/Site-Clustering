@@ -242,7 +242,7 @@ create_site_geometries <- function(
       .groups = "drop",
       geometry = {
         # 1. Get unique (lon, lat) pairs for the site
-        unique_pts_df <- dplyr::distinct(pick(longitude, latitude))
+        unique_pts_df <- dplyr::distinct(.data, longitude, latitude)
         
         # 2. Create sf object with original WGS84 CRS
         sf_pts <- sf::st_as_sf(
