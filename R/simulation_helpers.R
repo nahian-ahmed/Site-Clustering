@@ -123,7 +123,7 @@ simulate_train_data <-  function (
   # 'cell' is the cell ID
   # 'weight' is the fractional overlap (0 to 1)
   site_cell_map_raw$site <- site_geoms_wgs84$site[site_cell_map_raw$ID]
-  colnames(cell_areas_df)[colnames(cell_areas_df) == 'cell'] <- 'cell_id'
+  colnames(site_cell_map_raw)[colnames(site_cell_map_raw) == 'cell'] <- 'cell_id' # <-- Corrected this line
   
   # 6. Calculate the final overlap area in m^2 (fraction * total_cell_area)
   cat("    - (Simulating occuN) Calculating overlap areas in m^2...\n")
