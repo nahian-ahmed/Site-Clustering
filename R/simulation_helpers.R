@@ -61,11 +61,11 @@ simulate_train_data <-  function (
     state_cov_names, 
     obs_cov_names,
     cov_tif,
-    norm_list # <-- NEW ARGUMENT
+    norm_list
 ) {
   
   # === 1. EXTRACT PARAMETERS ===
-  # (Same as before)
+  cat("    - (Simulating occuN) Extracting parameters...\n")
   state_par_list <- as.list(parameter_set_row[, c("state_intercept", state_cov_names)])
   obs_par_list <- as.list(parameter_set_row[, c("obs_intercept", obs_cov_names)])
   
@@ -74,74 +74,79 @@ simulate_train_data <-  function (
   
 
   # === 2. GET CELL-LEVEL COVARIATES (cellCovs) ===
-  # Extract all cell values from the raster
   cat("    - (Simulating occuN) Extracting cellCovs from raster...\n")
   cell_data <- terra::as.data.frame(cov_tif, xy = TRUE, cells = TRUE)
   colnames(cell_data)[colnames(cell_data) == 'cell'] <- 'cell_id'
   
-  # Normalize cell-level covariates using the norm_list from training data
-  # We assume norm_ds can handle NULL obs_covs
   norm_res <- norm_ds(cell_data, obs_covs = NULL, state_covs = state_cov_names, norm_list = norm_list)
   cellCovs <- norm_res$df
   n_cells <- nrow(cellCovs)
 
 
   # === 3. CALCULATE CELL-LEVEL LAMBDA (lambda_j) ===
-  # Calculate latent abundance for *every cell* in the landscape
   cat("    - (Simulating occuN) Calculating cell-level lambda...\n")
   cellCovs$lambda_j <- exp(calculate_weighted_sum(state_par_list, cellCovs))
 
 
-  # === 4. DEFINE SITES & BUILD 'w' MATRIX ===
-  # 'w' maps sites (rows) to cells (columns)
+  # === 4. DEFINE SITES & BUILD 'w' MATRIX (NEW AREAL OVERLAP LOGIC) ===
   
   # 1. Create the custom site geometries (polygons)
   cat("    - (Simulating occuN) Calling create_site_geometries...\n")
-  # Note: reference_clustering_df is the full 'sites_df'
   site_geoms_sf <- create_site_geometries(reference_clustering_df, cov_tif)
   albers_crs <- sf::st_crs(site_geoms_sf)
   
-  # 2. Get cell centroids as an sf object (in original raster CRS)
-  # We use cellCovs (from step 2) which has 'cell_id', 'x', and 'y'
-  cat("    - (Simulating occuN) Converting cell centroids to sf object...\n")
+  # 2. Get cell POLYGONS as an sf object (in original raster CRS)
+  cat("    - (Simulating occuN) Converting raster cells to polygons...\n")
+  # This is the key change: we get polygons, not centroids.
+  cell_polygons_sf <- terra::as.polygons(cov_tif, values = FALSE, na.rm = FALSE) %>%
+    sf::st_as_sf()
   
-  cell_centroids_sf <- sf::st_as_sf(
-    cellCovs, 
-    coords = c("x", "y"), 
-    crs = terra::crs(cov_tif), 
-    remove = FALSE # Keep all columns like cell_id
-  )
+  # Add the cell_id to the polygons
+  cell_polygons_sf$cell_id <- 1:n_cells
   
-  # 3. Transform cell centroids to match the Albers CRS of the site polygons
-  cat("    - (Simulating occuN) Transforming cell centroids to Albers CRS...\n")
-  cell_centroids_albers <- sf::st_transform(cell_centroids_sf, crs = albers_crs)
+  # 3. Transform cell polygons to match the Albers CRS of the site polygons
+  cat("    - (Simulating occuN) Transforming cell polygons to Albers CRS...\n")
+  cell_polygons_albers <- sf::st_transform(cell_polygons_sf, crs = albers_crs)
 
-  # 4. Find which cells fall inside which site polygons
-  cat("    - (Simulating occuN) Spatially joining sites to cell centroids...\n")
-  # This returns the site polygon info (site) and the cell info (cell_id)
-  site_cell_map_sf <- sf::st_join(
-    site_geoms_sf, 
-    cell_centroids_albers, 
-    join = sf::st_intersects
+  # 4. Find the INTERSECTION between all sites and all cells
+  # This is the most computationally expensive step.
+  cat("    - (Simulating occuN) Calculating areal intersection (this may take a moment)...\n")
+  
+  # We suppress warnings here because st_intersection can warn about
+  # assuming attributes are constant over geometries, which is fine here.
+  site_cell_map_sf <- suppressWarnings(
+    sf::st_intersection(site_geoms_sf, cell_polygons_albers)
   )
   
-  # 5. Build the sparse 'w' matrix from this map
-  site_cell_map <- as.data.frame(site_cell_map_sf)[, c("site", "cell_id")]
+  # 5. Calculate the area of each overlapping piece
+  cat("    - (Simulating occuN) Calculating overlap areas...\n")
+  # w_ij is the actual area in m^2, as described in the paper [cite: 121]
+  site_cell_map_sf$overlap_area_m2 <- as.numeric(sf::st_area(site_cell_map_sf))
+  
+  # 6. Build the sparse 'w' matrix from this map
+  site_cell_map <- as.data.frame(site_cell_map_sf)[, c("site", "cell_id", "overlap_area_m2")]
   site_cell_map <- site_cell_map[!is.na(site_cell_map$cell_id), ]
   
   # Make sure site IDs are consistent
   unique_site_ids <- unique(site_geoms_sf$site)
   M <- length(unique_site_ids)
   
-  cat(sprintf("    - (Simulating occuN) Building %d x %d 'w' matrix from geometries...\n", M, n_cells))
+  cat(sprintf("    - (Simulating occuN) Building %d x %d 'w' matrix with area weights...\n", M, n_cells))
   
   w <- Matrix::sparseMatrix(
       i = match(site_cell_map$site, unique_site_ids),
       j = match(site_cell_map$cell_id, cellCovs$cell_id),
-      x = 1, # Binary weight: 1 if cell is in site, 0 otherwise
+      x = site_cell_map$overlap_area_m2, # <-- THIS IS THE KEY CHANGE
       dims = c(M, n_cells),
       dimnames = list(unique_site_ids, cellCovs$cell_id)
   )
+  
+  # --- IMPORTANT NOTE ON UNITS ---
+  # Your w_ij values are now in m^2[cite: 121].
+  # This means the latent abundance (lambda_j) is interpreted as
+  # "expected individuals per m^2" in that cell.
+  # And lambda_tilde_i is the total expected individuals for the site.
+  # This is all 100% correct according to the theory.
 
   # === 5. SIMULATE SITE-LEVEL OCCUPANCY (Z_i) ===
   # \tilde{\lambda}_i = \sum_j w_{ij} \lambda_j
@@ -162,27 +167,33 @@ simulate_train_data <-  function (
   )
 
   # === 6. ENFORCE CLOSURE ===
-  # (Same as before)
   cat("    - (Simulating occuN) Enforcing closure and simulating detection...\n")
-  sites_list <- unique(sites_df$site)
-  closed_df <- enforceClosure(sites_df, state_cov_names, sites_list)
+  # This should be reference_clustering_df, not sites_df
+  sites_list <- unique(reference_clustering_df$site)
+  closed_df <- enforceClosure(reference_clustering_df, state_cov_names, sites_list)
   
   
   # === 7. MAP SITE-LEVEL OCCUPANCY TO CHECKLISTS ===
-  # (Same as before)
   res_df <- dplyr::left_join(closed_df, site_lookup, by = "site")
   
   
   # === 8. SIMULATE DETECTION (CHECKLIST-LEVEL) ===
-  # (Same as before)
   res_df$det_prob <- calculate_weighted_sum(obs_par_list, res_df)
   res_df$det_prob <- rje::expit(res_df$det_prob)
   res_df$detection <- rbinom(nrow(res_df), 1, res_df$det_prob)
   
   
   # === 9. FINAL OBSERVATION ===
-  # (Same as before)
   res_df$species_observed <- res_df$occupied * res_df$detection
+  
+  # Add a check for NAs in occupancy, which can happen if a site
+  # somehow didn't overlap any cells (e.g., in a lake/NA area)
+  n_na_occ <- sum(is.na(res_df$occupied))
+  if (n_na_occ > 0) {
+      cat(sprintf("    - (Simulating occuN) WARNING: %d checklists had NA occupancy (no cell overlap). Setting to 0.\n", n_na_occ))
+      res_df$occupied[is.na(res_df$occupied)] <- 0
+      res_df$species_observed[is.na(res_df$species_observed)] <- 0
+  }
   
   return (res_df)
 }

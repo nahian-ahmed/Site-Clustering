@@ -134,18 +134,40 @@ get_occu_map_diff <- function(occu_map_gt, occu_map) {
 ########
 calculate_weighted_sum <- function(pars, covs_df, intercept = TRUE){
 
-    weighted_sum <- 0
-    par_idx <- 1
-    n_pars <- length(pars)
-
-    if(intercept){
-        weighted_sum <- weighted_sum + pars[[1]]
-        par_idx <- par_idx + 1
+    # --- NEW Vectorized Logic ---
+    # This is much faster than the original R loop.
+    
+    # 1. Get parameter names and values
+    # The order is guaranteed to be consistent
+    par_names <- names(pars)
+    par_values <- unlist(pars)
+    
+    if (intercept) {
+        # 2a. Separate intercept from covariates
+        intercept_val <- par_values[1]
+        cov_names <- par_names[-1]
+        cov_values <- par_values[-1]
+        
+        # 3a. Get the covariate matrix (X)
+        # Ensure columns are in the *exact* same order as cov_values
+        X_matrix <- as.matrix(covs_df[, cov_names, drop = FALSE])
+        
+        # 4a. Calculate (X %*% B) + intercept
+        # as.numeric() ensures it's a simple vector, not a 1-column matrix
+        weighted_sum <- as.numeric(intercept_val + (X_matrix %*% cov_values))
+        
+    } else {
+        # 2b. No intercept, use all parameters
+        cov_names <- par_names
+        cov_values <- par_values
+        
+        # 3b. Get the covariate matrix (X)
+        X_matrix <- as.matrix(covs_df[, cov_names, drop = FALSE])
+        
+        # 4b. Calculate (X %*% B)
+        weighted_sum <- as.numeric(X_matrix %*% cov_values)
     }
-    while(par_idx <= n_pars){
-        weighted_sum <- weighted_sum + (pars[[par_idx]] * covs_df[[names(pars)[[par_idx]]]])
-        par_idx <- par_idx + 1
-    }
+    
     return(weighted_sum)
 }
 
