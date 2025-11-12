@@ -7,9 +7,9 @@ source(file.path("R","model_helpers.R"))
 
 
 prepare_train_data <- function (
-    cov_tif, 
     state_covs, 
-    obs_covs, 
+    obs_covs,
+    cov_tif,  
     placeholder_spec_name = "AMCR"
 ){
 
@@ -54,7 +54,8 @@ simulate_train_data <-  function (
     reference_clustering_df, 
     parameter_set_row, 
     state_cov_names, 
-    obs_cov_names
+    obs_cov_names,
+    cov_tif
 ) {
   
   # === 1. GET REFERENCE CLUSTERING ===

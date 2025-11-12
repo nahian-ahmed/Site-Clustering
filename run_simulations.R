@@ -79,7 +79,7 @@ obs_cov_names <- names(sim_params)[8:12]
 state_cov_raster <- terra::rast(file.path("state_covariate_raster", "state_covariates.tif"))
 names(state_cov_raster) <- state_cov_names
 
-base_train_data <- prepare_train_data(state_cov_raster, state_cov_names, obs_cov_names)
+base_train_data <- prepare_train_data(state_cov_names, obs_cov_names, state_cov_raster)
 base_train_df <- base_train_data$train_df
 norm_list <- base_train_data$norm_list
 
@@ -128,7 +128,8 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
           reference_clustering_df = current_reference_dataframe, 
           parameter_set_row = current_parameter_set, 
           state_cov_names = state_cov_names, 
-          obs_cov_names = obs_cov_names
+          obs_cov_names = obs_cov_names,
+          cov_tif = state_cov_raster
       )
             
       # NEW CALL 2:
