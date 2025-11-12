@@ -14,7 +14,7 @@ source("R/clustering/bayesopt.R")
 # Load required libraries
 library(auk)
 library(dplyr)
-library(plyr) # For round_any
+
 
 # 2. INTERNAL HELPER FOR CLUSTGEO
 # UPDATED CALL: Now correctly passes *only* state_covs
