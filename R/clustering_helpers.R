@@ -127,11 +127,21 @@ run_clustering_method <- function(method_name, og_data, state_covs, truth_df = N
   # C. Simple, flag-based methods (auk filters, svs, etc.)
   # ---
   } else {
+    # UPDATED: Added aliases (e.g., "1to10") and a 'canonical' field
+    # to return the name matching run_simulations.R
     auk_params <- switch(method_name,
-      "one_to_10" = list(min_obs = 1, max_obs = 10, site_vars = c("locality_id")),
-      "two_to_10" = list(min_obs = 2, max_obs = 10, site_vars = c("locality_id")),
-      "two_to_10_sameObs" = list(min_obs = 2, max_obs = 10, site_vars = c("locality_id", "observer_id")),
-      "lat_long" = list(min_obs = 1, max_obs = 1000000, site_vars = c("locality_id")),
+      "one_to_10" = list(min_obs = 1, max_obs = 10, site_vars = c("locality_id"), canonical = "1to10"),
+      "1to10" = list(min_obs = 1, max_obs = 10, site_vars = c("locality_id"), canonical = "1to10"),
+      
+      "two_to_10" = list(min_obs = 2, max_obs = 10, site_vars = c("locality_id"), canonical = "2to10"),
+      "2to10" = list(min_obs = 2, max_obs = 10, site_vars = c("locality_id"), canonical = "2to10"),
+      
+      "two_to_10_sameObs" = list(min_obs = 2, max_obs = 10, site_vars = c("locality_id", "observer_id"), canonical = "2to10-sameObs"),
+      "2to10-sameObs" = list(min_obs = 2, max_obs = 10, site_vars = c("locality_id", "observer_id"), canonical = "2to10-sameObs"),
+      
+      "lat_long" = list(min_obs = 1, max_obs = 1000000, site_vars = c("locality_id"), canonical = "lat-long"),
+      "lat-long" = list(min_obs = 1, max_obs = 1000000, site_vars = c("locality_id"), canonical = "lat-long"),
+      
       NULL # Default
     )
     
@@ -144,17 +154,20 @@ run_clustering_method <- function(method_name, og_data, state_covs, truth_df = N
         date_var = "formatted_date",
         site_vars = auk_params$site_vars
       )
-      return(list(name = method_name, data = result_df))
+      # UPDATED: Return the canonical name
+      return(list(name = auk_params$canonical, data = result_df))
     }
     
     # Handle non-auk simple methods
-    if (method_name == "svs") {
+    # UPDATED: Handle both "svs" and "SVS"
+    if (method_name == "svs" || method_name == "SVS") {
       result_df <- og_data
       result_df$site <- result_df$checklist_id
-      return(list(name = "SVS", data = result_df))
+      return(list(name = "SVS", data = result_df)) # Return canonical "SVS"
     }
     
-    if (method_name == "one_UL") {
+    # UPDATED: Handle both "one_UL" and "1-per-UL"
+    if (method_name == "one_UL" || method_name == "1-per-UL") {
       df_1_UL_t <- auk::filter_repeat_visits(
         og_data,
         min_obs = 1, max_obs = 1000000, annual_closure = TRUE,
@@ -164,7 +177,7 @@ run_clustering_method <- function(method_name, og_data, state_covs, truth_df = N
         group_by(site) %>% 
         filter(row_number() == 1) %>%
         ungroup() 
-      return(list(name = "1-UL", data = result_df))
+      return(list(name = "1-per-UL", data = result_df)) # Return canonical "1-per-UL"
     }
     
     if (method_name == "reference_clustering" && !is.null(truth_df)) {
