@@ -21,7 +21,7 @@ MAX_OBS <- 100000
 #   a new column "site" to checklists_filtered based on id of polygon it falls in 
 # ##########
 
-kmsq.Sites.Core <- function(species_df, rad_m, filter = TRUE) {
+kmsq_sites_core <- function(species_df, rad_m, filter = TRUE) {
    
     if (filter) {
         checklists_filtered <- filter_repeat_visits(
@@ -38,17 +38,17 @@ kmsq.Sites.Core <- function(species_df, rad_m, filter = TRUE) {
     }
 
     
-    og.crs <- st_crs("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
+    og_crs <- st_crs("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
 
     # Convert to sf object
-    species.sf <- st_as_sf(checklists_filtered, coords = c("longitude", "latitude"), crs = og.crs, remove = FALSE)
+    species_sf <- st_as_sf(checklists_filtered, coords = c("longitude", "latitude"), crs = og_crs, remove = FALSE)
 
     # Transform to Albers CRS
-    Albers.crs <- st_crs("+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs")
-    species.albers <- st_transform(species.sf, crs = Albers.crs)
+    Albers_crs <- st_crs("+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs")
+    species_albers <- st_transform(species_sf, crs = Albers_crs)
     
     # Get bounding box coordinates
-    bbox <- st_bbox(species.albers)
+    bbox <- st_bbox(species_albers)
     
     # Define boundary and resolution of grid
     x <- seq(from = bbox["xmin"] - (rad_m * 5), to = bbox["xmax"] + (rad_m * 5), by = rad_m)
@@ -56,7 +56,7 @@ kmsq.Sites.Core <- function(species_df, rad_m, filter = TRUE) {
     
     # Create a grid of points
     grid_points <- expand.grid(x = x, y = y)
-    grid_sf <- st_as_sf(grid_points, coords = c("x", "y"), crs = Albers.crs)
+    grid_sf <- st_as_sf(grid_points, coords = c("x", "y"), crs = Albers_crs)
     
     # Create grid polygons
     grid <- st_make_grid(grid_sf, cellsize = rad_m, square = TRUE)
@@ -64,9 +64,9 @@ kmsq.Sites.Core <- function(species_df, rad_m, filter = TRUE) {
     grid_sf$id <- seq_len(nrow(grid_sf))
     
     # Perform spatial join
-    joined <- sapply(st_intersects(species.albers, grid_sf), function(z) if (length(z)==0) NA_integer_ else z[1])
+    joined <- sapply(st_intersects(species_albers, grid_sf), function(z) if (length(z)==0) NA_integer_ else z[1])
     
-    checklists_df <- st_drop_geometry(species.albers)
+    checklists_df <- st_drop_geometry(species_albers)
     checklists_df$site <- as.character(unlist(joined))
     
     return(checklists_df)
@@ -78,7 +78,7 @@ kmsq.Sites.Core <- function(species_df, rad_m, filter = TRUE) {
 
 
 
-kmsq.Sites <- function(species_df, rad_m){
-    checklists <- kmsq.Sites.Core(species_df, rad_m, filter = TRUE)
+kmsq_sites <- function(species_df, rad_m){
+    checklists <- kmsq_sites_core(species_df, rad_m, filter = TRUE)
     return(checklists)
 }

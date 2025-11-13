@@ -48,7 +48,7 @@ library(dplyr)
 }
 
 
-# 3. THE SMART DISPATCHER FUNCTION
+# 3. DISPATCHER FUNCTION
 run_clustering_method <- function(method_name, og_data, state_covs, truth_df = NULL) {
   
   set.seed(1) # Ensure reproducibility for each method
@@ -63,7 +63,7 @@ run_clustering_method <- function(method_name, og_data, state_covs, truth_df = N
   if (base_method == "kmSq") {
     # Format is "kmSq-[radius_m]", e.g., "kmSq-1000"
     rad_m <- as.double(parts[2])
-    result_df <- kmsq.Sites(og_data, rad_m = rad_m)
+    result_df <- kmsq_sites(og_data, rad_m = rad_m)
     
     # Convert config name (kmSq-1000) to canonical name (1-kmSq)
     km_area <- plyr::round_any((rad_m / 1000)^2, 0.125, ceiling)
@@ -79,7 +79,7 @@ run_clustering_method <- function(method_name, og_data, state_covs, truth_df = N
     
     message(paste("Translating reference method", method_name, "to radius:", rad_m, "m"))
     
-    result_df <- kmsq.Sites(og_data, rad_m = rad_m)
+    result_df <- kmsq_sites(og_data, rad_m = rad_m)
     
     # Return with the *original* name as the key
     return(list(name = method_name, data = result_df))
@@ -176,7 +176,6 @@ run_clustering_method <- function(method_name, og_data, state_covs, truth_df = N
   warning(paste("No implementation found for method:", method_name))
   return(NULL)
 }
-
 
 # 4. THE NEW, CLEAN getClusterings FUNCTION
 get_clusterings <- function(method_names, og_data, state_covs, truth_df = data.frame()) {

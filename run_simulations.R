@@ -36,16 +36,28 @@ source(file.path("R", "analysis_helpers.R"))
 
 set.seed(123) # For reproducibility
 
+# comparison_method_list <- c(
+#     "one_to_10",
+#     "two_to_10",
+#     "two_to_10_sameObs",
+#     "kmSq-1000",
+#     "lat_long",
+#     "rounded-4",
+#     "svs",
+#     "one_UL",
+#     "DBSC",
+#     "BayesOptClustGeo"
+# )
+
 comparison_method_list <- c(
-    "reference_clustering",
-    "one_to_10",
-    "two_to_10",
-    "two_to_10_sameObs",
-    "kmSq-1000",
-    "lat_long",
+    "1to10",
+    "2to10",
+    "2to10-sameObs",
+    "1-kmSq",
+    "lat-long",
     "rounded-4",
-    "svs",
-    "one_UL",
+    "SVS",
+    "1-per-UL",
     "DBSC",
     "BayesOptClustGeo"
 )
