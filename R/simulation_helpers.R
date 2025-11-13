@@ -173,24 +173,19 @@ simulate_train_data <-  function (
       occupied = Z_i
   )
 
-  # === 6. ENFORCE CLOSURE ===
-  cat("    - (Simulating occuN) Enforcing closure and simulating detection...\n")
-  # This should be reference_clustering_df, not sites_df
-  sites_list <- unique(reference_clustering_df$site)
-  closed_df <- enforceClosure(reference_clustering_df, state_cov_names, sites_list)
   
+  # === 6. MAP SITE-LEVEL OCCUPANCY TO CHECKLISTS ===
+
   
-  # === 7. MAP SITE-LEVEL OCCUPANCY TO CHECKLISTS ===
-  res_df <- dplyr::left_join(closed_df, site_lookup, by = "site")
+  res_df <- dplyr::left_join(reference_clustering_df, site_lookup, by = "site")
   
-  
-  # === 8. SIMULATE DETECTION (CHECKLIST-LEVEL) ===
+  # === 7. SIMULATE DETECTION (CHECKLIST-LEVEL) ===
   res_df$det_prob <- calculate_weighted_sum(obs_par_list, res_df)
   res_df$det_prob <- rje::expit(res_df$det_prob)
   res_df$detection <- rbinom(nrow(res_df), 1, res_df$det_prob)
   
   
-  # === 9. FINAL OBSERVATION ===
+  # === 8. FINAL OBSERVATION ===
   res_df$species_observed <- res_df$occupied * res_df$detection
   
   # Add a check for NAs in occupancy, which can happen if a site
