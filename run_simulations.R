@@ -81,6 +81,7 @@ obs_cov_names <- names(sim_params)[8:12]
 
 # Load the base landscape raster
 state_cov_raster <- terra::rast(file.path("state_covariate_raster", "state_covariates.tif"))
+terra::crs(state_cov_raster) <- "+proj=longlat +datum=WGS84"
 names(state_cov_raster) <- state_cov_names
 
 base_train_data <- prepare_train_data(state_cov_names, obs_cov_names, state_cov_raster)
