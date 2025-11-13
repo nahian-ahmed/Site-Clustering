@@ -36,18 +36,6 @@ source(file.path("R", "analysis_helpers.R"))
 
 set.seed(123) # For reproducibility
 
-# comparison_method_list <- c(
-#     "one_to_10",
-#     "two_to_10",
-#     "two_to_10_sameObs",
-#     "kmSq-1000",
-#     "lat_long",
-#     "rounded-4",
-#     "svs",
-#     "one_UL",
-#     "DBSC",
-#     "BayesOptClustGeo"
-# )
 
 comparison_method_list <- c(
     "1to10",
@@ -60,6 +48,10 @@ comparison_method_list <- c(
     "1-per-UL",
     "DBSC",
     "BayesOptClustGeo"
+)
+
+comparison_method_list <- c(
+    "1to10"
 )
 
 
