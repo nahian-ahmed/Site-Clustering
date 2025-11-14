@@ -62,6 +62,121 @@ simulate_train_data <-  function (
     norm_list
 ) {
   
+  # === 1. EXTRACT PARAMETERS ===
+  message("  (sim_train) Extracting parameters...")
+  state_par_list <- as.list(parameter_set_row[, c("state_intercept", state_cov_names)])
+  obs_par_list <- as.list(parameter_set_row[, c("obs_intercept", obs_cov_names)])
+  
+  names(state_par_list)[1] <- "intercept"
+  names(obs_par_list)[1] <- "intercept"
+  
+  # === 2. PROJECT RASTER TO MATCH SITE GEOMETRIES ===
+  message("  (sim_train) Projecting covariate raster...")
+  # Get the Albers equal-area CRS from the site geometries
+  albers_crs_str <- sf::st_crs(site_geoms_sf)$wkt
+  
+  # Project the covariate raster to this CRS
+  # This ensures area calculations are in consistent units (meters)
+  cov_tif_albers <- terra::project(cov_tif, albers_crs_str, method="bilinear")
+  
+  # === 3. CALCULATE CELL-LEVEL INTENSITY (lambda_j) ===
+  # This implements \lambda(s) = e^{f(x_s)} 
+  message("  (sim_train) Calculating cell-level intensity raster (lambda_j)...")
+  
+  # Start with the intercept
+  log_lambda_j_raster <- cov_tif_albers[[1]] * 0 + state_par_list$intercept
+  
+  # Add weighted covariates
+  for (cov_name in state_cov_names) {
+    if (cov_name %in% names(cov_tif_albers)) {
+      log_lambda_j_raster <- log_lambda_j_raster + (cov_tif_albers[[cov_name]] * state_par_list[[cov_name]])
+    }
+  }
+  
+  # lambda_j = exp(f(x_j))
+  lambda_j_raster <- exp(log_lambda_j_raster)
+  
+  # === 4. CALCULATE CELL-LEVEL EXPECTED ABUNDANCE (N_j) ===
+  # N_j = \lambda_j * Area_j
+  message("  (sim_train) Calculating cell-level expected abundance (N_j)...")
+  
+  # Get cell area in square meters
+  area_j_raster <- terra::cellSize(cov_tif_albers, unit="m")
+  
+  # N_j_raster now holds the expected number of individuals per cell
+  N_j_raster <- lambda_j_raster * area_j_raster
+  
+  # === 5. CALCULATE SITE-LEVEL EXPECTED ABUNDANCE (lambda_tilde_i) ===
+  # This implements \tilde{\lambda}_i \approx \sum_j \lambda_j \cdot Area(B_i \cap C_j) 
+  # by extracting from the N_j raster: \sum_j (N_j * fraction_ij)
+  # which is \sum_j ( (\lambda_j * Area_j) * (Area_ij / Area_j) ) = \sum_j (\lambda_j * Area_ij)
+  message("  (sim_train) Extracting site-level expected abundance (lambda_tilde_i)...")
+  
+  # Use exact=TRUE (implies weights=TRUE) and fun="sum"
+  # This sums the cell values (N_j) weighted by the polygon overlap fraction
+  lambda_tilde_i_df <- terra::extract(
+    N_j_raster,
+    site_geoms_sf,
+    fun = "sum",
+    exact = TRUE,
+    ID = FALSE # We already have site IDs in site_geoms_sf
+  )
+  
+  # Store this in the site_geoms_sf dataframe
+  site_geoms_sf$lambda_tilde_i <- lambda_tilde_i_df[,1]
+  
+  # === 6. SIMULATE SITE-LEVEL OCCUPANCY (Z_i) ===
+  # \psi_i = 1 - e^{-\tilde{\lambda}_i} 
+  message("  (sim_train) Simulating site-level occupancy (Z_i)...")
+  
+  site_geoms_sf$psi_i <- 1 - exp(-site_geoms_sf$lambda_tilde_i)
+  
+  # Z_i ~ Bernoulli(\psi_i) 
+  site_geoms_sf$Z_i <- rbinom(
+    n = nrow(site_geoms_sf),
+    size = 1,
+    prob = site_geoms_sf$psi_i
+  )
+  
+  # === 7. MERGE SITE-LEVEL STATE TO CHECKLISTS ===
+  message("  (sim_train) Merging site state to checklists...")
+  
+  # Create a lookup table from the sf object
+  site_state_lookup <- sf::st_drop_geometry(
+    site_geoms_sf[, c("site", "psi_i", "Z_i")]
+  )
+  names(site_state_lookup) <- c("site", "occupied_prob", "occupied")
+  
+  # Join with the original checklist data
+  res_df <- dplyr::left_join(
+    reference_clustering_df, 
+    site_state_lookup, 
+    by = "site"
+  )
+  
+  # === 8. SIMULATE CHECKLIST-LEVEL DETECTION (y_it) ===
+  # y_it | Z_i ~ Bernoulli(Z_i * p_it) 
+  message("  (sim_train) Simulating checklist-level detection...")
+  
+  # Calculate detection probability p_it for all checklists
+  det_logit <- calculate_weighted_sum(obs_par_list, res_df)
+  res_df$det_prob <- rje::expit(det_logit)
+  
+  # Simulate a detection attempt for every checklist
+  res_df$detection <- rbinom(
+    n = nrow(res_df), 
+    size = 1, 
+    prob = res_df$det_prob
+  )
+  
+  # === 9. FINALIZE OBSERVATION ===
+  # species_observed = Z_i * detection
+  res_df$species_observed <- res_df$occupied * res_df$detection
+  
+  message("  (sim_train) Simulation of training data complete.")
+  
+  # Keep columns consistent with old code and test data simulation
+  # (e.g., `occupied`, `det_prob`, `species_observed`)
   return (res_df)
 }
 
