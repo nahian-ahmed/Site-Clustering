@@ -68,6 +68,10 @@ sim_params <- read.delim(file.path("config","simulation_parameters.csv"), sep = 
 sim_clusterings <- read.delim(file.path("config","simulation_clusterings.csv"), sep = ",", header = T)
 
 
+n_simulations <- 25
+n_fit_repeats <- 25
+n_test_repeats <- 25
+
 n_simulations <- 5
 n_fit_repeats <- 5
 n_test_repeats <- 5
