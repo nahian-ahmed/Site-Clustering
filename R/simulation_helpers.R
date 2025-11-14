@@ -239,5 +239,7 @@ simulate_test_data <- function (
   # === 5. FINAL OBSERVATION ===
   test_df$species_observed <- test_df$occupied * test_df$detection
 
+  message("  (sim_test) Simulation of test data complete.")
+
   return (test_df)
 }
