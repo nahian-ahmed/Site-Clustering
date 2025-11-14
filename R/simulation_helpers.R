@@ -77,7 +77,7 @@ simulate_train_data <-  function (
   
   # Project the covariate raster to this CRS
   # This ensures area calculations are in consistent units (meters)
-  cov_tif_albers <- terra::project(cov_tif, albers_crs_str, method="bilinear")
+  cov_tif_albers <- terra::project(cov_tif, albers_crs_str, method="bilinear", res = 30)
   
   # === 3. CALCULATE CELL-LEVEL INTENSITY (lambda_j) ===
   # This implements \lambda(s) = e^{f(x_s)} 

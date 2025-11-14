@@ -219,7 +219,7 @@ create_site_geometries <- function(
   cat("    - (create_site_geometries) Calculating buffer distance...\n")
   # Project raster to Albers to get resolution in meters
   # Use a coarse resolution for projection to speed it up
-  template_raster_albers <- terra::project(cov_tif, albers_crs_str, res = 50) 
+  template_raster_albers <- terra::project(cov_tif, albers_crs_str, res = 30) 
   rast_res_m <- terra::res(template_raster_albers)
   
   # --- PRINT CELL SIZE (as requested) ---
