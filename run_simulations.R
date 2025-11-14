@@ -133,6 +133,25 @@ for (method_name in all_method_names) {
 }
 cat("--- Geometry pre-computing complete. ---\n")
 
+# Calculate summaries using "m" (meters) since raster/geometries are in Albers
+# Change units = "km" if you prefer kilometers/sq km
+clustering_summary_df <- summarize_clusterings(
+  all_clusterings = all_clusterings,
+  all_site_geometries = all_site_geometries,
+  units = "m" 
+)
+
+# Define output directory (create if it doesn't exist yet)
+output_dir <- file.path("simulation_experiments", "output")
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir, recursive = TRUE)
+}
+
+# Save the summary to CSV
+write.csv(clustering_summary_df, file.path(output_dir, "clustering_descriptive_stats.csv"), row.names = FALSE)
+cat(sprintf("--- Summary metrics saved to %s/clustering_descriptive_stats.csv ---\n", output_dir))
+
+
 all_results <- list()
 
 
@@ -294,11 +313,6 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
   } # End parameter loop (param_idx)
 } # End clustering loop (cluster_idx)
 print("Done")
-
-output_dir <- file.path("simulation_experiments", "output")
-if (!dir.exists(output_dir)) {
-  dir.create(output_dir, recursive = TRUE)
-}
 
 # Save the final summary file
 write.csv(all_results, file.path(output_dir, "simulation_summary.csv"), row.names = FALSE)

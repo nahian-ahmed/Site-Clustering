@@ -1,4 +1,5 @@
-
+library(dplyr)
+library(sf)
 
 calcClusteringStats <- function(pred_df, og_df){
     
@@ -64,3 +65,181 @@ calcDescriptiveClusteringStats <- function(clustered_df) {
     return(descr_stats)
 }
 
+
+
+
+
+# Make sure these libraries are loaded where this function is called
+
+
+# --- NEW HELPER FUNCTION FOR GEOMETRY DIAMETER ---
+#' Calculates the maximum diameter of an sf geometry
+#'
+#' Finds all vertices of a geometry, computes the Euclidean distance
+#' matrix between them, and returns the maximum distance.
+#' Assumes the geometry is in a projected CRS (e..g, Albers)
+#' where Euclidean distance is meaningful (i.e., in meters).
+#'
+#' @param geom An individual 'sfc' geometry object.
+#' @return The maximum diameter (numeric).
+.calculate_geom_diameter <- function(geom) {
+  coords <- sf::st_coordinates(geom)
+  # st_coordinates returns X, Y, and sometimes L1, L2 etc.
+  # We only want the X, Y coordinates for distance.
+  coords_xy <- coords[, 1:2]
+  
+  # Need at least two vertices to calculate a distance
+  if (nrow(unique(coords_xy)) < 2) {
+    return(0)
+  }
+  
+  # Use Euclidean distance (dist) since data is in Albers (meters)
+  max_dist <- max(dist(coords_xy))
+  return(max_dist)
+}
+
+
+#' Summarize Cluster Geometries and Point Distributions
+#'
+#' Calculates descriptive statistics for each clustering method, including
+#' point counts per site, site diameter (from geometry),
+#' and site area (from geometry).
+#'
+#' @param all_clusterings A list where keys are method names and values are
+#'   dataframes of clustered points (e.g., from `get_clusterings`).
+#'   Handles the nested list for 'BayesOptClustGeo'.
+#' @param all_site_geometries A list where keys are method names and values
+#'   are 'sf' objects containing the geometry for each site (e.g., from
+#'   `create_site_geometries`).
+#' @param units A string, either "m" (meters) or "km" (kilometers),
+#'   for outputting diameter and area metrics.
+#'
+#' @return A dataframe where each row summarizes one clustering method.
+summarize_clusterings <- function(all_clusterings, all_site_geometries, units = "m") {
+  
+  all_summaries_list <- list()
+  
+  # Set unit divisors
+  diam_divisor <- 1.0
+  area_divisor <- 1.0
+  diam_unit_label <- "m"
+  area_unit_label <- "m2"
+  
+  if (units == "km") {
+    diam_divisor <- 1000.0
+    area_divisor <- 1000000.0
+    diam_unit_label <- "km"
+    area_unit_label <- "km2"
+  }
+  
+  for (method_name in names(all_clusterings)) {
+    
+    cat(paste("--- Summarizing clustering for:", method_name, "---\n"))
+    
+    # 1. Get the correct points dataframe
+    cluster_data <- all_clusterings[[method_name]]
+    if (is.list(cluster_data) && "result_df" %in% names(cluster_data)) {
+      cluster_data <- cluster_data$result_df
+    }
+    
+    # 2. Get the correct geometries dataframe
+    geom_data <- all_site_geometries[[method_name]]
+    
+    # Skip if either is missing (e.g., a method failed)
+    if (is.null(cluster_data) || is.null(geom_data)) {
+      cat(paste("    - WARNING: Missing cluster or geometry data for", method_name, ". Skipping.\n"))
+      next
+    }
+    
+    # --- 3. Calculate Point Stats (Metrics 1-5) ---
+    # (n_points per site)
+    point_stats <- cluster_data %>%
+      group_by(site) %>%
+      dplyr::summarise(n_points = n())
+      
+    # --- 4. Calculate Diameter Stats (Metrics 6-9) ---
+    # *** MODIFIED BLOCK ***
+    # (max distance between vertices of the site's geometry)
+    diameter_stats <- geom_data %>%
+      mutate(
+        # Apply the helper function to each geometry
+        diameter_m = sapply(geometry, .calculate_geom_diameter)
+      ) %>%
+      sf::st_drop_geometry() %>% # Drop geometry to make it a simple dataframe
+      select(site, diameter_m)  # Keep only site and the new diameter
+      
+    # --- 5. Calculate Area Stats (Metrics 10-13) ---
+    # (area of the site geometry)
+    # Geometries are in Albers (meters), so st_area() returns m^2
+    geom_data$area_m2 <- as.numeric(sf::st_area(geom_data))
+    
+    # --- 6. Join all stats by site ---
+    # We use geom_data as the base, as it represents the definitive list of sites
+    site_summary <- geom_data %>%
+      dplyr::left_join(point_stats, by = "site") %>%
+      dplyr::left_join(diameter_stats, by = "site")
+      
+    # Handle sites that might have had 0 points (n_points=NA)
+    site_summary$n_points[is.na(site_summary$n_points)] <- 0
+    # diameter_m should be 0 from the helper, but handle NAs just in case
+    site_summary$diameter_m[is.na(site_summary$diameter_m)] <- 0
+      
+    # --- 7. Apply Unit Conversions ---
+    site_summary$diameter <- site_summary$diameter_m / diam_divisor
+    site_summary$area <- site_summary$area_m2 / area_divisor
+    
+    # --- 8. Aggregate final metrics for the method ---
+    method_summary <- site_summary %>%
+      sf::st_drop_geometry() %>% # Drop geometry before summarizing
+      dplyr::summarise(
+        n_sites = n(),
+        min_points = min(n_points),
+        max_points = max(n_points),
+        mean_points = mean(n_points),
+        median_points = median(n_points),
+        
+        min_diameter = min(diameter),
+        max_diameter = max(diameter),
+        mean_diameter = mean(diameter),
+        median_diameter = median(diameter),
+        
+        min_area = min(area),
+        max_area = max(area),
+        mean_area = mean(area),
+        median_area = median(area)
+      )
+    
+    method_summary$method <- method_name
+    
+    # Add to our list
+    all_summaries_list[[method_name]] <- method_summary
+  }
+  
+  # Combine all method summaries into one dataframe
+  final_df <- dplyr::bind_rows(all_summaries_list)
+  
+  # Rename columns to include units
+  colnames(final_df) <- gsub("_diameter", paste0("_diameter_", diam_unit_label), colnames(final_df))
+  colnames(final_df) <- gsub("_area", paste0("_area_", area_unit_label), colnames(final_df))
+  
+  # Reorder columns to be logical
+  final_df <- final_df %>%
+    dplyr::select(
+      method,
+      n_sites,
+      min_points,
+      max_points,
+      mean_points,
+      median_points,
+      dplyr::starts_with("min_diameter"),
+      dplyr::starts_with("max_diameter"),
+      dplyr::starts_with("mean_diameter"),
+      dplyr::starts_with("median_diameter"),
+      dplyr::starts_with("min_area"),
+      dplyr::starts_with("max_area"),
+      dplyr::starts_with("mean_area"),
+      dplyr::starts_with("median_area")
+    )
+  
+  return(final_df)
+}
