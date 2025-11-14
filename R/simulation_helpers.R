@@ -52,9 +52,6 @@ prepare_train_data <- function (
 }
 
 
-# -----------------------------------------------------------------
-# --- THIS IS THE UPDATED FUNCTION ---
-# -----------------------------------------------------------------
 simulate_train_data <-  function (
     reference_clustering_df,
     site_geoms_sf,
@@ -85,8 +82,9 @@ simulate_train_data <-  function (
 
 
   # === 3. CALCULATE CELL-LEVEL LAMBDA (lambda_j) ===
-  cat("    - (Simulating occuN) Calculating cell-level lambda...\n")
-  cellCovs$lambda_j <- exp(calculate_weighted_sum(state_par_list, cellCovs))
+  # *** NOTE: This is just the un-densified abundance. We will make it a density later. ***
+  cat("    - (Simulating occuN) Calculating cell-level abundance...\n")
+  cellCovs$lambda_total_abundance <- exp(calculate_weighted_sum(state_par_list, cellCovs))
 
 
   # === 4. DEFINE SITES & BUILD 'w' MATRIX (NEW AREAL OVERLAP LOGIC) ===
@@ -149,16 +147,37 @@ simulate_train_data <-  function (
   )
   
   # --- IMPORTANT NOTE ON UNITS ---
-  # Your w_ij values are now in m^2[cite: 121].
+  # Your w_ij values are now in m^2[cite: 21].
   # This means the latent abundance (lambda_j) is interpreted as
   # "expected individuals per m^2" in that cell.
   # And lambda_tilde_i is the total expected individuals for the site.
   # This is all 100% correct according to the theory.
 
+
+  # === **** START FIX **** ===
+  # We must make lambda_j a *density* (abundance per m^2) to match the theory.
+  
+  # STEP 1: Merge cell areas into cellCovs
+  cat("    - (Simulating occuN) Merging cell areas for density calculation...\n")
+  cellCovs <- merge(cellCovs, cell_areas_df, by = "cell_id")
+  
+  # STEP 2: Calculate lambda_j as a DENSITY (abundance / m^2)
+  cat("    - (Simulating occuN) Calculating cell-level lambda DENSITY (abundance/m^2)...\n")
+  cellCovs$lambda_j_density <- cellCovs$lambda_total_abundance / cellCovs$cell_area_m2
+  
+  # Handle potential Inf if cell_area_m2 is 0 (should not happen, but safe)
+  cellCovs$lambda_j_density[is.infinite(cellCovs$lambda_j_density)] <- 0
+  
+  # === **** END FIX **** ===
+
+
   # === 5. SIMULATE SITE-LEVEL OCCUPANCY (Z_i) ===
   # \tilde{\lambda}_i = \sum_j w_{ij} \lambda_j
   cat("    - (Simulating occuN) Aggregating site-level lambda_tilde...\n")
-  lambda_tilde_i <- w %*% cellCovs$lambda_j
+  
+  # STEP 3: Use the DENSITY vector in the matrix multiplication
+  # This calculation is now: [m^2] * [abundance / m^2] = [abundance]
+  lambda_tilde_i <- w %*% cellCovs$lambda_j_density
   
   # \psi_i = 1 - e^{-\tilde{\lambda}_i}
   psi_i <- 1 - exp(-lambda_tilde_i)
@@ -199,9 +218,6 @@ simulate_train_data <-  function (
   
   return (res_df)
 }
-# -----------------------------------------------------------------
-# --- END OF UPDATED FUNCTION ---
-# -----------------------------------------------------------------
 
 
 
