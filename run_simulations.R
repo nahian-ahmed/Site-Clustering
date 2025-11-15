@@ -93,6 +93,9 @@ base_train_data <- prepare_train_data(state_cov_names, obs_cov_names, state_cov_
 base_train_df <- base_train_data$train_df
 norm_list <- base_train_data$norm_list
 
+# +++ NEW: PREPARE TEST DATA ONCE +++
+base_test_df <- prepare_test_data(state_cov_names, obs_cov_names, state_cov_raster, norm_list)
+
 cat("--- Pre-calculating Albers projection and cell area (ONCE) ---\n")
 # Define the Albers CRS string (from R/model_helpers.R)
 albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
@@ -192,6 +195,33 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
     current_parameter_set <- sim_params[param_idx, ]
     print(paste0("STARTING PARAMETER SET ", param_idx, ":"))
     print(current_parameter_set)
+
+    # +++ ADDED: PRE-CALCULATE N_j_raster and obs_par_list ONCE PER PARAM SET +++
+    message("  (main_loop) Pre-calculating N_j_raster...")
+    
+    # Get state parameters
+    state_par_list <- as.list(current_parameter_set[, c("state_intercept", state_cov_names)])
+    names(state_par_list)[1] <- "intercept"
+    
+    # Calculate log_lambda_j_raster
+    log_lambda_j_raster <- cov_tif_albers[[1]] * 0 + state_par_list$intercept
+    for (cov_name in state_cov_names) {
+      if (cov_name %in% names(cov_tif_albers)) {
+        log_lambda_j_raster <- log_lambda_j_raster + (cov_tif_albers[[cov_name]] * state_par_list[[cov_name]])
+      }
+    }
+    
+    lambda_j_raster <- exp(log_lambda_j_raster)
+    
+    # Calculate N_j_raster
+    N_j_raster <- lambda_j_raster * area_j_raster
+    
+    # Get obs parameters
+    obs_par_list <- as.list(current_parameter_set[, c("obs_intercept", obs_cov_names)])
+    names(obs_par_list)[1] <- "intercept"
+    
+    message("  (main_loop) N_j_raster pre-calculation complete.")
+    # +++ END OF ADDED BLOCK +++
   
     # Loop for each of the 100 simulations (stochastic replicates)
     for (sim_num in 1:n_simulations) {
@@ -199,26 +229,26 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
       print(paste("--- Simulation run", sim_num, "of", n_simulations, "---"))
 
       # === 1. SIMULATE DATA ===
-      # NEW CALL 1:
+      
+      # +++ MODIFIED CALL 1 +++
       train_data <- simulate_train_data(
         reference_clustering_df = current_reference_dataframe, 
         site_geoms_sf = current_site_geometries,
-        parameter_set_row = current_parameter_set, 
-        state_cov_names = state_cov_names, 
+        # parameter_set_row = current_parameter_set, # Removed
+        # state_cov_names = state_cov_names,         # Removed
         obs_cov_names = obs_cov_names,
-        # cov_tif = state_cov_raster, # <-- REMOVED
-        norm_list = norm_list,
-        cov_tif_albers = cov_tif_albers, # <-- PASS PRE-CALCULATED RASTER
-        area_j_raster = area_j_raster    # <-- PASS PRE-CALCULATED RASTER
+        obs_par_list = obs_par_list,            # Pass pre-calculated list
+        N_j_raster = N_j_raster                # Pass pre-calculated raster
       )
             
-      # NEW CALL 2:
+      # +++ MODIFIED CALL 2 +++
       test_data_full <- simulate_test_data(
-          norm_list = norm_list, 
+          base_test_df = base_test_df, # Pass pre-processed df
+          # norm_list = norm_list,     # Removed
           parameter_set_row = current_parameter_set, 
           state_cov_names = state_cov_names, 
-          obs_cov_names = obs_cov_names,
-          cov_tif = state_cov_raster
+          obs_cov_names = obs_cov_names
+          # cov_tif = state_cov_raster # Removed
       )
 
       # === 1.5. CALCULATE DATASET STATS ===
@@ -368,4 +398,3 @@ cat(sprintf("--- Dataset descriptive stats saved to %s/dataset_descriptive_stats
 # Save the final summary file
 write.csv(all_results, file.path(output_dir, "simulation_summary.csv"), row.names = FALSE)
 cat(sprintf("--- Simulation summary saved to %s/simulation_summary.csv ---\n", output_dir))
-
