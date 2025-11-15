@@ -341,14 +341,6 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
       } # End loop over test repeats (repeat_num)
 
 
-      cat(paste("--- Cleaning up temp files for sim", sim_num, "---\n"))
-      
-      # This is the key command to remove terra's temp disk files
-      terra::tmpFiles(remove = TRUE) 
-      
-      # This clears R's memory. Good practice.
-      gc()
-
     } # End simulation loop (sim_num)
   } # End parameter loop (param_idx)
 } # End clustering loop (cluster_idx)
