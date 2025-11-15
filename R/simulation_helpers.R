@@ -52,66 +52,66 @@ prepare_train_data <- function (
 }
 
 
+# +++ NEW FUNCTION +++
+prepare_test_data <- function (
+    state_covs, 
+    obs_covs,
+    cov_tif,
+    norm_list, # Pass in the norm_list from the training data
+    placeholder_spec_name = "AMCR"
+){
+  
+  test_filename <- paste0(placeholder_spec_name, "_zf_filtered_region_2018.csv")
+  test_df_og <- read.delim(
+    file.path("checklist_data","species", placeholder_spec_name, test_filename), 
+    sep = ",", header = T
+  )
+  
+  test_df_og <- test_df_og[!is.na(test_df_og$duration_minutes),]
+  test_df_og <- test_df_og[
+    test_df_og$observation_date >= "2018-05-15" & 
+    test_df_og$observation_date <= "2018-07-09",
+  ]
+  test_df <- test_df_og
+  
+  # Use the standardized function name from utils.R
+  test_env_df <- extract_state_covs(test_df, cov_tif) 
+  
+  test_df <- inner_join(test_df, test_env_df, by = "checklist_id")
+  
+  # Use standardized var names AND the norm_list from training
+  norm_res <- norm_ds(test_df, obs_covs, state_covs, norm_list = norm_list) 
+  
+  test_df <- norm_res$df
+  
+  return (test_df) # Just return the processed dataframe
+}
+
+
+# +++ MODIFIED FUNCTION +++
 simulate_train_data <-  function (
     reference_clustering_df,
     site_geoms_sf,
-    parameter_set_row, 
-    state_cov_names, 
+    # parameter_set_row,  # Removed
+    # state_cov_names,    # Removed
     obs_cov_names,
-    # cov_tif,
-    norm_list,
-    cov_tif_albers, # <-- NEW ARGUMENT
-    area_j_raster   # <-- NEW ARGUMENT
+    obs_par_list,         # Added
+    N_j_raster            # Added
 ) {
   
   # === 1. EXTRACT PARAMETERS ===
   message("  (sim_train) Extracting parameters...")
-  state_par_list <- as.list(parameter_set_row[, c("state_intercept", state_cov_names)])
-  obs_par_list <- as.list(parameter_set_row[, c("obs_intercept", obs_cov_names)])
+  # state_par_list no longer needed
+  # obs_par_list is now passed directly
   
-  names(state_par_list)[1] <- "intercept"
-  names(obs_par_list)[1] <- "intercept"
+  # === 2. PROJECT RASTER... (REMOVED) ===
   
-  # # === 2. PROJECT RASTER TO MATCH SITE GEOMETRIES ===
-  # message("  (sim_train) Projecting covariate raster...")
-  # # Get the Albers equal-area CRS from the site geometries
-  # albers_crs_str <- sf::st_crs(site_geoms_sf)$wkt
+  # === 3. CALCULATE CELL-LEVEL INTENSITY... (REMOVED) ===
   
-  # # Project the covariate raster to this CRS
-  # # This ensures area calculations are in consistent units (meters)
-  # cov_tif_albers <- terra::project(cov_tif, albers_crs_str, method="bilinear", res = 30)
-  
-  # === 3. CALCULATE CELL-LEVEL INTENSITY (lambda_j) ===
-  # This implements \lambda(s) = e^{f(x_s)} 
-  message("  (sim_train) Calculating cell-level intensity raster (lambda_j)...")
-  
-  # Start with the intercept
-  log_lambda_j_raster <- cov_tif_albers[[1]] * 0 + state_par_list$intercept
-  
-  # Add weighted covariates
-  for (cov_name in state_cov_names) {
-    if (cov_name %in% names(cov_tif_albers)) {
-      log_lambda_j_raster <- log_lambda_j_raster + (cov_tif_albers[[cov_name]] * state_par_list[[cov_name]])
-    }
-  }
-  
-  # lambda_j = exp(f(x_j))
-  lambda_j_raster <- exp(log_lambda_j_raster)
-  
-  # === 4. CALCULATE CELL-LEVEL EXPECTED ABUNDANCE (N_j) ===
-  # N_j = \lambda_j * Area_j
-  message("  (sim_train) Calculating cell-level expected abundance (N_j)...")
-  
-  # Get cell area in square meters
-  # area_j_raster <- terra::cellSize(cov_tif_albers, unit="m")
-  
-  # N_j_raster now holds the expected number of individuals per cell
-  N_j_raster <- lambda_j_raster * area_j_raster
+  # === 4. CALCULATE CELL-LEVEL EXPECTED ABUNDANCE... (REMOVED) ===
+  # N_j_raster is now passed directly
   
   # === 5. CALCULATE SITE-LEVEL EXPECTED ABUNDANCE (lambda_tilde_i) ===
-  # This implements \tilde{\lambda}_i \approx \sum_j \lambda_j \cdot Area(B_i \cap C_j) 
-  # by extracting from the N_j raster: \sum_j (N_j * fraction_ij)
-  # which is \sum_j ( (\lambda_j * Area_j) * (Area_ij / Area_j) ) = \sum_j (\lambda_j * Area_ij)
   message("  (sim_train) Extracting site-level expected abundance (lambda_tilde_i)...")
   
   # Use exact=TRUE (implies weights=TRUE) and fun="sum"
@@ -187,40 +187,21 @@ simulate_train_data <-  function (
 }
 
 
-
+# +++ MODIFIED FUNCTION +++
 simulate_test_data <- function (
-    norm_list, 
+    base_test_df,         # Added
+    # norm_list,          # Removed
     parameter_set_row, 
     state_cov_names, 
-    obs_cov_names, 
-    cov_tif, # <-- Pass the raster in
-    placeholder_spec_name = "AMCR"
+    obs_cov_names 
+    # cov_tif,            # Removed
+    # placeholder_spec_name = "AMCR" # Removed
 ){
   
-  # === 1. LOAD & FILTER TEST DATA ===
-
-  test_filename <- paste0(placeholder_spec_name, "_zf_filtered_region_2018.csv")
-  test_df_og <- read.delim(
-    file.path("checklist_data","species", placeholder_spec_name, test_filename), 
-    sep = ",", header = T
-  )
-
-
-  test_df_og <- test_df_og[!is.na(test_df_og$duration_minutes),]
-  test_df_og <- test_df_og[
-    test_df_og$observation_date >= "2018-05-15" & 
-    test_df_og$observation_date <= "2018-07-09",
-  ]
-  test_df <- test_df_og
-  
-  # === 2. EXTRACT & NORMALIZE COVARIATES ===
-  test_env_df <- extract_state_covs(test_df, cov_tif) # Use new function name
-  test_df <- inner_join(test_df, test_env_df, by = "checklist_id")
-  
-  # Use standardized var names
-  norm_res <- norm_ds(test_df, obs_covs, state_covs, norm_list = norm_list)
-  
-  test_df <- norm_res$df
+  # === 1. LOAD & FILTER TEST DATA (REMOVED) ===
+  # === 2. EXTRACT & NORMALIZE COVARIATES (REMOVED) ===
+  # Start with the pre-processed dataframe
+  test_df <- base_test_df
   
   # === 3. EXTRACT PARAMETERS ===
   state_par_list <- as.list(parameter_set_row[, c("state_intercept", state_cov_names)])

@@ -93,6 +93,16 @@ base_train_data <- prepare_train_data(state_cov_names, obs_cov_names, state_cov_
 base_train_df <- base_train_data$train_df
 norm_list <- base_train_data$norm_list
 
+cat("--- Pre-calculating Albers projection and cell area (ONCE) ---\n")
+# Define the Albers CRS string (from R/model_helpers.R)
+albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
+
+# Project ONCE
+cov_tif_albers <- terra::project(state_cov_raster, albers_crs_str, method="bilinear", res = 30)
+
+# Calculate cell size ONCE
+area_j_raster <- terra::cellSize(cov_tif_albers, unit="m")
+cat("--- Albers projection and cell area complete ---\n")
 
 
 reference_method_list <- sim_clusterings$method
@@ -166,15 +176,15 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
 
   current_site_geometries <- all_site_geometries[[current_clustering_method]]
   
-  cat(paste("    - Pre-calculating Albers projection for:", current_clustering_method, "\n"))
-  albers_crs_str <- sf::st_crs(current_site_geometries)$wkt
+  # cat(paste("    - Pre-calculating Albers projection for:", current_clustering_method, "\n"))
+  # albers_crs_str <- sf::st_crs(current_site_geometries)$wkt
 
-  # Project the base raster *once*
-  cov_tif_albers <- terra::project(state_cov_raster, albers_crs_str, method="bilinear", res = 30)
+  # # Project the base raster *once*
+  # cov_tif_albers <- terra::project(state_cov_raster, albers_crs_str, method="bilinear", res = 30)
 
-  # Calculate cell area raster *once*
-  area_j_raster <- terra::cellSize(cov_tif_albers, unit="m")
-  cat(paste("    - Pre-calculation complete.\n"))
+  # # Calculate cell area raster *once*
+  # area_j_raster <- terra::cellSize(cov_tif_albers, unit="m")
+  # cat(paste("    - Pre-calculation complete.\n"))
 
   # Loop over reference parameters (iterating by row index)
   for (param_idx in seq_len(nrow(sim_params))) {
