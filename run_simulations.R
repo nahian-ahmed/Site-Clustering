@@ -207,6 +207,10 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
       current_dataset_stats$param_set <- param_idx
       current_dataset_stats$sim_num <- sim_num
 
+      current_dataset_stats <- current_dataset_stats %>%
+        dplyr::relocate(cluster_method, param_set, sim_num)
+
+
       # Add the row to the storage list
       all_dataset_stats[[length(all_dataset_stats) + 1]] <- current_dataset_stats
       
