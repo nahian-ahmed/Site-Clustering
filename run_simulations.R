@@ -351,8 +351,8 @@ print("Done")
 final_dataset_stats_df <- dplyr::bind_rows(all_dataset_stats)
 
 # Save the final summary file
-write.csv(final_dataset_stats_df, file.path(output_dir, "dataset_descr_stats.csv"), row.names = FALSE)
-cat(sprintf("--- Dataset descriptive stats saved to %s/dataset_descr_stats.csv ---\n", output_dir))
+write.csv(final_dataset_stats_df, file.path(output_dir, "dataset_descriptive_stats.csv"), row.names = FALSE)
+cat(sprintf("--- Dataset descriptive stats saved to %s/dataset_descriptive_stats.csv ---\n", output_dir))
 
 
 # Save the final summary file
