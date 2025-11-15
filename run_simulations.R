@@ -72,9 +72,9 @@ n_simulations <- 25
 n_fit_repeats <- 25
 n_test_repeats <- 25
 
-n_simulations <- 5
-n_fit_repeats <- 5
-n_test_repeats <- 5
+n_simulations <- 3
+n_fit_repeats <- 3
+n_test_repeats <- 3
 
 
 
@@ -152,6 +152,7 @@ write.csv(clustering_summary_df, file.path(output_dir, "clustering_descriptive_s
 cat(sprintf("--- Summary metrics saved to %s/clustering_descriptive_stats.csv ---\n", output_dir))
 
 
+all_dataset_stats <- list()
 all_results <- list()
 
 
@@ -168,7 +169,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
   for (param_idx in seq_len(nrow(sim_params))) {
 
     current_parameter_set <- sim_params[param_idx, ]
-    print("STARTING PARAMETER SET:")
+    print(paste0("STARTING PARAMETER SET ", param_idx, ":"))
     print(current_parameter_set)
   
     # Loop for each of the 100 simulations (stochastic replicates)
@@ -197,7 +198,19 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
           cov_tif = state_cov_raster
       )
 
+      # === 1.5. CALCULATE DATASET STATS ===
+      # Call the new function
+      current_dataset_stats <- summarize_datasets(train_data, test_data_full)
+
+      # Add identifiers for this run
+      current_dataset_stats$cluster_method <- current_clustering_method
+      current_dataset_stats$param_set <- param_idx
+      current_dataset_stats$sim_num <- sim_num
+
+      # Add the row to the storage list
+      all_dataset_stats[[length(all_dataset_stats) + 1]] <- current_dataset_stats
       
+
       # === 2. GET ALL CLUSTERINGS ===
       train_data_for_clustering <- subset(train_data, select = -c(site))
       
@@ -313,6 +326,18 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
   } # End parameter loop (param_idx)
 } # End clustering loop (cluster_idx)
 print("Done")
+
+
+# After all loops are done (at the end of the script)
+final_dataset_stats_df <- dplyr::bind_rows(all_dataset_stats)
+
+# Save the final summary file
+write.csv(final_dataset_stats_df, 
+          file.path(output_dir, "dataset_descr_stats.csv"), 
+          row.names = FALSE)
+
+cat(sprintf("--- Dataset descriptive stats saved to %s/dataset_descr_stats.csv ---\n", output_dir))
+
 
 # Save the final summary file
 write.csv(all_results, file.path(output_dir, "simulation_summary.csv"), row.names = FALSE)
