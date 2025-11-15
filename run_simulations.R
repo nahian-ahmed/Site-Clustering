@@ -51,9 +51,9 @@ comparison_method_list <- c(
     "BayesOptClustGeo"
 )
 
-comparison_method_list <- c(
-    "SVS"
-)
+# comparison_method_list <- c(
+#     "SVS"
+# )
 
 
 
@@ -73,9 +73,9 @@ n_simulations <- 25
 n_fit_repeats <- 25
 n_test_repeats <- 25
 
-n_simulations <- 3
-n_fit_repeats <- 3
-n_test_repeats <- 3
+n_simulations <- 1
+n_fit_repeats <- 1
+n_test_repeats <- 1
 
 
 
