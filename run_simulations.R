@@ -40,6 +40,10 @@ comparison_method_list <- c(
     "DBSC",
     "BayesOptClustGeo"
 )
+comparison_method_list <- c(
+    "SVS"
+
+)
 
 # optimizers = "BFGS", "L-BFGS-B", "CG", "Nelder-Mead", "SANN", "nlminb" 
 selected_optimizer <- "nlminb"
