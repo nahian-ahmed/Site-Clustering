@@ -58,8 +58,10 @@ simulate_train_data <-  function (
     parameter_set_row, 
     state_cov_names, 
     obs_cov_names,
-    cov_tif,
-    norm_list
+    # cov_tif,
+    norm_list,
+    cov_tif_albers, # <-- NEW ARGUMENT
+    area_j_raster   # <-- NEW ARGUMENT
 ) {
   
   # === 1. EXTRACT PARAMETERS ===
@@ -70,14 +72,14 @@ simulate_train_data <-  function (
   names(state_par_list)[1] <- "intercept"
   names(obs_par_list)[1] <- "intercept"
   
-  # === 2. PROJECT RASTER TO MATCH SITE GEOMETRIES ===
-  message("  (sim_train) Projecting covariate raster...")
-  # Get the Albers equal-area CRS from the site geometries
-  albers_crs_str <- sf::st_crs(site_geoms_sf)$wkt
+  # # === 2. PROJECT RASTER TO MATCH SITE GEOMETRIES ===
+  # message("  (sim_train) Projecting covariate raster...")
+  # # Get the Albers equal-area CRS from the site geometries
+  # albers_crs_str <- sf::st_crs(site_geoms_sf)$wkt
   
-  # Project the covariate raster to this CRS
-  # This ensures area calculations are in consistent units (meters)
-  cov_tif_albers <- terra::project(cov_tif, albers_crs_str, method="bilinear", res = 30)
+  # # Project the covariate raster to this CRS
+  # # This ensures area calculations are in consistent units (meters)
+  # cov_tif_albers <- terra::project(cov_tif, albers_crs_str, method="bilinear", res = 30)
   
   # === 3. CALCULATE CELL-LEVEL INTENSITY (lambda_j) ===
   # This implements \lambda(s) = e^{f(x_s)} 
@@ -101,7 +103,7 @@ simulate_train_data <-  function (
   message("  (sim_train) Calculating cell-level expected abundance (N_j)...")
   
   # Get cell area in square meters
-  area_j_raster <- terra::cellSize(cov_tif_albers, unit="m")
+  # area_j_raster <- terra::cellSize(cov_tif_albers, unit="m")
   
   # N_j_raster now holds the expected number of individuals per cell
   N_j_raster <- lambda_j_raster * area_j_raster

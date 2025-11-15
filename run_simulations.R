@@ -27,6 +27,9 @@ if (install_now){
 }
 
 library(dplyr)
+library(foreach)
+library(doParallel)
+
 
 source(file.path("R", "utils.R"))
 source(file.path("R", "simulation_helpers.R"))
@@ -164,6 +167,16 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
   current_reference_dataframe <- all_clusterings[[current_clustering_method]]
 
   current_site_geometries <- all_site_geometries[[current_clustering_method]]
+  
+  cat(paste("    - Pre-calculating Albers projection for:", current_clustering_method, "\n"))
+  albers_crs_str <- sf::st_crs(current_site_geometries)$wkt
+
+  # Project the base raster *once*
+  cov_tif_albers <- terra::project(state_cov_raster, albers_crs_str, method="bilinear", res = 30)
+
+  # Calculate cell area raster *once*
+  area_j_raster <- terra::cellSize(cov_tif_albers, unit="m")
+  cat(paste("    - Pre-calculation complete.\n"))
 
   # Loop over reference parameters (iterating by row index)
   for (param_idx in seq_len(nrow(sim_params))) {
@@ -180,13 +193,15 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
       # === 1. SIMULATE DATA ===
       # NEW CALL 1:
       train_data <- simulate_train_data(
-          reference_clustering_df = current_reference_dataframe, 
-          site_geoms_sf = current_site_geometries,
-          parameter_set_row = current_parameter_set, 
-          state_cov_names = state_cov_names, 
-          obs_cov_names = obs_cov_names,
-          cov_tif = state_cov_raster,
-          norm_list = norm_list
+        reference_clustering_df = current_reference_dataframe, 
+        site_geoms_sf = current_site_geometries,
+        parameter_set_row = current_parameter_set, 
+        state_cov_names = state_cov_names, 
+        obs_cov_names = obs_cov_names,
+        # cov_tif = state_cov_raster, # <-- REMOVED
+        norm_list = norm_list,
+        cov_tif_albers = cov_tif_albers, # <-- PASS PRE-CALCULATED RASTER
+        area_j_raster = area_j_raster    # <-- PASS PRE-CALCULATED RASTER
       )
             
       # NEW CALL 2:
@@ -326,6 +341,16 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
 
         # } # End loop over comparison methods
       } # End loop over test repeats (repeat_num)
+
+
+      cat(paste("--- Cleaning up temp files for sim", sim_num, "---\n"))
+      
+      # This is the key command to remove terra's temp disk files
+      terra::tmpFiles(remove = TRUE) 
+      
+      # This clears R's memory. Good practice.
+      gc()
+
     } # End simulation loop (sim_num)
   } # End parameter loop (param_idx)
 } # End clustering loop (cluster_idx)
