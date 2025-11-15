@@ -13,10 +13,6 @@ library(dplyr)
 library(foreach)
 library(doParallel) # <-- ADDED
 library(terra)      # <-- ADDED (for tmpFiles)
-library(unmarked)   # <-- ADDED (for occu)
-library(rje)        # <-- ADDED (for expit)
-library(PRROC)      # <-- ADDED (for AUC/AUPRC)
-library(dggridR)    # <-- ADDED (for subsampling)
 
 # Source all your helper functions
 source(file.path("R", "utils.R"))
