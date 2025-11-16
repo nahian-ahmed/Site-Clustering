@@ -257,8 +257,48 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
       
 
       # === 2. GET ALL CLUSTERINGS ===
-      train_data_for_clustering <- subset(train_data, select = -c(site))
+      # train_data_for_clustering <- subset(train_data, select = -c(site))
       
+      train_data <- train_data %>%
+        group_by(site) %>%
+        mutate(visit_id = row_number()) %>%
+        ungroup()
+
+      # Get M (number of sites)
+      M <- nrow(w_matrix)
+      # Get J (max visits)
+      J <- max(train_data$visit_id)
+
+      # --- 1. Create y_wide matrix ---
+      y_wide <- train_data %>%
+        pivot_wider(
+          id_cols = site,
+          names_from = visit_id,
+          values_from = species_observed,
+          values_fill = NA # Fill with NAs if visits are uneven
+        ) %>%
+        # This part is crucial: ensure it's a matrix with M rows
+        # in the *exact* same order as w_matrix
+        right_join(data.frame(site = 1:M), by = "site") %>%
+        arrange(site) %>%
+        select(-site) %>%
+        as.matrix()
+
+      # --- 2. Create obsCovs_wide list ---
+      obs_covs_wide <- list()
+      for (cov_name in obs_cov_names) {
+        obs_covs_wide[[cov_name]] <- train_data %>%
+          pivot_wider(
+            id_cols = site,
+            names_from = visit_id,
+            values_from = all_of(cov_name),
+            values_fill = NA
+          ) %>%
+          right_join(data.frame(site = 1:M), by = "site") %>%
+          arrange(site) %>%
+          select(-site) %>%
+          as.matrix()
+      }
       
       # This model_list should be *inside* the sim_num loop
       # to get fresh models for each stochastic replicate.
@@ -289,16 +329,15 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
               next
           }
 
-          print(head(train_data))
+
           # The 'cellCovs' for occuN is the original, cell-level data frame
           # The 'w' matrix maps sites to these cells
           umf <- unmarkedFrameOccuN(
-              y = train_data$species_observed,
-              obsCovs = as.list(train_data[, obs_cov_names, drop = FALSE]),
-              cellCovs = base_train_df[, state_cov_names, drop = FALSE],
-              w = w_matrix
+            y = y_wide,              # The new M x J matrix
+            obsCovs = obs_covs_wide, # The new list of M x J matrices
+            cellCovs = base_train_df[, state_cov_names, drop = FALSE],
+            w = w_matrix
           )
-
           # === 4.2. DEFINE MODEL FORMULAS ===
           obs_formula_char <- paste("~", paste(obs_cov_names, collapse = " + "))
           state_formula_char <- paste("~", paste(state_cov_names, collapse = " + "))
