@@ -205,62 +205,7 @@ get_parameters <- function(df, i, occ_covs, det_covs, occ_intercept = TRUE, det_
 
 create_site_geometries <- function(site_data_sf, reference_raster) {
   
-  # -----------------------------------------------------------------
-  # --- MODIFICATION 1: Convert input raster to SpatRaster ---
-  #
-  # Convert the reference_raster (which is likely a RasterLayer object)
-  # into a terra SpatRaster. This ensures all subsequent
-  # functions (like 'res' and 'extract') are terra's versions.
-  # -----------------------------------------------------------------
-  message("   - (create_site_geometries) Defining CRS & converting raster...")
-  terra_raster <- terra::rast(reference_raster)
   
-  # --- MODIFICATION 2: Use terra::res() on the SpatRaster ---
-  #
-  # Using terra::res() on the new terra_raster object.
-  # -----------------------------------------------------------------
-  message("   - (create_site_geometries) Calculating buffer distance...")
-  cell_size <- terra::res(terra_raster)
-  buffer_dist <- cell_size[1] / 2
-  
-  # Re-printing the log messages you had before
-  print(paste("Cell size (resolution) in meters (x, y):", cell_size[1], cell_size[2]))
-  print(paste("Buffer size (half cell) in meters:", buffer_dist))
-  message(paste("   - (create_site_geometries) Buffer distance set to:", round(buffer_dist, 2), "meters"))
-  
-  
-  # --- This part is assumed but should be correct ---
-  message("   - (create_site_geometries) Grouping by site to create hulls...")
-  
-  # !! NOTE: You must change 'site_id' to your actual grouping column !!
-  # This buffers the geometries and dissolves them by site.
-  site_geoms_sf <- sf::st_buffer(site_data_sf, dist = buffer_dist) %>%
-    group_by(site_id) %>% 
-    summarise()
-  
-  message(paste("   - (create_site_geometries) Generated", nrow(site_geoms_sf), "buffered site geometries."))
-  
-  # -----------------------------------------------------------------
-  # --- MODIFICATION 3: Convert final geometries to SpatVector ---
-  #
-  # Convert the final sf geometry object into a terra SpatVector
-  # right before passing it to terra::extract.
-  # -----------------------------------------------------------------
-  terra_geoms <- terra::vect(site_geoms_sf)
-  
-
-  message("   - (create_site_geometries) Calculating weight matrix (w) based on cell overlap...")
-  
-  # -----------------------------------------------------------------
-  # --- FINAL (No Change Needed):
-  #
-  # Because both inputs are now terra's native classes
-  # (SpatRaster, SpatVector), this call will NOW correctly
-  # use terra::extract and will not be hijacked by the 'raster' package.
-  # -----------------------------------------------------------------
-  w <- terra::extract(terra_raster, terra_geoms, weights = TRUE)
-  
-  message("   - (create_site_geometries) Weight matrix calculation complete.")
   
   # Return what you need (e.g., the weights, or a list)
   return(list(geometries = site_geoms_sf, w = w))
