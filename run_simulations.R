@@ -65,8 +65,8 @@ selected_optimizer <- "nlminb"
 ###########
 # 2. LOAD CONFIGURATION
 ###########
-sim_params <- read.delim(file.path("config","simulation_parameters.csv"), sep = ",", header = T)
-sim_clusterings <- read.delim(file.path("config","simulation_clusterings.csv"), sep = ",", header = T)
+sim_params <- read.delim(file.path("config", "simulation_parameters.csv"), sep = ",", header = T)
+sim_clusterings <- read.delim(file.path("config", "simulation_clusterings.csv"), sep = ",", header = T)
 
 
 n_simulations <- 25
@@ -280,30 +280,8 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
       # === 3. RUN EXPERIMENTS FOR EACH TEST REPEAT ===
       for (repeat_num in 1:n_test_repeats) {
 
-        # # Spatially subsample the test data for this repeat
-        # # (This logic is from your R/utils.R and OLD_code)
-        # set.seed(repeat_num) # Ensure this subsample is reproducible
-        # hexagons <- dggridR::dgconstruct(spacing = 5, topology = "HEXAGON")
-        # test_data_full$cell <- dggridR::dgGEO_to_SEQNUM(hexagons, test_data_full$latitude, test_data_full$longitude)$seqnum
-        
-        # test.det.df <- test_data_full[test_data_full$species_observed == T,]
-        # test.undet.df <- test_data_full[test_data_full$species_observed == F,]
-        
-        # cell_names <- names(table(test.det.df$cell))
-        # det.valid.df <- spatial_subsample(test.det.df, cell_names) # from R/utils.R
-        
-        # undet.cell_names <- names(table(test.undet.df$cell))
-        # undet.valid.df <- spatial_subsample(test.undet.df, undet.cell_names) # from R/utils.R
-        
-        # if(nrow(undet.valid.df) > nrow(det.valid.df)){
-        #     idx <- sample(seq(1:nrow(undet.valid.df)), nrow(det.valid.df))
-        #     undet.valid.df <- undet.valid.df[idx,]
-        # } else if (nrow(undet.valid.df) < nrow(det.valid.df)){
-        #     idx <- sample(seq(1:nrow(det.valid.df)), nrow(undet.valid.df))
-        #     det.valid.df <- det.valid.df[idx,]
-        # }
-        # test.df <- rbind(det.valid.df, undet.valid.df) # This is the final test set for this repeat
-
+        # Spatially subsample the test data for this repeat
+        test_df <- spatial_subsample_dataset(test_data_full = test_dat_full, spacing = 0.03, repeat_num = repeat_num)
 
         # # === 4. LOOP OVER EACH CLUSTERING METHOD ===
         # # This is the logic adapted from your `OLD_code/simulation_experiments/run_experiments.R`

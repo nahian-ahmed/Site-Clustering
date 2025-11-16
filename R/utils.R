@@ -5,7 +5,7 @@
 ####################
 
 library(terra) # geospatial operations
-
+library(dggridR)
 
 #######
 # extract environmental features
@@ -72,6 +72,33 @@ spatial_subsample <- function(df, cell_names){
 }
 
 
+spatial_subsample_dataset <- function(test_dat_full, spacing, repeat_num){
+  set.seed(repeat_num) # Ensure this subsample is reproducible
+  
+  hexagons <- dggridR::dgconstruct(spacing = spacing, topology = "HEXAGON")
+  test_data_full$cell <- dggridR::dgGEO_to_SEQNUM(hexagons, test_data_full$latitude, test_data_full$longitude)$seqnum
+  
+  test_det_df <- test_data_full[test_data_full$species_observed == T,]
+  test_nondet_df <- test_data_full[test_data_full$species_observed == F,]
+  
+  cell_names <- names(table(test_det_df$cell))
+  det_valid_df <- spatial_subsample(test_det_df, cell_names)
+  
+  nondet_cell_names <- names(table(test_nondet_df$cell))
+  nondet_valid_df <- spatial_subsample(test_nondet_df, nondet_cell_names)
+  
+  if(nrow(nondet_valid_df) > nrow(det_valid_df)){
+      idx <- sample(seq_len(nrow(nondet_valid_df)), nrow(det_valid_df))
+      nondet_valid_df <- nondet_valid_df[idx,]
+  } else if (nrow(nondet_valid_df) < nrow(det_valid_df)){
+      idx <- sample(seq_len(nrow(det_valid_df)), nrow(nondet_valid_df))
+      det_valid_df <- det_valid_df[idx,]
+  }
+  test_df <- rbind(det_valid_df, nondet_valid_df)
+
+  return(test_df)
+
+}
 
 
 #########
