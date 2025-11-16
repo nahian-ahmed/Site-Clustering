@@ -202,11 +202,84 @@ get_parameters <- function(df, i, occ_covs, det_covs, occ_intercept = TRUE, det_
 
 
 
-
-create_site_geometries <- function(site_data_sf, reference_raster) {
+create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15) {
+  
+  # --- 1. Project Points to Albers (meters) ---
+  
+  # Define the Albers CRS string used in your other scripts
+  albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
+  
+  # Convert the input checklist dataframe to an sf (points) object
+  points_sf <- sf::st_as_sf(
+    site_data_sf,
+    coords = c("longitude", "latitude"),
+    crs = "+proj=longlat +datum=WGS84",
+    remove = FALSE # Keep all original columns
+  )
+  
+  # Project the points to the Albers CRS
+  points_albers <- sf::st_transform(points_sf, crs = albers_crs_str)
   
   
+  # --- 2. Create Buffered Geometries (NEW LOGIC) ---
   
-  # Return what you need (e.g., the weights, or a list)
-  return(list(geometries = site_geoms_sf, w = w))
+  site_geoms_sf <- points_albers %>%
+    group_by(site) %>%
+    # Use summarise to create one geometry per site
+    summarise(
+      # 1. Get all *unique* point geometries for this site.
+      #    This results in a single MULTIPOINT geometry.
+      unique_points_geom = sf::st_union(geometry),
+      
+      # 2. Get the convex hull of these unique points.
+      #    - If 1 unique point, hull is a POINT.
+      #    - If 2 unique points, hull is a LINESTRING.
+      #    - If 3+ unique points, hull is a POLYGON.
+      hull_geom = sf::st_convex_hull(unique_points_geom),
+      
+      # 3. Apply the buffer to the hull.
+      #    - POINT -> CIRCLE
+      #    - LINESTRING -> CAPSULE
+      #    - POLYGON -> BUFFERED POLYGON
+      geometry = sf::st_buffer(hull_geom, dist = buffer_m),
+      
+      .groups = "drop" # Drop the grouping
+    )
+  
+  
+  # --- 3. Create the 'w' (weight) matrix ---
+  
+  # This logic remains the same. It maps M sites (rows) to
+  # J checklists (columns) from the *original* dataframe.
+  
+  # Ensure 'site' column is a factor to get all levels and indices correctly
+  site_factor <- factor(site_data_sf$site)
+  site_levels <- levels(site_factor)
+  
+  # Get matrix dimensions
+  M_sites <- length(site_levels)       # Number of rows
+  J_checklists <- nrow(site_data_sf) # Number of columns
+  
+  # Row indices: (which site row does each checklist belong to?)
+  i_rows <- as.numeric(site_factor)
+  
+  # Column indices: (which checklist column is this?)
+  j_cols <- 1:J_checklists
+  
+  # Create the sparse matrix
+  w <- Matrix::sparseMatrix(
+    i = i_rows,
+    j = j_cols,
+    x = 1, # All weights are 1
+    dims = c(M_sites, J_checklists),
+    dimnames = list(site_levels, NULL) # Name rows by site ID
+  )
+  
+  
+  # --- 4. Attach 'w' as an attribute and return ---
+  
+  # Your run_simulations.R script uses `attr(..., "w_matrix")`
+  attr(site_geoms_sf, "w_matrix") <- w
+  
+  return(site_geoms_sf)
 }

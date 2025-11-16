@@ -79,6 +79,7 @@ n_fit_repeats <- 1
 n_test_repeats <- 1
 
 res_m <- 30 # Cell size in meters
+buffer_m <- 15 # Buffer radius
 
 state_cov_names <- names(sim_params)[2:6]
 obs_cov_names <- names(sim_params)[8:12]
@@ -141,10 +142,8 @@ for (method_name in all_method_names) {
         next
     }
     
-    all_site_geometries[[method_name]] <- create_site_geometries(
-        cluster_data, 
-        state_cov_raster
-    )
+    all_site_geometries[[method_name]] <- create_site_geometries(cluster_data, state_cov_raster, buffer_m)
+    
 }
 cat("--- Geometry pre-computing complete. ---\n")
 
