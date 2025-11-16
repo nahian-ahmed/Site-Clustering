@@ -191,9 +191,10 @@ simulate_train_data <-  function (
 simulate_test_data <- function (
     base_test_df,
     obs_cov_names,
-    obs_par_list,     # +++ USE PRE-CALCULATED LIST +++
-    N_j_raster,       # +++ USE PRE-CALCULATED RASTER +++
-    albers_crs_str
+    obs_par_list,
+    N_j_raster,
+    albers_crs_str,
+    area_j_raster  # <--- ADD THIS ARGUMENT
 ){
   
   # === 1. START WITH PRE-PROCESSED DATA ===
@@ -209,7 +210,7 @@ simulate_test_data <- function (
     crs = "+proj=longlat +datum=WGS84"
   )
   test_sf_albers <- sf::st_transform(test_sf, crs = albers_crs_str)
-  
+  test_df$area_j <- terra::extract(area_j_raster, test_sf_albers, ID = FALSE)[,1]
   
   # === 4. SIMULATE ABUNDANCE (N_j) & OCCUPANCY (Z_j) (CELL-LEVEL) ===
   
@@ -222,7 +223,7 @@ simulate_test_data <- function (
   test_df$N <- rpois(n = nrow(test_df), lambda = test_df$lambda_j_cell)
   
   # Derive occupied state Z_j from N_j
-  test_df$occupied <- ifelse(test_df$N > 0, 1, 0)
+  test_df$Z_i <- ifelse(test_df$N > 0, 1, 0)
   
   # Store the true occupancy probability (P(N_j > 0))
   test_df$occupied_prob <- 1 - exp(-test_df$lambda_j_cell)
@@ -233,7 +234,7 @@ simulate_test_data <- function (
   test_df$detection <- rbinom(nrow(test_df), 1, test_df$det_prob)
   
   # === 6. FINAL OBSERVATION ===
-  test_df$species_observed <- test_df$occupied * test_df$detection
+  test_df$species_observed <- test_df$Z_i * test_df$detection
 
   message("  (sim_test) Simulation of test data complete.")
 
