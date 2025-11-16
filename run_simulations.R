@@ -240,15 +240,16 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
         obs_par_list = obs_par_list,            # Pass pre-calculated list
         N_j_raster = N_j_raster                # Pass pre-calculated raster
       )
-            
-      # +++ MODIFIED CALL 2 +++
+          
+
       test_data_full <- simulate_test_data(
           base_test_df = base_test_df,
-          parameter_set_row = current_parameter_set,
-          state_cov_names = state_cov_names,
+          # parameter_set_row = current_parameter_set, # No longer needed for state
+          # state_cov_names = state_cov_names,       # No longer needed for state
           obs_cov_names = obs_cov_names,
-          area_j_raster = area_j_raster,      # +++ ADD THIS +++
-          albers_crs_str = albers_crs_str   # +++ ADD THIS +++
+          obs_par_list = obs_par_list,            # Pass this instead
+          N_j_raster = N_j_raster,                # +++ ADD THIS +++
+          albers_crs_str = albers_crs_str
       )
 
       # === 1.5. CALCULATE DATASET STATS ===
