@@ -210,92 +210,63 @@ create_site_geometries <- function(
 ) {
   
   cat("  - (create_site_geometries) Defining CRS...\n")
-  # CRS definitions from your project (e.g., in kmsq.R)
   albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
   wgs84_crs_str <- "+proj=longlat +datum=WGS84"
 
   cat("  - (create_site_geometries) Calculating buffer distance...\n")
-  # Project raster to Albers to get resolution in meters
-  # Use a coarse resolution for projection to speed it up
   template_raster_albers <- terra::project(cov_tif, albers_crs_str, res = 30) 
   rast_res_m <- terra::res(template_raster_albers)
   
-  # --- PRINT CELL SIZE (as requested) ---
   print(paste("Cell size (resolution) in meters (x, y):", rast_res_m[1], rast_res_m[2]))
-  
   buffer_dist <- mean(rast_res_m) / 2
-  
-  # --- PRINT BUFFER SIZE (as requested) ---
   print(paste("Buffer size (half cell) in meters:", buffer_dist))
-  
   cat(sprintf("  - (create_site_geometries) Buffer distance set to: %.2f meters\n", buffer_dist))
 
-  # Group by site and create a geometry for each
   cat("  - (create_site_geometries) Grouping by site to create hulls...\n")
   
+  # --- FIX 1: Corrected dplyr/sf logic ---
   site_geoms_albers <- reference_clustering_df %>%
     group_by(site) %>%
-    # Use summarise to create one geometry per site
     dplyr::summarise(
       .groups = "drop",
       geometry = {
-      # 1. Get unique (lon, lat) pairs for the site
-      unique_pts_df <- dplyr::distinct(data.frame(longitude = longitude, latitude = latitude))
-
-      # 2. Create sf object with original WGS84 CRS
-      sf_pts <- sf::st_as_sf(
-        unique_pts_df, 
-        coords = c("longitude", "latitude"), 
-        crs = wgs84_crs_str
-      )
-      
-      # 3. Create convex hull (result is POINT, LINESTRING, or POLYGON)
-      hull_wgs84 <- sf::st_convex_hull(sf::st_combine(sf_pts))
-      
-      # 4. Transform hull to Albers (meters) for buffering
-      hull_albers <- sf::st_transform(hull_wgs84, crs = albers_crs_str)
-      
-      # 5. Apply the buffer and wrap in a list to store in the cell
-      list(sf::st_buffer(hull_albers, dist = buffer_dist))
-      sf::st_buffer(hull_albers, dist = buffer_dist)
+        unique_pts_df <- dplyr::distinct(data.frame(longitude = longitude, latitude = latitude))
+        sf_pts <- sf::st_as_sf(
+          unique_pts_df, 
+          coords = c("longitude", "latitude"), 
+          crs = wgs84_crs_str
+        )
+        hull_wgs84 <- sf::st_convex_hull(sf::st_combine(sf_pts))
+        hull_albers <- sf::st_transform(hull_wgs84, crs = albers_crs_str)
+        
+        # Return the geometry directly, NOT in a list
+        sf::st_buffer(hull_albers, dist = buffer_dist)
       }
-    ) %>%
-      sf::st_as_sf(crs = albers_crs_str)
+    )
+    # The redundant %>% sf::st_as_sf() pipe is REMOVED
    
-
   cat(sprintf("  - (create_site_geometries) Generated %d buffered site geometries.\n", nrow(site_geoms_albers)))
   
   # ---
-  # --- NEW CODE BLOCK STARTS HERE ---
+  # --- NEW CODE BLOCK (with FIX 2) ---
   # ---
   
   cat("  - (create_site_geometries) Calculating weight matrix (w) based on cell overlap...\n")
 
-  # Add a unique row index (1...M) to the site geometries for extraction
   site_geoms_albers$site_idx <- 1:nrow(site_geoms_albers)
   
-  # Extract cell weights.
-  # This returns a data.frame with:
-  #   site_idx (from site_geoms_albers)
-  #   cell (the cell index from the raster)
-  #   weight (the fraction of the cell covered by the polygon)
+  # --- FIX 2: Remove ID = FALSE ---
   w_df <- terra::extract(
     template_raster_albers, 
     site_geoms_albers, 
-    weights = TRUE, 
-    ID = FALSE # We use our own site_idx
+    weights = TRUE
+    # ID = FALSE has been REMOVED. The default (ID = TRUE) is correct.
   )
   
-  # Now, create the sparse matrix
-  # M = number of sites
   M <- nrow(site_geoms_albers)
-  # K = number of cells in the raster
   K <- terra::ncell(template_raster_albers)
   
-  # Use Matrix::sparseMatrix
-  # i = row index (our site_idx)
-  # j = col index (the cell index)
-  # x = value (the weight)
+  # This call will now work because w_df contains the 'site_idx' column
   w_matrix <- Matrix::sparseMatrix(
     i = w_df$site_idx,
     j = w_df$cell,
@@ -303,15 +274,9 @@ create_site_geometries <- function(
     dims = c(M, K)
   )
   
-  # Attach this 'w' matrix as an attribute to the sf object
-  # This is the cleanest way to pass it without breaking other functions
   attr(site_geoms_albers, "w_matrix") <- w_matrix
   
   cat("  - (create_site_geometries) Weight matrix calculation complete.\n")
 
-  # ---
-  # --- NEW CODE BLOCK ENDS HERE ---
-  # ---
-  
   return(site_geoms_albers)
 }
