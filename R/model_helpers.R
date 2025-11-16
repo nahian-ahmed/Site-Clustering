@@ -204,8 +204,6 @@ get_parameters <- function(df, i, occ_covs, det_covs, occ_intercept = TRUE, det_
 
 
 
-
-
 create_site_geometries <- function(
     reference_clustering_df, 
     cov_tif
@@ -258,7 +256,7 @@ create_site_geometries <- function(
         hull_albers <- sf::st_transform(hull_wgs84, crs = albers_crs_str)
         
         # 5. Apply the buffer and wrap in a list to store in the cell
-        sf::st_buffer(hull_albers, dist = buffer_dist)
+        list(sf::st_buffer(hull_albers, dist = buffer_dist))
       }
     ) %>%
     # Unpack the geometry from the list
@@ -266,6 +264,53 @@ create_site_geometries <- function(
 
   cat(sprintf("    - (create_site_geometries) Generated %d buffered site geometries.\n", nrow(site_geoms_albers)))
   
+  # ---
+  # --- NEW CODE BLOCK STARTS HERE ---
+  # ---
+  
+  cat("    - (create_site_geometries) Calculating weight matrix (w) based on cell overlap...\n")
+
+  # Add a unique row index (1...M) to the site geometries for extraction
+  site_geoms_albers$site_idx <- 1:nrow(site_geoms_albers)
+  
+  # Extract cell weights.
+  # This returns a data.frame with:
+  #   site_idx (from site_geoms_albers)
+  #   cell (the cell index from the raster)
+  #   weight (the fraction of the cell covered by the polygon)
+  w_df <- terra::extract(
+      template_raster_albers, 
+      site_geoms_albers, 
+      weights = TRUE, 
+      ID = FALSE # We use our own site_idx
+  )
+  
+  # Now, create the sparse matrix
+  # M = number of sites
+  M <- nrow(site_geoms_albers)
+  # K = number of cells in the raster
+  K <- terra::ncell(template_raster_albers)
+  
+  # Use Matrix::sparseMatrix
+  # i = row index (our site_idx)
+  # j = col index (the cell index)
+  # x = value (the weight)
+  w_matrix <- Matrix::sparseMatrix(
+      i = w_df$site_idx,
+      j = w_df$cell,
+      x = w_df$weight,
+      dims = c(M, K)
+  )
+  
+  # Attach this 'w' matrix as an attribute to the sf object
+  # This is the cleanest way to pass it without breaking other functions
+  attr(site_geoms_albers, "w_matrix") <- w_matrix
+  
+  cat("    - (create_site_geometries) Weight matrix calculation complete.\n")
+
+  # ---
+  # --- NEW CODE BLOCK ENDS HERE ---
+  # ---
+  
   return(site_geoms_albers)
 }
-

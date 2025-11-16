@@ -287,8 +287,9 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
           current_clustering_df <- all_clusterings[[method_name]]
 
           # Handle potential method failure (e.g., if w doesn't exist)
-          if (is.null(current_geoms) || is.null(current_geoms$w)) {
-              cat(sprintf("    SKIPPING %s: No geometry or 'w' matrix found.\n", method_name))
+          w_matrix <- attr(current_geoms, "w_matrix")
+          if (is.null(current_geoms) || is.null(w_matrix)) {
+              cat(sprintf("    SKIPPING %s: No geometry or 'w' matrix (attribute) found.\n", method_name))
               next
           }
 
@@ -298,7 +299,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
               y = train_data$y,
               obsCovs = train_data$obsCovs,
               cellCovs = base_train_df[, state_cov_names, drop = FALSE],
-              w = current_geoms$w
+              w = w_matrix
           )
 
           # === 4.2. DEFINE MODEL FORMULAS ===
