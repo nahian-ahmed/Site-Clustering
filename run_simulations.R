@@ -274,7 +274,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
         test_df <- spatial_subsample_dataset(test_data_full = test_data_full, spacing = res_m/1000, repeat_num = repeat_num)
 
         # === 4. LOOP OVER EACH CLUSTERING METHOD ===
-        for(method_name in names(all_clusterings)){
+        for(method_name in comparison_method_list){
         
           current_clustering_df <- all_clusterings[[method_name]]
           print(method_name)
