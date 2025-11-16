@@ -232,7 +232,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
       
       # +++ MODIFIED CALL 1 +++
       train_data <- simulate_train_data(
-        reference_clustering_df = current_reference_dataframe, 
+        reference_clustering_df = current_reference_dataframe,
         site_geoms_sf = current_site_geometries,
         # parameter_set_row = current_parameter_set, # Removed
         # state_cov_names = state_cov_names,         # Removed
@@ -243,12 +243,12 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
             
       # +++ MODIFIED CALL 2 +++
       test_data_full <- simulate_test_data(
-          base_test_df = base_test_df, # Pass pre-processed df
-          # norm_list = norm_list,     # Removed
-          parameter_set_row = current_parameter_set, 
-          state_cov_names = state_cov_names, 
-          obs_cov_names = obs_cov_names
-          # cov_tif = state_cov_raster # Removed
+          base_test_df = base_test_df,
+          parameter_set_row = current_parameter_set,
+          state_cov_names = state_cov_names,
+          obs_cov_names = obs_cov_names,
+          area_j_raster = area_j_raster,      # +++ ADD THIS +++
+          albers_crs_str = albers_crs_str   # +++ ADD THIS +++
       )
 
       # === 1.5. CALCULATE DATASET STATS ===

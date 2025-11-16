@@ -187,58 +187,135 @@ simulate_train_data <-  function (
 }
 
 
+# # +++ MODIFIED FUNCTION +++
+# simulate_test_data <- function (
+#     base_test_df,         # Added
+#     # norm_list,          # Removed
+#     parameter_set_row, 
+#     state_cov_names, 
+#     obs_cov_names 
+#     # cov_tif,            # Removed
+#     # placeholder_spec_name = "AMCR" # Removed
+# ){
+  
+#   # === 1. LOAD & FILTER TEST DATA (REMOVED) ===
+#   # === 2. EXTRACT & NORMALIZE COVARIATES (REMOVED) ===
+#   # Start with the pre-processed dataframe
+#   test_df <- base_test_df
+  
+#   # === 3. EXTRACT PARAMETERS ===
+#   state_par_list <- as.list(parameter_set_row[, c("state_intercept", state_cov_names)])
+#   obs_par_list <- as.list(parameter_set_row[, c("obs_intercept", obs_cov_names)])
+  
+#   names(state_par_list)[1] <- "intercept"
+#   names(obs_par_list)[1] <- "intercept"
+  
+
+#   # === 4. SIMULATE ABUNDANCE (N_j) & OCCUPANCY (Z_j) (CHECKLIST-LEVEL) ===
+#   # *** MODIFIED BLOCK: Simulating N first, then deriving Z ***
+  
+#   # Calculate log(lambda_j) - assuming parameters are for a log-linear model
+#   # of expected abundance at that point.
+#   log_lambda_j <- calculate_weighted_sum(state_par_list, test_df)
+  
+#   # Calculate lambda_j (expected abundance)
+#   lambda_j <- exp(log_lambda_j)
+  
+#   # Simulate N_j ~ Poisson(lambda_j)
+#   test_df$N <- rpois(n = nrow(test_df), lambda = lambda_j)
+  
+#   # Derive occupied state Z_j from N_j
+#   test_df$occupied <- ifelse(test_df$N > 0, 1, 0)
+  
+#   # Store the true occupancy probability (P(N_j > 0))
+#   test_df$occupied_prob <- 1 - exp(-lambda_j)
+
+#   # *** END OF MODIFIED BLOCK ***
+
+#   # === 5. SIMULATE DETECTION (y_j) ===
+#   test_df$det_prob <- calculate_weighted_sum(obs_par_list, test_df)
+#   test_df$det_prob <- rje::expit(test_df$det_prob)
+#   test_df$detection <- rbinom(nrow(test_df), 1, test_df$det_prob)
+
+  
+#   # === 6. FINAL OBSERVATION ===
+#   test_df$species_observed <- test_df$occupied * test_df$detection
+
+#   message("  (sim_test) Simulation of test data complete.")
+
+#   return (test_df)
+# }
+
+
 # +++ MODIFIED FUNCTION +++
 simulate_test_data <- function (
-    base_test_df,         # Added
-    # norm_list,          # Removed
-    parameter_set_row, 
-    state_cov_names, 
-    obs_cov_names 
-    # cov_tif,            # Removed
-    # placeholder_spec_name = "AMCR" # Removed
+    base_test_df,         # Unchanged
+    parameter_set_row,    # Unchanged
+    state_cov_names,    # Unchanged
+    obs_cov_names,      # Unchanged
+    area_j_raster,      # +++ NEW ARGUMENT +++
+    albers_crs_str      # +++ NEW ARGUMENT +++
 ){
   
-  # === 1. LOAD & FILTER TEST DATA (REMOVED) ===
-  # === 2. EXTRACT & NORMALIZE COVARIATES (REMOVED) ===
-  # Start with the pre-processed dataframe
+  # === 1. START WITH PRE-PROCESSED DATA ===
   test_df <- base_test_df
   
-  # === 3. EXTRACT PARAMETERS ===
+  # === 2. EXTRACT PARAMETERS ===
   state_par_list <- as.list(parameter_set_row[, c("state_intercept", state_cov_names)])
   obs_par_list <- as.list(parameter_set_row[, c("obs_intercept", obs_cov_names)])
   
   names(state_par_list)[1] <- "intercept"
   names(obs_par_list)[1] <- "intercept"
   
+  
+  # === 3. PROJECT TEST POINTS & EXTRACT CELL AREA ===
+  # Convert test_df to an sf object (it's in WGS84 long/lat)
+  test_sf <- sf::st_as_sf(
+    test_df, 
+    coords = c("longitude", "latitude"), 
+    crs = "+proj=longlat +datum=WGS84"
+  )
+  
+  # Project to the Albers CRS to match the area_j_raster
+  test_sf_albers <- sf::st_transform(test_sf, crs = albers_crs_str)
+  
+  # Extract the area (in m^2) for each point's cell
+  # The 'ID=FALSE' makes it return a single-column dataframe
+  cell_areas_df <- terra::extract(area_j_raster, test_sf_albers, ID = FALSE)
+  
+  # Add the cell area to the main dataframe
+  test_df$cell_area_m2 <- cell_areas_df[, 1]
+  
 
-  # === 4. SIMULATE ABUNDANCE (N_j) & OCCUPANCY (Z_j) (CHECKLIST-LEVEL) ===
-  # *** MODIFIED BLOCK: Simulating N first, then deriving Z ***
+  # === 4. SIMULATE ABUNDANCE (N_j) & OCCUPANCY (Z_j) (CELL-LEVEL) ===
   
-  # Calculate log(lambda_j) - assuming parameters are for a log-linear model
-  # of expected abundance at that point.
-  log_lambda_j <- calculate_weighted_sum(state_par_list, test_df)
+  # Calculate log(lambda_j) - this is log-ABUNDANCE-DENSITY
+  log_lambda_j_density <- calculate_weighted_sum(state_par_list, test_df)
   
-  # Calculate lambda_j (expected abundance)
-  lambda_j <- exp(log_lambda_j)
+  # Calculate lambda_j (abundance density)
+  lambda_j_density <- exp(log_lambda_j_density)
   
-  # Simulate N_j ~ Poisson(lambda_j)
-  test_df$N <- rpois(n = nrow(test_df), lambda = lambda_j)
+  # +++ FIX: Calculate expected abundance *in that cell* +++
+  # N_j = density * area
+  test_df$lambda_j_cell <- lambda_j_density * test_df$cell_area_m2
+
+  # +++ FIX: Simulate N_j ~ Poisson(lambda_j_cell) +++
+  test_df$N <- rpois(n = nrow(test_df), lambda = test_df$lambda_j_cell)
   
-  # Derive occupied state Z_j from N_j
+  # Derive occupied state Z_j from N_j (this logic is correct)
   test_df$occupied <- ifelse(test_df$N > 0, 1, 0)
   
-  # Store the true occupancy probability (P(N_j > 0))
-  test_df$occupied_prob <- 1 - exp(-lambda_j)
-
-  # *** END OF MODIFIED BLOCK ***
+  # +++ FIX: Store the true occupancy probability (P(N_j > 0)) +++
+  test_df$occupied_prob <- 1 - exp(-test_df$lambda_j_cell)
 
   # === 5. SIMULATE DETECTION (y_j) ===
+  # (This section is correct)
   test_df$det_prob <- calculate_weighted_sum(obs_par_list, test_df)
   test_df$det_prob <- rje::expit(test_df$det_prob)
   test_df$detection <- rbinom(nrow(test_df), 1, test_df$det_prob)
-
   
   # === 6. FINAL OBSERVATION ===
+  # (This section is correct)
   test_df$species_observed <- test_df$occupied * test_df$detection
 
   message("  (sim_test) Simulation of test data complete.")
