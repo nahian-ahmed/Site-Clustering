@@ -290,7 +290,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
               next
           }
 
-           train_data <- train_data %>%
+          train_data <- train_data %>%
             group_by(site) %>%
             mutate(visit_id = row_number()) %>%
             ungroup()
