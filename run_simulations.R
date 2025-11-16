@@ -27,6 +27,7 @@ if (install_now){
 }
 
 library(dplyr)
+library(tidyr)
 library(PRROC)
 
 source(file.path("R", "utils.R"))
