@@ -290,7 +290,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
               next
           }
 
-          train_data <- train_data %>%
+          train_data_prepped <- train_data %>%
             group_by(site) %>%
             mutate(visit_id = row_number()) %>%
             ungroup()
@@ -298,18 +298,16 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
           # Get M (number of sites)
           M <- nrow(w_matrix)
           # Get J (max visits)
-          J <- max(train_data$visit_id)
+          J <- max(train_data_prepped$visit_id) # <-- Use the new variable
 
           # --- 1. Create y_wide matrix ---
-          y_wide <- train_data %>%
+          y_wide <- train_data_prepped %>% # <-- Use the new variable
             pivot_wider(
               id_cols = site,
               names_from = visit_id,
               values_from = species_observed,
-              values_fill = NA # Fill with NAs if visits are uneven
+              values_fill = NA 
             ) %>%
-            # This part is crucial: ensure it's a matrix with M rows
-            # in the *exact* same order as w_matrix
             right_join(data.frame(site = 1:M), by = "site") %>%
             arrange(site) %>%
             select(-site) %>%
@@ -318,7 +316,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
           # --- 2. Create obsCovs_wide list ---
           obs_covs_wide <- list()
           for (cov_name in obs_cov_names) {
-            obs_covs_wide[[cov_name]] <- train_data %>%
+            obs_covs_wide[[cov_name]] <- train_data_prepped %>% # <-- Use the new variable
               pivot_wider(
                 id_cols = site,
                 names_from = visit_id,
@@ -330,7 +328,6 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
               select(-site) %>%
               as.matrix()
           }
-
 
           # The 'cellCovs' for occuN is the original, cell-level data frame
           # The 'w' matrix maps sites to these cells
