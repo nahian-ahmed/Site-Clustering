@@ -289,6 +289,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
               next
           }
 
+          print(head(train_data))
           # The 'cellCovs' for occuN is the original, cell-level data frame
           # The 'w' matrix maps sites to these cells
           umf <- unmarkedFrameOccuN(
