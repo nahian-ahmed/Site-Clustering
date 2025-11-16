@@ -281,7 +281,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
       for (repeat_num in 1:n_test_repeats) {
 
         # Spatially subsample the test data for this repeat
-        test_df <- spatial_subsample_dataset(test_data_full = test_dat_full, spacing = 0.03, repeat_num = repeat_num)
+        test_df <- spatial_subsample_dataset(test_data_full = test_data_full, spacing = 0.03, repeat_num = repeat_num)
 
         # # === 4. LOOP OVER EACH CLUSTERING METHOD ===
         # # This is the logic adapted from your `OLD_code/simulation_experiments/run_experiments.R`

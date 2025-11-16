@@ -72,7 +72,7 @@ spatial_subsample <- function(df, cell_names){
 }
 
 
-spatial_subsample_dataset <- function(test_dat_full, spacing, repeat_num){
+spatial_subsample_dataset <- function(test_data_full, spacing, repeat_num){
   set.seed(repeat_num) # Ensure this subsample is reproducible
   
   hexagons <- dggridR::dgconstruct(spacing = spacing, topology = "HEXAGON")
