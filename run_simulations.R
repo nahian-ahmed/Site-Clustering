@@ -77,7 +77,7 @@ n_simulations <- 1
 n_fit_repeats <- 1
 n_test_repeats <- 1
 
-
+res_m <- 30
 
 state_cov_names <- names(sim_params)[2:6]
 obs_cov_names <- names(sim_params)[8:12]
@@ -101,7 +101,7 @@ cat("--- Pre-calculating Albers projection and cell area (ONCE) ---\n")
 albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
 
 # Project ONCE
-cov_tif_albers <- terra::project(state_cov_raster, albers_crs_str, method="bilinear", res = 30)
+cov_tif_albers <- terra::project(state_cov_raster, albers_crs_str, method="bilinear", res = res_m)
 
 # Calculate cell size ONCE
 area_j_raster <- terra::cellSize(cov_tif_albers, unit="m")
@@ -178,16 +178,6 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
   current_reference_dataframe <- all_clusterings[[current_clustering_method]]
 
   current_site_geometries <- all_site_geometries[[current_clustering_method]]
-  
-  # cat(paste("    - Pre-calculating Albers projection for:", current_clustering_method, "\n"))
-  # albers_crs_str <- sf::st_crs(current_site_geometries)$wkt
-
-  # # Project the base raster *once*
-  # cov_tif_albers <- terra::project(state_cov_raster, albers_crs_str, method="bilinear", res = 30)
-
-  # # Calculate cell area raster *once*
-  # area_j_raster <- terra::cellSize(cov_tif_albers, unit="m")
-  # cat(paste("    - Pre-calculation complete.\n"))
 
   # Loop over reference parameters (iterating by row index)
   for (param_idx in seq_len(nrow(sim_params))) {
@@ -281,82 +271,15 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
       for (repeat_num in 1:n_test_repeats) {
 
         # Spatially subsample the test data for this repeat
-        test_df <- spatial_subsample_dataset(test_data_full = test_data_full, spacing = 0.03, repeat_num = repeat_num)
+        test_df <- spatial_subsample_dataset(test_data_full = test_data_full, spacing = res_m/1000, repeat_num = repeat_num)
 
-        # # === 4. LOOP OVER EACH CLUSTERING METHOD ===
-        # # This is the logic adapted from your `OLD_code/simulation_experiments/run_experiments.R`
-        # for(method_name in names(all_clusterings)){
+        # === 4. LOOP OVER EACH CLUSTERING METHOD ===
+        for(method_name in names(all_clusterings)){
         
-        #   current_clustering_df <- all_clusterings[[method_name]]
-        #   set.seed(1) # Consistent seed for modeling
-          
-        #   # --- This logic is for the *first* test repeat only ---
-        #   if(repeat_num == 1){
-            
-        #     # Handle BayesOpt special case
-        #     if (startsWith(method_name, "BayesOpt")){
-        #         best_par_df <- data.frame(parameter = names(groupedSite[[method_name]]$Best_Pars), value = as.numeric(groupedSite[[method_name]]$Best_Pars))
-        #         # ... code to write best_par_df to a CSV ...
-                
-        #         # IMPORTANT: Overwrite the list entry with just the dataframe
-        #         current_clustering_df <- all_clusterings[[method_name]]$result_df
-        #     }
+          current_clustering_df <- all_clusterings[[method_name]]
+          print(method_name)
 
-        #     # Calculate clustering stats (ARI, etc.) against the ground truth
-        #     # We use `train_data` as the ground truth here.
-        #     if (!(method_name %in% c("1to10", "2to10", "2to10-sameObs", "1-UL"))){
-        #         cl_stats <- calcClusteringStats(current_clustering_df, train_data) # from R/analysis_helpers.R
-        #     } else {
-        #         cl_stats <- list(ari=NA, ami=NA , nid=NA)
-        #     }
-
-        #     cl_stats_desc <- calcDescriptiveClusteringStatsWithReference(current_clustering_df, "site", state_cov_names, normalize = FALSE) # from R/analysis_helpers.R
-        #     cl_stats <- c(cl_stats, cl_stats_desc)
-            
-        #     # ... code to write cl_stats to a CSV ...
-        #     # ... code to write groupedSite[[method_name]][,c("checklist_id", "site")] to a CSV ...
-
-        #     # Fit the occupancy model
-        #     model_list[[method_name]] <- list()
-        #     test.formula <- calcOccModel(current_clustering_df, state_cov_names, obs_cov_names) # from R/model_helpers.R
-
-        #     occ_par_list <- test.formula@estimates@estimates$state@estimates 
-        #     det_par_list <- test.formula@estimates@estimates$det@estimates
-
-        #     model_list[[method_name]][["occu_parameters"]] <- occ_par_list
-        #     model_list[[method_name]][["det_parameters"]] <- det_par_list 
-            
-        #     # ... code to calculate occ_par_mape, det_par_mape ...
-        #     # ... code to create and write model_pars_df to CSV ...
-        #   } # --- End of (repeat_num == 1) block ---
-
-
-        #   # --- This logic runs for *every* test repeat ---
-          
-        #   # Get the model parameters (fit only on the first repeat)
-        #   occ_par_list <- model_list[[method_name]][["occu_parameters"]]
-        #   det_par_list <- model_list[[method_name]][["det_parameters"]]
-
-        #   # Calculate predictions on the *current* test.df subsample
-        #   test.df$occupied_prob_est <- calculate_weighted_sum(occ_par_list, test.df) # from R/model_helpers.R
-        #   test.df$occupied_prob_est <- rje::expit(test.df$occupied_prob_est)
-          
-        #   test.df$det_prob_est <- calculate_weighted_sum(det_par_list, test.df) # from R/model_helpers.R
-        #   test.df$det_prob_est <- rje::expit(test.df$det_prob_est)
-          
-        #   pred_observ <- unlist(test.df$occupied_prob_est * test.df$det_prob_est)
-
-        #   # ... code to calculate AUC/AUPRC (roc, pr) ...
-          
-        #   # ... code to calculate occ.mape.i, det.mape.i ...
-          
-        #   # ... code to create and write predictions_df to CSV ...
-          
-        #   # ... code to create and write metrics_df to CSV ...
-
-        #   cat(paste("  -", method_name, "AUC:", round(roc$auc, 4), "\n"))
-
-        # } # End loop over comparison methods
+        } # End loop over comparison methods
       } # End loop over test repeats (repeat_num)
 
 
