@@ -52,6 +52,7 @@ comparison_method_list <- c(
 )
 
 comparison_method_list <- c(
+    "1to10",
     "SVS"
 )
 
