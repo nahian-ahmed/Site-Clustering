@@ -7,7 +7,7 @@
 # 1. Installation
 ############
 
-install_now = FALSE
+install_now = TRUE
 if (install_now){
   # Set a CRAN mirror
   options(repos = c(CRAN = "https://cloud.r-project.org/"))
@@ -27,7 +27,7 @@ if (install_now){
 }
 
 library(dplyr)
-
+library(PRROC)
 
 source(file.path("R", "utils.R"))
 source(file.path("R", "simulation_helpers.R"))
@@ -77,7 +77,7 @@ n_simulations <- 1
 n_fit_repeats <- 1
 n_test_repeats <- 1
 
-res_m <- 30
+res_m <- 30 # Cell size in meters
 
 state_cov_names <- names(sim_params)[2:6]
 obs_cov_names <- names(sim_params)[8:12]
@@ -276,8 +276,162 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
         # === 4. LOOP OVER EACH CLUSTERING METHOD ===
         for(method_name in comparison_method_list){
         
+          cat(sprintf("\n    [Sim %d, Param %d, Rep %d] Running method: %s\n", sim_num, param_idx, repeat_num, method_name))
+
+          # === 4.1. PREPARE occuN DATA ===
+
+          # Get the pre-computed geometries (which include the 'w' matrix)
+          # and clustering data for the current method
+          current_geoms <- all_site_geometries[[method_name]]
           current_clustering_df <- all_clusterings[[method_name]]
-          print(method_name)
+
+          # Handle potential method failure (e.g., if w doesn't exist)
+          if (is.null(current_geoms) || is.null(current_geoms$w)) {
+              cat(sprintf("    SKIPPING %s: No geometry or 'w' matrix found.\n", method_name))
+              next
+          }
+
+          # The 'cellCovs' for occuN is the original, cell-level data frame
+          # The 'w' matrix maps sites to these cells
+          umf <- unmarkedFrameOccuN(
+              y = train_data$y,
+              obsCovs = train_data$obsCovs,
+              cellCovs = base_train_df[, state_cov_names, drop = FALSE],
+              w = current_geoms$w
+          )
+
+          # === 4.2. DEFINE MODEL FORMULAS ===
+          obs_formula_char <- paste("~", paste(obs_cov_names, collapse = " + "))
+          state_formula_char <- paste("~", paste(state_cov_names, collapse = " + "))
+          occuN_formula <- as.formula(paste(obs_formula_char, state_formula_char, sep = " "))
+
+          # === 4.3. FIT occuN MODEL (with repetitions) ===
+          # This logic is from occuN_demo.R
+          best_fm <- NULL
+          min_nll <- Inf
+          n_state_params <- length(state_cov_names) + 1 # +1 for intercept
+          n_obs_params <- length(obs_cov_names) + 1   # +1 for intercept
+          n_params <- n_state_params + n_obs_params
+
+          cat(sprintf("    Fitting occuN for %s (M=%d)... running %d reps: ", method_name, nrow(umf@y), n_fit_repeats))
+
+          fit_successful <- FALSE
+          for (rep in 1:n_fit_repeats) {
+              if(rep %% 5 == 0) cat(paste(rep, "..."))
+              
+              rand_starts <- runif(n_params, -5, 5) 
+              
+              fm_rep <- try(occuN(
+                  formula = occuN_formula,
+                  data = umf,
+                  starts = rand_starts,
+                  se = TRUE, # se=TRUE is needed to get coefs, but we'll re-run for best
+                  method = selected_optimizer
+              ), silent = TRUE)
+              
+              if (inherits(fm_rep, "try-error")) {
+                  next
+              }
+              
+              current_nll <- fm_rep@negLogLike
+              if (current_nll < min_nll) {
+                  min_nll <- current_nll
+                  best_fm <- fm_rep
+                  fit_successful <- TRUE
+              }
+          } # --- End of rep loop ---
+
+          # === 4.4. HANDLE FIT FAILURE ===
+          if (!fit_successful) {
+              cat(sprintf("\n    !!! ALL %d REPS FAILED for %s. Skipping. !!!\n", n_fit_repeats, method_name))
+              
+              # Store NA results
+              na_results <- data.frame(
+                  cluster_method = current_clustering_method,
+                  param_set = param_idx,
+                  sim_num = sim_num,
+                  test_repeat = repeat_num,
+                  comparison_method = method_name,
+                  auc = NA,
+                  auprc = NA,
+                  nll = NA,
+                  convergence = 1 # 1 for failure
+              )
+              # Add NA columns for all parameters
+              for(p in c(paste0("est_beta_", c("int", state_cov_names)), paste0("est_alpha_", c("int", obs_cov_names)))) {
+                na_results[[p]] <- NA
+              }
+              
+              all_results[[length(all_results) + 1]] <- na_results
+              next # Skip to the next method_name
+          }
+
+          cat(sprintf("\n    Best model for %s found. NLL: %.2f\n", method_name, min_nll))
+          fm <- best_fm # Rename for clarity
+
+          # === 4.5. EXTRACT PARAMETERS ===
+          est_alphas <- coef(fm, 'det')
+          est_betas <- coef(fm, 'state')
+
+          # === 4.6. CALCULATE TEST SET PREDICTIONS & AUC/AUPRC ===
+
+          # We need to build the X_design matrix for the test set cells
+          state_formula_obj <- as.formula(paste("~", state_formula_char))
+          test_X_cell <- model.matrix(state_formula_obj, data = test_df)
+
+          # Calculate estimated log(lambda_j) for each test cell
+          # est_log_lambda_j = B0 + B1*cov1 + ...
+          est_log_lambda_j <- test_X_cell %*% est_betas
+
+          # Calculate estimated N_j (abundance) for each cell
+          # est_N_j = exp(est_log_lambda_j) * area_j
+          # We assume area_j is in test_df (from simulate_test_data)
+          est_N_j <- exp(est_log_lambda_j) * test_df$area_j
+
+          # Calculate predicted psi (prob. of occupancy) for each cell
+          # pred_psi = 1 - exp(-est_N_j)
+          pred_psi <- 1 - exp(-est_N_j)
+
+          # Get the TRUE occupancy state (Z_i) from the test set
+          # This is the correct "truth" to compare our state model against
+          true_Z <- test_df$Z_i
+
+          # Calculate AUC and AUPRC
+          pr_metrics <- PRROC::pr.curve(
+              scores.class0 = pred_psi[true_Z == 1],
+              scores.class1 = pred_psi[true_Z == 0], # Note: PRROC convention can be tricky
+              curve = FALSE
+          )
+          auc_val <- pr_metrics$auc.roc
+          auprc_val <- pr_metrics$auc.integral
+
+          # === 4.7. STORE RESULTS ===
+          result_row_df <- data.frame(
+              cluster_method = current_clustering_method,
+              param_set = param_idx,
+              sim_num = sim_num,
+              test_repeat = repeat_num,
+              comparison_method = method_name,
+              auc = auc_val,
+              auprc = auprc_val,
+              nll = min_nll,
+              convergence = 0 # 0 for success
+          )
+
+          # Add state/beta parameters
+          beta_names <- paste0("est_beta_", c("int", state_cov_names))
+          for (i in seq_along(est_betas)) {
+            result_row_df[[beta_names[i]]] <- est_betas[i]
+          }
+
+          # Add detection/alpha parameters
+          alpha_names <- paste0("est_alpha_", c("int", obs_cov_names))
+          for (i in seq_along(est_alphas)) {
+            result_row_df[[alpha_names[i]]] <- est_alphas[i]
+          }
+
+          # Add the row (as a data frame) to the list
+          all_results[[length(all_results) + 1]] <- result_row_df
 
         } # End loop over comparison methods
       } # End loop over test repeats (repeat_num)
@@ -296,7 +450,9 @@ final_dataset_stats_df <- dplyr::bind_rows(all_dataset_stats)
 write.csv(final_dataset_stats_df, file.path(output_dir, "dataset_descriptive_stats.csv"), row.names = FALSE)
 cat(sprintf("--- Dataset descriptive stats saved to %s/dataset_descriptive_stats.csv ---\n", output_dir))
 
+# Bind the list of result data frames into one single data frame
+final_simulation_summary_df <- dplyr::bind_rows(all_results)
 
 # Save the final summary file
-write.csv(all_results, file.path(output_dir, "simulation_summary.csv"), row.names = FALSE)
+write.csv(final_simulation_summary_df, file.path(output_dir, "simulation_summary.csv"), row.names = FALSE)
 cat(sprintf("--- Simulation summary saved to %s/simulation_summary.csv ---\n", output_dir))
