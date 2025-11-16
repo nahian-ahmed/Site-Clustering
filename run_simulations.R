@@ -292,8 +292,8 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
           # The 'cellCovs' for occuN is the original, cell-level data frame
           # The 'w' matrix maps sites to these cells
           umf <- unmarkedFrameOccuN(
-              y = train_data$y,
-              obsCovs = train_data$obsCovs,
+              y = train_data$species_observed,
+              obsCovs = as.list(train_data[, obs_cov_names, drop = FALSE]),
               cellCovs = base_train_df[, state_cov_names, drop = FALSE],
               w = w_matrix
           )
