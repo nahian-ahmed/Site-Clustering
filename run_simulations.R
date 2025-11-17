@@ -396,7 +396,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
             y = y_wide,              # The new M x J matrix
             obsCovs = obs_covs_wide, # The new list of M x J matrices
             cellCovs = base_train_df[, state_cov_names, drop = FALSE],
-            w = w_matrix
+            w = as.matrix(w_matrix)
           )
           # === 4.2. DEFINE MODEL FORMULAS ===
           obs_formula_char <- paste("~", paste(obs_cov_names, collapse = " + "))
