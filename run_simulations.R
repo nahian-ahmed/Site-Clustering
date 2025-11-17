@@ -284,6 +284,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
           current_geoms <- all_site_geometries[[method_name]]
           current_clustering_df <- all_clusterings[[method_name]]
 
+          
           # Handle potential method failure (e.g., if w doesn't exist)
           w_matrix <- attr(current_geoms, "w_matrix")
           if (is.null(current_geoms) || is.null(w_matrix)) {
@@ -296,6 +297,23 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
             mutate(visit_id = row_number()) %>%
             ungroup()
 
+          # 1. Create a lookup with just the checklist_id and the COMPARISON site
+          comparison_site_lookup <- current_clustering_df %>%
+            select(checklist_id, comparison_site = site)
+
+          # 2. Join this to train_data_prepped. This replaces the old 'site'
+          #    column (from the reference) with the new 'comparison_site' column.
+          train_data_prepped <- train_data_prepped %>%
+            left_join(comparison_site_lookup, by = "checklist_id") %>%
+            select(-site) %>%          # Remove the old REFERENCE site column
+            rename(site = comparison_site) # Keep the new COMPARISON site column
+            
+          # 3. Filter out any checklists that might have been dropped by the
+          #    comparison clustering method (e.g., DBSC filtering).
+          #    Your new re-indexing code (at line 299) will handle NAs,
+          #    but it's safer to remove them entirely.
+          train_data_prepped <- train_data_prepped %>%
+            filter(!is.na(site))
 
            # Get M (number of sites)
           M <- nrow(w_matrix)
