@@ -296,11 +296,42 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
             mutate(visit_id = row_number()) %>%
             ungroup()
 
-          # Get M (number of sites)
+
+           # Get M (number of sites)
           M <- nrow(w_matrix)
           # Get J (max visits)
           J <- max(train_data_prepped$visit_id) # <-- Use the new variable
 
+
+          # Create a lookup mapping the character/factor site IDs (from w_matrix rownames)
+          # to a new numeric index (1:M).
+          site_id_lookup <- data.frame(
+            site_char = rownames(w_matrix),  # The character/factor ID
+            site_numeric = 1:M                # The new integer ID
+          )
+
+          # Ensure both 'site' columns are characters for a safe join.
+          # train_data_prepped$site is a factor/char from the clustering method.
+          train_data_prepped$site <- as.character(train_data_prepped$site)
+          site_id_lookup$site_char <- as.character(site_id_lookup$site_char)
+
+          # Join the lookup table to get the new numeric ID.
+          train_data_prepped <- train_data_prepped %>%
+            left_join(site_id_lookup, by = c("site" = "site_char"))
+          
+          # Check for any sites that didn't match (shouldn't happen if w_matrix is correct)
+          if(any(is.na(train_data_prepped$site_numeric))) {
+            warning("NA values produced during site ID re-indexing. Check w_matrix rownames.")
+          }
+
+          # Replace the old character 'site' column with the new numeric 'site' column
+          # for the pivoting.
+          train_data_prepped <- train_data_prepped %>%
+            select(-site) %>%
+            rename(site = site_numeric)
+
+            
+         
           # --- 1. Create y_wide matrix ---
           y_wide <- train_data_prepped %>% # <-- Use the new variable
             pivot_wider(
