@@ -500,8 +500,18 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
               scores.class1 = pred_psi[true_Z == 0], # Note: PRROC convention can be tricky
               curve = FALSE
           )
-          auc_val <- pr_metrics$auc.roc
-          auprc_val <- pr_metrics$auc.integral
+
+          auc_val <- if (is.null(pr_metrics$auc.roc) || length(pr_metrics$auc.roc) == 0) {
+              NA_real_
+          } else {
+              pr_metrics$auc.roc
+          }
+          
+          auprc_val <- if (is.null(pr_metrics$auc.integral) || length(pr_metrics$auc.integral) == 0) {
+              NA_real_
+          } else {
+              pr_metrics$auc.integral
+          }
 
           # === 4.7. STORE RESULTS ===
           result_row_df <- data.frame(
