@@ -76,7 +76,7 @@ n_fit_repeats <- 25
 n_test_repeats <- 25
 
 n_simulations <- 1
-n_fit_repeats <- 1
+n_fit_repeats <- 25
 n_test_repeats <- 1
 
 res_m <- 30 # Cell size in meters
