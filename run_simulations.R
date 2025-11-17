@@ -279,12 +279,23 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
 
           # === 4.1. PREPARE occuN DATA ===
 
-          # Get the pre-computed geometries (which include the 'w' matrix)
-          # and clustering data for the current method
-          current_geoms <- all_site_geometries[[method_name]]
-          current_clustering_df <- all_clusterings[[method_name]]
+          train_data_prepped <- train_data %>%    # [Line 284]
+            group_by(site) %>%
+            mutate(visit_id = row_number()) %>%
+            ungroup()
 
+          current_geoms <- all_site_geometries[[method_name]] # [Line 286]
+          current_clustering_df <- all_clusterings[[method_name]] # [Line 287]
           
+          comparison_site_lookup <- current_clustering_df %>%
+            select(checklist_id, comparison_site = site)
+          
+          train_data_prepped <- train_data_prepped %>%
+            left_join(comparison_site_lookup, by = "checklist_id") %>%
+            select(-site) %>%
+            rename(site = comparison_site) %>%
+            filter(!is.na(site))
+            
           # Handle potential method failure (e.g., if w doesn't exist)
           w_matrix <- attr(current_geoms, "w_matrix")
           if (is.null(current_geoms) || is.null(w_matrix)) {
