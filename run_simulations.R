@@ -35,6 +35,7 @@ source(file.path("R", "simulation_helpers.R"))
 source(file.path("R", "clustering_helpers.R"))
 source(file.path("R", "model_helpers.R"))
 source(file.path("R", "analysis_helpers.R"))
+source(file.path("R", "plotting_helpers.R"))
 
 set.seed(123) # For reproducibility
 
