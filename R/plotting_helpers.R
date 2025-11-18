@@ -148,8 +148,6 @@ plot_sites <- function(
         # Suppress warnings about attribute assumptions *only* for the sf data frame
         sf::st_agr(geom_sf_wgs84) = "constant"
         
-        # --- REMOVED THE BAD LINE: sf::st_agr(zoom_poly_sfc) = "constant" ---
-        
         # Use suppressWarnings because clipping can create 
         # small/invalid geometries, but ggplot handles them.
         geom_sf_zoom <- suppressWarnings(
@@ -185,12 +183,13 @@ plot_sites <- function(
             new_scale_fill() + # Allows for a new fill scale
             
             # --- NEW LAYER: Site Geometries ---
+            # *** APPLY FIX HERE ***
             geom_sf(
-                data = geom_sf_zoom,  # <-- USE THE CLIPPED DATA
-                aes(fill = site), # Color by site
-                alpha = 0.4,      # Make semi-transparent
-                color = "black",  # Add a black border
-                linewidth = 0.5,
+                data = geom_sf_zoom, 
+                aes(fill = site), 
+                alpha = 0.4,      
+                color = "white",  # <--- FIX: Change border to WHITE for contrast
+                linewidth = 1.0,  # <--- FIX: Increase border thickness
                 show.legend = FALSE
             ) +
             
@@ -198,12 +197,10 @@ plot_sites <- function(
             geom_point(
                 data = pts_df_distinct,
                 aes(x = longitude, y = latitude, fill = site),
-                shape = 21, size = 2.5, # Slightly smaller points
+                shape = 21, size = 2.5, 
                 color = "black",
                 show.legend = FALSE
             ) +
-            
-            # --- REMOVED geom_mark_ellipse ---
             
             scale_fill_discrete() + # This scale applies to both geom_sf and geom_point
             
