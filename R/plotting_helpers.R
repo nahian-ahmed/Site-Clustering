@@ -130,7 +130,7 @@ plot_sites <- function(
         geom_sf_wgs84$site <- as.factor(geom_sf_wgs84$site)
         
 
-        # +++ START OF FIX +++
+        # +++ START OF FIX (v2) +++
         
         # --- Create an sf bounding box for cropping ---
         zoom_bbox_sf <- sf::st_bbox(c(
@@ -140,11 +140,25 @@ plot_sites <- function(
             ymax = zoom_box$latitude[2]
         ), crs = sf::st_crs(wgs84_crs))
         
-        # --- Manually crop the geometries to the zoom box ---
-        # This is more robust than relying on coord_sf's automatic cropping
-        geom_sf_zoom <- sf::st_crop(geom_sf_wgs84, zoom_bbox_sf)
+        # --- Convert the bbox to an sfc polygon object ---
+        # This is required for st_intersection
+        zoom_poly_sfc <- sf::st_as_sfc(zoom_bbox_sf)
+
+        # --- Manually *clip* the geometries to the zoom box ---
+        # st_crop() just selects intersecting geometries,
+        # st_intersection() actually clips them to the boundary.
         
-        # +++ END OF FIX +++
+        # Suppress warnings about attribute assumptions
+        sf::st_agr(geom_sf_wgs84) = "constant"
+        sf::st_agr(zoom_poly_sfc) = "constant"
+        
+        # Use suppressWarnings because clipping can create 
+        # small/invalid geometries, but ggplot handles them.
+        geom_sf_zoom <- suppressWarnings(
+            sf::st_intersection(geom_sf_wgs84, zoom_poly_sfc)
+        )
+        
+        # +++ END OF FIX (v2) +++
 
 
         # --- Filter Point Data ---
@@ -174,7 +188,7 @@ plot_sites <- function(
             
             # --- NEW LAYER: Site Geometries ---
             geom_sf(
-                data = geom_sf_zoom,  # <-- USE THE CROPPED DATA
+                data = geom_sf_zoom,  # <-- USE THE CLIPPED DATA
                 aes(fill = site), # Color by site
                 alpha = 0.4,      # Make semi-transparent
                 color = "black",  # Add a black border
