@@ -10,9 +10,11 @@ library(ggnewscale) # For multiple color scales
 plot_sites <- function(
     base_train_df,
     all_clusterings,
+    all_site_geometries, # <-- NEW ARGUMENT
     elevation_raster,
     methods_to_plot,
-    boundary_shp_path = "state_covariate_raster/boundary.shp",
+    boundary_shp_path,
+    output_path,
     zoom_box = list(
         longitude = c(-123.025, -122.992),
         latitude = c(44.085, 44.118)
@@ -34,6 +36,9 @@ plot_sites <- function(
     base_rast_max <- max(base_rast_df[[elev_col_name]], na.rm = TRUE)
 
     bbox_full <- terra::ext(region)
+    
+    # --- Define WGS84 CRS for transformations ---
+    wgs84_crs <- "+proj=longlat +datum=WGS84"
 
     # --- 2. Create Left Plot (Observations) ---
     obs_plot <- ggplot() +
@@ -78,12 +83,19 @@ plot_sites <- function(
             y = "Latitude"
         ) +
         theme_bw() +
-        coord_fixed() +
+        # Use coord_sf to set map limits and CRS
+        coord_sf(
+            xlim = c(bbox_full$xmin, bbox_full$xmax),
+            ylim = c(bbox_full$ymin, bbox_full$ymax),
+            crs = wgs84_crs,
+            expand = FALSE
+        ) +
         theme(
             plot.title = element_text(hjust = 0.5, face = "bold"),
             legend.position = "bottom",
             legend.direction = "horizontal",
-            legend.key.width = unit(1.5, "cm")
+            legend.key.width = unit(1.5, "cm"),
+            axis.title = element_blank() # Remove axis titles for maps
         )
 
     # --- 3. Create Right Plots (Zoomed Clusters) ---
@@ -92,29 +104,40 @@ plot_sites <- function(
     
     for (method_name in methods_to_plot) {
         
+        # --- Get Point Data ---
         if (!method_name %in% names(all_clusterings)) {
             warning(paste("Method not found in all_clusterings:", method_name))
             next
         }
-        
-        # Get clustering data from the list
         pts_df <- all_clusterings[[method_name]]
-        
-        # Handle potential list structure for BayesOpt
         if (is.list(pts_df) && "result_df" %in% names(pts_df)) {
           pts_df <- pts_df$result_df
         }
         
-        pts_df$site <- as.factor(pts_df$site)
+        # --- Get Geometry Data ---
+        if (!method_name %in% names(all_site_geometries)) {
+            warning(paste("Method not found in all_site_geometries:", method_name))
+            next
+        }
+        geom_sf <- all_site_geometries[[method_name]]
+        if (is.null(geom_sf)) {
+            warning(paste("NULL geometry for method:", method_name))
+            next
+        }
         
-        # Filter to zoomed region
+        # --- Transform Geometries to WGS84 for plotting ---
+        geom_sf_wgs84 <- sf::st_transform(geom_sf, crs = wgs84_crs)
+        geom_sf_wgs84$site <- as.factor(geom_sf_wgs84$site)
+        
+
+        # --- Filter Point Data ---
+        pts_df$site <- as.factor(pts_df$site)
         pts_df_zoom <- pts_df[
             (pts_df$longitude > zoom_box$longitude[1]) &
             (pts_df$longitude < zoom_box$longitude[2]) &
             (pts_df$latitude > zoom_box$latitude[1]) &
             (pts_df$latitude < zoom_box$latitude[2]), ]
         
-        # Keep only unique lat/longs for plotting points (avoids overplotting)
         pts_df_distinct <- pts_df_zoom %>%
             distinct(latitude, longitude, .keep_all = TRUE)
             
@@ -131,25 +154,36 @@ plot_sites <- function(
                 aesthetics = "fill"
             ) +
             new_scale_fill() + # Allows for a new fill scale
-            # Clustered points
+            
+            # --- NEW LAYER: Site Geometries ---
+            geom_sf(
+                data = geom_sf_wgs84,
+                aes(fill = site), # Color by site
+                alpha = 0.4,      # Make semi-transparent
+                color = "black",  # Add a black border
+                linewidth = 0.5,
+                show.legend = FALSE
+            ) +
+            
+            # --- Clustered points (ON TOP) ---
             geom_point(
                 data = pts_df_distinct,
                 aes(x = longitude, y = latitude, fill = site),
-                shape = 21, size = 3.5, color = "black",
+                shape = 21, size = 2.5, # Slightly smaller points
+                color = "black",
                 show.legend = FALSE
             ) +
-            # Cluster ellipses
-            geom_mark_ellipse(
-                data = pts_df_zoom, # Use all points for ellipse
-                aes(x = longitude, y = latitude, fill = site, color = site),
-                alpha = 0.1,
-                show.legend = FALSE
-            ) +
-            scale_fill_discrete() +
-            scale_color_discrete() +
-            coord_fixed(
+            
+            # --- REMOVED geom_mark_ellipse ---
+            
+            scale_fill_discrete() + # This scale applies to both geom_sf and geom_point
+            
+            # --- Use coord_sf to set zoom and CRS ---
+            coord_sf(
                 xlim = c(zoom_box$longitude[1], zoom_box$longitude[2]),
-                ylim = c(zoom_box$latitude[1], zoom_box$latitude[2])
+                ylim = c(zoom_box$latitude[1], zoom_box$latitude[2]),
+                crs = wgs84_crs,
+                expand = FALSE # Don't expand beyond the zoom box
             ) +
             theme_bw() +
             labs(title = method_name) +
@@ -157,7 +191,9 @@ plot_sites <- function(
                 axis.title = element_blank(),
                 axis.text = element_blank(),
                 axis.ticks = element_blank(),
-                plot.title = element_text(size = 10, hjust = 0.5)
+                plot.title = element_text(size = 10, hjust = 0.5),
+                panel.grid.major = element_blank(), # Remove gridlines
+                panel.grid.minor = element_blank()
             )
             
         zoom_plots[[method_name]] <- p_zoom
@@ -172,5 +208,16 @@ plot_sites <- function(
     final_plot <- obs_plot + plot_clust +
         plot_layout(nrow = 1, widths = c(1, 1.5)) # Adjust width ratio as needed
 
-    return(final_plot)
+
+
+    ggsave(
+        output_path,
+        plot = final_plot,
+        width = 16,
+        height = 8,
+        dpi = 300
+    )
+    cat(sprintf("--- Site cluster plot saved to %s/site_cluster_visualization.png ---\n", output_dir))
+
+    
 }

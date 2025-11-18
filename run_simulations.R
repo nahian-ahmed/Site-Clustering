@@ -173,36 +173,19 @@ cat(sprintf("--- Clustering summary metrics saved to %s/clustering_descriptive_s
 # --- ADD THIS NEW BLOCK TO GENERATE AND SAVE YOUR PLOT ---
 cat("--- Generating and saving site cluster plot... ---\n")
 
-# 1. Define which methods to show in the zoomed-in grid
-# (Using the list from your OLD_code's plotClustGroup function)
-methods_for_plot_grid <- c(
-    "1-kmSq",
-    "rounded-4",
-    "DBSC",
-    "BayesOptClustGeo"
-)
-# Add the first reference method from your config for comparison
-methods_for_plot_grid <- c(reference_method_list[1], methods_for_plot_grid)
 
-# 2. Call your new plot function
+
+# Call plot function
 site_plot <- plot_sites(
     base_train_df = base_train_df,
     all_clusterings = all_clusterings,
+    all_site_geometries = all_site_geometries,
     elevation_raster = state_cov_raster,
     methods_to_plot = names(all_clusterings),
-    boundary_shp_path = boundary_shapefile_path
+    boundary_shp_path = boundary_shapefile_path,
+    output_path = file.path(output_dir, "site_cluster_visualization.png")
 )
 
-# 3. Save the plot
-ggsave(
-    file.path(output_dir, "site_cluster_visualization.png"),
-    plot = site_plot,
-    width = 16,
-    height = 8,
-    dpi = 300
-)
-cat(sprintf("--- Site cluster plot saved to %s/site_cluster_visualization.png ---\n", output_dir))
-# --- END OF NEW BLOCK ---
 
 
 all_dataset_stats <- list()
