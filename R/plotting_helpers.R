@@ -130,6 +130,23 @@ plot_sites <- function(
         geom_sf_wgs84$site <- as.factor(geom_sf_wgs84$site)
         
 
+        # +++ START OF FIX +++
+        
+        # --- Create an sf bounding box for cropping ---
+        zoom_bbox_sf <- sf::st_bbox(c(
+            xmin = zoom_box$longitude[1], 
+            xmax = zoom_box$longitude[2],
+            ymin = zoom_box$latitude[1], 
+            ymax = zoom_box$latitude[2]
+        ), crs = sf::st_crs(wgs84_crs))
+        
+        # --- Manually crop the geometries to the zoom box ---
+        # This is more robust than relying on coord_sf's automatic cropping
+        geom_sf_zoom <- sf::st_crop(geom_sf_wgs84, zoom_bbox_sf)
+        
+        # +++ END OF FIX +++
+
+
         # --- Filter Point Data ---
         pts_df$site <- as.factor(pts_df$site)
         pts_df_zoom <- pts_df[
@@ -157,7 +174,7 @@ plot_sites <- function(
             
             # --- NEW LAYER: Site Geometries ---
             geom_sf(
-                data = geom_sf_wgs84,
+                data = geom_sf_zoom,  # <-- USE THE CROPPED DATA
                 aes(fill = site), # Color by site
                 alpha = 0.4,      # Make semi-transparent
                 color = "black",  # Add a black border
@@ -217,7 +234,8 @@ plot_sites <- function(
         height = 8,
         dpi = 300
     )
-    cat(sprintf("--- Site cluster plot saved to %s/site_cluster_visualization.png ---\n", output_dir))
+    # --- FIX: output_path already contains the full path ---
+    cat(sprintf("--- Site cluster plot saved to %s ---\n", output_path))
 
     
 }
