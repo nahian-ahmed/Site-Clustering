@@ -130,7 +130,7 @@ plot_sites <- function(
         geom_sf_wgs84$site <- as.factor(geom_sf_wgs84$site)
         
 
-        # +++ START OF FIX (v2) +++
+        # +++ START OF FIX (v3) +++
         
         # --- Create an sf bounding box for cropping ---
         zoom_bbox_sf <- sf::st_bbox(c(
@@ -141,16 +141,14 @@ plot_sites <- function(
         ), crs = sf::st_crs(wgs84_crs))
         
         # --- Convert the bbox to an sfc polygon object ---
-        # This is required for st_intersection
         zoom_poly_sfc <- sf::st_as_sfc(zoom_bbox_sf)
 
         # --- Manually *clip* the geometries to the zoom box ---
-        # st_crop() just selects intersecting geometries,
-        # st_intersection() actually clips them to the boundary.
         
-        # Suppress warnings about attribute assumptions
+        # Suppress warnings about attribute assumptions *only* for the sf data frame
         sf::st_agr(geom_sf_wgs84) = "constant"
-        sf::st_agr(zoom_poly_sfc) = "constant"
+        
+        # --- REMOVED THE BAD LINE: sf::st_agr(zoom_poly_sfc) = "constant" ---
         
         # Use suppressWarnings because clipping can create 
         # small/invalid geometries, but ggplot handles them.
@@ -158,7 +156,7 @@ plot_sites <- function(
             sf::st_intersection(geom_sf_wgs84, zoom_poly_sfc)
         )
         
-        # +++ END OF FIX (v2) +++
+        # +++ END OF FIX (v3) +++
 
 
         # --- Filter Point Data ---
