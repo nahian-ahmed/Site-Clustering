@@ -148,11 +148,17 @@ plot_sites <- function(
         # Suppress warnings about attribute assumptions *only* for the sf data frame
         sf::st_agr(geom_sf_wgs84) = "constant"
         
-        # Use suppressWarnings because clipping can create 
-        # small/invalid geometries, but ggplot handles them.
+        # Use suppressWarnings because clipping can create small/invalid geometries.
         geom_sf_zoom <- suppressWarnings(
             sf::st_intersection(geom_sf_wgs84, zoom_poly_sfc)
         )
+        
+        # FIX: Validate and filter geometries after intersection (to handle silent ggplot errors)
+        geom_sf_zoom <- sf::st_make_valid(geom_sf_zoom) # Make sure geometries are valid
+        # Filter to only keep area features (Polygon/MultiPolygon)
+        geom_sf_zoom <- geom_sf_zoom[sf::st_geometry_type(geom_sf_zoom) %in% c("POLYGON", "MULTIPOLYGON"), ]
+        # Filter to only keep non-empty geometries
+        geom_sf_zoom <- geom_sf_zoom[sf::st_area(geom_sf_zoom) > units::set_units(0, "m^2"), ]
         
         # +++ END OF FIX (v3) +++
 
@@ -183,13 +189,12 @@ plot_sites <- function(
             new_scale_fill() + # Allows for a new fill scale
             
             # --- NEW LAYER: Site Geometries ---
-            # *** APPLY FIX HERE ***
             geom_sf(
                 data = geom_sf_zoom, 
                 aes(fill = site), 
                 alpha = 0.4,      
-                color = "white",  # <--- FIX: Change border to WHITE for contrast
-                linewidth = 1.0,  # <--- FIX: Increase border thickness
+                color = "black",  # <--- FIX: Changed border to BLACK for guaranteed visibility
+                linewidth = 0.5,  # <--- FIX: Reduced width to 0.5
                 show.legend = FALSE
             ) +
             
