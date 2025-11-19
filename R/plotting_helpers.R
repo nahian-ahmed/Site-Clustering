@@ -233,11 +233,11 @@ plot_sites <- function(
     # --- 4. Assemble the Final Plot ---
     
     # Arrange the grid of zoom plots
-    plot_clust <- patchwork::wrap_plots(zoom_plots, ncol = 3)
+    plot_clust <- patchwork::wrap_plots(zoom_plots, ncol = 6)
     
     # Combine the main plot and the grid
     final_plot <- obs_plot + plot_clust +
-        plot_layout(nrow = 1, widths = c(1, 1.5)) # Adjust width ratio as needed
+        plot_layout(nrow = 1, widths = c(1, 6)) # Adjust width ratio as needed
 
 
 
