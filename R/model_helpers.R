@@ -1,7 +1,9 @@
+
+fullContent:
 library(sf)
 library(dplyr)
 library(terra)
-
+library(Matrix)
 
 ##########
 # site closure for Occ Model:
@@ -199,10 +201,9 @@ get_parameters <- function(df, i, occ_covs, det_covs, occ_intercept = TRUE, det_
 ########
 
 
-
-create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15, method_name = NULL) {
+create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15, method_name = NULL, area_unit = "m") {
   
-  # --- 1. Project Points to Albers (meters) ---
+  # --- 1. Project Points to Albers (meters) for Geometry Creation ---
   
   # Define the Albers CRS string used in your other scripts
   albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
@@ -219,14 +220,13 @@ create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15
   points_albers <- sf::st_transform(points_sf, crs = albers_crs_str)
   
   
-  # --- 2. Create Site Geometries ---
+  # --- 2. Create Site Geometries (in Albers) ---
   
   # Check if this is a kmSq method based on the passed method name
   is_kmsq <- !is.null(method_name) && grepl("kmSq", method_name, ignore.case = TRUE)
   
   if (is_kmsq) {
     # --- A. SQUARE GRID GEOMETRIES (kmSq) ---
-    # Logic mirrors R/clustering/kmsq.R exactly
     
     # Parse the radius/side length (rad_m) from the method name
     parts <- unlist(strsplit(method_name, "-"))
@@ -283,34 +283,61 @@ create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15
   }
   
   
-  # --- 3. Create the 'w' (weight) matrix ---
+  # --- 3. Create the 'w' (overlap weight) matrix ---
   
-  # This logic remains the same. It maps M sites (rows) to
-  # J checklists (columns) from the *original* dataframe.
+  # Convert sf geometries to terra SpatVector for efficient extraction
+  site_vect <- terra::vect(site_geoms_sf)
   
-  # Ensure 'site' column is a factor to get all levels and indices correctly
-  site_factor <- factor(site_data_sf$site)
-  site_levels <- levels(site_factor)
+  # IMPORTANT: Transform sites to match the raster's CRS before extraction
+  # to ensure alignment with grid cells (j).
+  site_vect_proj <- terra::project(site_vect, terra::crs(reference_raster))
   
-  # Get matrix dimensions
-  M_sites <- length(site_levels)       # Number of rows
-  J_checklists <- nrow(site_data_sf) # Number of columns
-  
-  # Row indices: (which site row does each checklist belong to?)
-  i_rows <- as.numeric(site_factor)
-  
-  # Column indices: (which checklist column is this?)
-  j_cols <- 1:J_checklists
-  
-  # Create the sparse matrix
-  w <- Matrix::sparseMatrix(
-    i = i_rows,
-    j = j_cols,
-    x = 1, # All weights are 1
-    dims = c(M_sites, J_checklists),
-    dimnames = list(site_levels, NULL) # Name rows by site ID
+  # Extract overlap information
+  # 'exact=TRUE' returns the fraction of the cell covered by the polygon
+  # 'cells=TRUE' returns the cell number (index j)
+  # 'ID=TRUE' returns the row index of site_vect (index i)
+  overlap_df <- terra::extract(
+    reference_raster[[1]], # Use first layer to define grid
+    site_vect_proj, 
+    cells = TRUE, 
+    exact = TRUE, 
+    ID = TRUE
   )
   
+  # Calculate the actual area of each cell in the raster
+  # terra::cellSize returns area in m^2 (by default) or unit="km"
+  # We compute this to handle potentially varying cell sizes (e.g. in Lat/Long)
+  cell_areas <- terra::cellSize(reference_raster, unit = "m")
+  
+  # Map the cell areas to the overlap dataframe based on cell index
+  # We need to extract the area values for the specific cells involved in overlaps
+  # Note: extracting by cell index is efficient
+  overlap_cell_areas <- terra::extract(cell_areas, overlap_df$cell)
+  
+  # Calculate the overlap area (w_ij)
+  # w_ij = fraction_covered * total_cell_area
+  overlap_df$w_area <- overlap_df$fraction * overlap_cell_areas[,1]
+  
+  # Convert units if requested
+  if (area_unit == "km") {
+    overlap_df$w_area <- overlap_df$w_area / 1e6 # Convert m^2 to km^2
+  }
+  
+  # Define matrix dimensions
+  n_sites <- nrow(site_geoms_sf)
+  n_cells <- terra::ncell(reference_raster)
+  
+  # Create the sparse matrix (M x J)
+  # Rows (i) = Sites
+  # Cols (j) = Raster Cells
+  w <- Matrix::sparseMatrix(
+    i = overlap_df$ID,
+    j = overlap_df$cell,
+    x = overlap_df$w_area,
+    dims = c(n_sites, n_cells),
+    # Use site IDs as row names for easier lookup later
+    dimnames = list(as.character(site_geoms_sf$site), NULL) 
+  )
   
   # --- 4. Attach 'w' as an attribute and return ---
   attr(site_geoms_sf, "w_matrix") <- w

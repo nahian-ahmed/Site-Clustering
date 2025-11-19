@@ -145,7 +145,7 @@ for (method_name in all_method_names) {
       cat(paste("    - WARNING: No clustering data found for", method_name, ". Skipping geometry creation.\n"))
       next
   }
-  all_site_geometries[[method_name]] <- create_site_geometries(cluster_data, state_cov_raster, buffer_m, method_name)
+  all_site_geometries[[method_name]] <- create_site_geometries(cluster_data, state_cov_raster, buffer_m, method_name, "km")
 }
 cat("--- Geometry pre-computing complete. ---\n")
 
