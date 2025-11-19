@@ -132,22 +132,20 @@ cat(sprintf("--- Pre-computing complete. Found %d total clusterings. ---\n", len
 cat("--- Pre-computing site geometries for ALL clustering methods... ---\n")
 all_site_geometries <- list() # Renamed list for clarity
 for (method_name in all_method_names) {
-    cat(paste("    - Generating geometries for:", method_name, "\n"))
-    
-    # Get the correct data (handles BayesOpt list structure)
-    cluster_data <- all_clusterings[[method_name]]
-    if (is.list(cluster_data) && "result_df" %in% names(cluster_data)) {
-      cluster_data <- cluster_data$result_df
-    }
-    
-    # Handle cases where a method might have failed (e.g., reference_clustering)
-    if (is.null(cluster_data)) {
-        cat(paste("    - WARNING: No clustering data found for", method_name, ". Skipping geometry creation.\n"))
-        next
-    }
-    
-    all_site_geometries[[method_name]] <- create_site_geometries(cluster_data, state_cov_raster, buffer_m)
-    
+  cat(paste("    - Generating geometries for:", method_name, "\n"))
+  
+  # Get the correct data (handles BayesOpt list structure)
+  cluster_data <- all_clusterings[[method_name]]
+  if (is.list(cluster_data) && "result_df" %in% names(cluster_data)) {
+    cluster_data <- cluster_data$result_df
+  }
+  
+  # Handle cases where a method might have failed (e.g., reference_clustering)
+  if (is.null(cluster_data)) {
+      cat(paste("    - WARNING: No clustering data found for", method_name, ". Skipping geometry creation.\n"))
+      next
+  }
+  all_site_geometries[[method_name]] <- create_site_geometries(cluster_data, state_cov_raster, buffer_m, method_name)
 }
 cat("--- Geometry pre-computing complete. ---\n")
 
