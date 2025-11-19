@@ -223,29 +223,22 @@ create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15
   
   # --- 2. Create Buffered Geometries (NEW LOGIC) ---
   
+  # --- 2. Create Buffered Geometries (FIXED LOGIC) ---
+  
   site_geoms_sf <- points_albers %>%
     group_by(site) %>%
     # Use summarise to create one geometry per site
     summarise(
-      # 1. Get all *unique* point geometries for this site.
-      #    This results in a single MULTIPOINT geometry.
-      unique_points_geom = sf::st_union(geometry),
-      
-      # 2. Get the convex hull of these unique points.
-      #    - If 1 unique point, hull is a POINT.
-      #    - If 2 unique points, hull is a LINESTRING.
-      #    - If 3+ unique points, hull is a POLYGON.
-      hull_geom = sf::st_convex_hull(unique_points_geom),
-      
-      # 3. Apply the buffer to the hull.
-      #    - POINT -> CIRCLE
-      #    - LINESTRING -> CAPSULE
-      #    - POLYGON -> BUFFERED POLYGON
-      geometry = sf::st_buffer(hull_geom, dist = buffer_m),
-      
+      # Chain the operations to create the final, area-bearing polygon.
+      # This avoids creating intermediate geometry columns that confuse st_area().
+      geometry = sf::st_buffer(
+          sf::st_convex_hull(
+              sf::st_union(geometry) # 1. Combine unique points (MULTIPOINT)
+          ),                        # 2. Create convex hull (POINT/LINE/POLYGON)
+          dist = buffer_m           # 3. Buffer the hull (FINAL POLYGON)
+      ),
       .groups = "drop" # Drop the grouping
     )
-  
   
   # --- 3. Create the 'w' (weight) matrix ---
   
