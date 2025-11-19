@@ -202,7 +202,7 @@ plot_sites <- function(
             geom_point(
                 data = pts_df_distinct,
                 aes(x = longitude, y = latitude, fill = site),
-                shape = 21, size = 0.5, 
+                shape = 21, size = 1.0, 
                 color = "black",
                 show.legend = FALSE
             ) +
@@ -237,14 +237,14 @@ plot_sites <- function(
     
     # Combine the main plot and the grid
     final_plot <- obs_plot + plot_clust +
-        plot_layout(nrow = 1, widths = c(1, 6)) # Adjust width ratio as needed
+        plot_layout(nrow = 1, widths = c(2, 6)) # Adjust width ratio as needed
 
 
 
     ggsave(
         output_path,
         plot = final_plot,
-        width = 16,
+        width = 20,
         height = 8,
         dpi = 300
     )
