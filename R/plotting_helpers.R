@@ -35,7 +35,7 @@ plot_sites <- function(
 
     bbox_full <- terra::ext(region)
     
-    # --- Define WGS84 CRS for transformations (Using EPSG code is safer) ---
+    # --- Define WGS84 CRS (EPSG:4326) ---
     wgs84_crs <- sf::st_crs(4326)
 
     # --- 2. Create Left Plot (Observations) ---
@@ -123,15 +123,14 @@ plot_sites <- function(
         }
         
         # --- Transform Geometries to WGS84 for plotting ---
-        # Ensure we have a valid CRS before transform
         if (is.na(sf::st_crs(geom_sf))) {
-             sf::st_crs(geom_sf) <- 5070 # Fallback to Albers if missing
+             sf::st_crs(geom_sf) <- 5070 
         }
         geom_sf_wgs84 <- sf::st_transform(geom_sf, crs = wgs84_crs)
         geom_sf_wgs84$site <- as.factor(geom_sf_wgs84$site)
         
         
-        # +++ START OF FIX (Robust Intersection Logic) +++
+        # +++ FIX START: Robust Intersection Logic +++
         
         # 1. Create bbox
         zoom_bbox_sf <- sf::st_bbox(c(
@@ -142,8 +141,7 @@ plot_sites <- function(
         ), crs = wgs84_crs)
         zoom_poly_sfc <- sf::st_as_sfc(zoom_bbox_sf)
 
-        # 2. Clean geometry BEFORE intersection
-        # (Fixes issues where fine grids get corrupted during clipping)
+        # 2. Make valid BEFORE intersection (Crucial for fine grids)
         sf::st_agr(geom_sf_wgs84) = "constant"
         geom_sf_wgs84 <- sf::st_make_valid(geom_sf_wgs84)
 
@@ -152,22 +150,27 @@ plot_sites <- function(
             sf::st_intersection(geom_sf_wgs84, zoom_poly_sfc)
         )
         
-        # 4. Post-Intersection Filtering
+        # 4. Post-Intersection Extraction (CRITICAL CHANGE)
         if (nrow(geom_sf_zoom) > 0) {
-            # Fix validity again after cut
-            geom_sf_zoom <- sf::st_make_valid(geom_sf_zoom) 
             
-            # Keep only Polygons (drops lines/points from edges)
-            geom_sf_zoom <- geom_sf_zoom[sf::st_geometry_type(geom_sf_zoom) %in% c("POLYGON", "MULTIPOLYGON"), ]
+            # Ensure we extract POLYGONS from any GEOMETRYCOLLECTIONS created by the cut
+            # This replaces the previous "filter" which was dropping the collections
+            geom_sf_zoom <- sf::st_collection_extract(geom_sf_zoom, "POLYGON")
             
-            # FILTER BY AREA SAFELY (Strip units to prevent logical errors)
-            # Only if we still have rows
+            # Make valid again after extraction
+            geom_sf_zoom <- sf::st_make_valid(geom_sf_zoom)
+            
+            # Filter by area (explicitly stripping units to avoid errors)
             if (nrow(geom_sf_zoom) > 0) {
-                areas <- as.numeric(sf::st_area(geom_sf_zoom)) # Force to numeric
-                geom_sf_zoom <- geom_sf_zoom[areas > 1e-6, ]   # Filter tiny artifacts
+                # Calculate area
+                area_vals <- sf::st_area(geom_sf_zoom)
+                
+                # Convert to numeric (strips 'm^2' unit class) for safe comparison
+                # 1e-6 m^2 is effectively 0, checking for non-empty polygons
+                geom_sf_zoom <- geom_sf_zoom[as.numeric(area_vals) > 1e-6, ]
             }
         }
-        # +++ END OF FIX +++
+        # +++ FIX END +++
 
 
         # --- Filter Point Data ---
@@ -195,14 +198,13 @@ plot_sites <- function(
             new_scale_fill() + 
             
             # --- Site Geometries ---
-            # Only add layer if data exists
             {if (nrow(geom_sf_zoom) > 0) 
                 geom_sf(
                     data = geom_sf_zoom, 
                     aes(fill = site), 
                     alpha = 0.4,      
                     color = "black",  
-                    linewidth = 0.5,  
+                    linewidth = 0.5,  # Adjust this if the small grids look too thick
                     show.legend = FALSE,
                     inherit.aes = FALSE 
                 )
