@@ -202,142 +202,107 @@ get_parameters <- function(df, i, occ_covs, det_covs, occ_intercept = TRUE, det_
 create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15, method_name = NULL, area_unit = "m") {
   
   # --- 1. Project Points to Albers (meters) for Geometry Creation ---
-  
-  # Define the Albers CRS string used in your other scripts
   albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
   
-  # Convert the input checklist dataframe to an sf (points) object
   points_sf <- sf::st_as_sf(
     site_data_sf,
     coords = c("longitude", "latitude"),
     crs = "+proj=longlat +datum=WGS84",
-    remove = FALSE # Keep all original columns
+    remove = FALSE 
   )
   
-  # Project the points to the Albers CRS
   points_albers <- sf::st_transform(points_sf, crs = albers_crs_str)
   
   
   # --- 2. Create Site Geometries (in Albers) ---
-  
-  # Check if this is a kmSq method based on the passed method name
   is_kmsq <- !is.null(method_name) && grepl("kmSq", method_name, ignore.case = TRUE)
   
   if (is_kmsq) {
     # --- A. SQUARE GRID GEOMETRIES (kmSq) ---
-    
-    # Parse the radius/side length (rad_m) from the method name
     parts <- unlist(strsplit(method_name, "-"))
     rad_m <- NA
     
     if (parts[1] == "kmSq") {
-      # Format: "kmSq-1000" -> side length is 1000m
+      # Format: "kmSq-1000"
       rad_m <- as.numeric(parts[2])
     } else {
-      # Format: "1-kmSq" or "0.25-kmSq" -> prefix is Area in km^2
+      # Format: "1-kmSq" or "0.125-kmSq"
       area_km <- as.numeric(parts[1])
-      # Calculate side length (sqrt(Area) * 1000 to get meters)
-      rad_m <- sqrt(area_km) * 1000
+      
+      # FIX: Use as.integer to match R/clustering_helpers.R logic
+      # This ensures the grid used for plotting aligns exactly with the grid used for clustering
+      rad_m <- as.integer(sqrt(area_km) * 1000)
     }
     
-    # 1. Get bounding box of the points
+    # 1. Get bounding box 
     bbox <- sf::st_bbox(points_albers)
     
-    # 2. Define the grid extent with the 5-cell buffer used in clustering
+    # 2. Define grid extent (using the exact same expansion logic as kmsq.R)
+    # Note: If site_data_sf is a subset, this bbox might differ from the original clustering bbox.
+    # Ideally, you should pass the full dataset's bbox, but matching rad_m fixes the main drift.
     x_seq <- seq(from = bbox["xmin"] - (rad_m * 5), to = bbox["xmax"] + (rad_m * 5), by = rad_m)
     y_seq <- seq(from = bbox["ymin"] - (rad_m * 5), to = bbox["ymax"] + (rad_m * 5), by = rad_m)
     
-    # 3. Create grid points to define the extent for st_make_grid
+    # 3. Create grid points
     grid_points <- expand.grid(x = x_seq, y = y_seq)
     grid_points_sf <- sf::st_as_sf(grid_points, coords = c("x", "y"), crs = albers_crs_str)
     
-    # 4. Create the square polygons
+    # 4. Create square polygons
     grid_geom <- sf::st_make_grid(grid_points_sf, cellsize = rad_m, square = TRUE)
     grid_sf <- sf::st_sf(geometry = grid_geom)
     
-    # 5. Assign IDs (these match the indices used during the st_intersects in clustering)
+    # 5. Assign IDs 
     grid_sf$site <- as.character(seq_len(nrow(grid_sf)))
     
-    # 6. Filter to keep only the sites that actually exist in the data
+    # 6. Filter to keep only sites present in the data
     present_sites <- unique(as.character(site_data_sf$site))
     site_geoms_sf <- grid_sf[grid_sf$site %in% present_sites, ]
     
   } else {
-    # --- B. CONVEX HULL + BUFFER (Default for other methods) ---
-    
+    # --- B. CONVEX HULL + BUFFER ---
     site_geoms_sf <- points_albers %>%
       group_by(site) %>%
-      # Use summarise to create one geometry per site
       summarise(
-        # Chain the operations to create the final, area-bearing polygon.
         geometry = sf::st_buffer(
-            sf::st_convex_hull(
-                sf::st_union(geometry) # 1. Combine unique points
-            ),                        # 2. Create convex hull
-            dist = buffer_m           # 3. Buffer the hull
+            sf::st_convex_hull(sf::st_union(geometry)),
+            dist = buffer_m
         ),
         .groups = "drop" 
       )
   }
   
-  
   # --- 3. Create the 'w' (overlap weight) matrix ---
-  
-  # Convert sf geometries to terra SpatVector for efficient extraction
   site_vect <- terra::vect(site_geoms_sf)
-  
-  # IMPORTANT: Transform sites to match the raster's CRS before extraction
-  # to ensure alignment with grid cells (j).
   site_vect_proj <- terra::project(site_vect, terra::crs(reference_raster))
   
-  # Extract overlap information
-  # 'exact=TRUE' returns the fraction of the cell covered by the polygon
-  # 'cells=TRUE' returns the cell number (index j)
-  # 'ID=TRUE' returns the row index of site_vect (index i)
   overlap_df <- terra::extract(
-    reference_raster[[1]], # Use first layer to define grid
+    reference_raster[[1]], 
     site_vect_proj, 
     cells = TRUE, 
     exact = TRUE, 
     ID = TRUE
   )
   
-  # Calculate the actual area of each cell in the raster
-  # terra::cellSize returns area in m^2 (by default) or unit="km"
-  # We compute this to handle potentially varying cell sizes (e.g. in Lat/Long)
   cell_areas <- terra::cellSize(reference_raster, unit = "m")
-  
-  # Map the cell areas to the overlap dataframe based on cell index
-  # We need to extract the area values for the specific cells involved in overlaps
-  # Note: extracting by cell index is efficient
   overlap_cell_areas <- terra::extract(cell_areas, overlap_df$cell)
   
-  # Calculate the overlap area (w_ij)
-  # w_ij = fraction_covered * total_cell_area
   overlap_df$w_area <- overlap_df$fraction * overlap_cell_areas[,1]
   
-  # Convert units if requested
   if (area_unit == "km") {
-    overlap_df$w_area <- overlap_df$w_area / 1e6 # Convert m^2 to km^2
+    overlap_df$w_area <- overlap_df$w_area / 1e6 
   }
   
-  # Define matrix dimensions
   n_sites <- nrow(site_geoms_sf)
   n_cells <- terra::ncell(reference_raster)
   
-  # Create the sparse matrix (M x J)
-  # Rows (i) = Sites
-  # Cols (j) = Raster Cells
   w <- Matrix::sparseMatrix(
     i = overlap_df$ID,
     j = overlap_df$cell,
     x = overlap_df$w_area,
     dims = c(n_sites, n_cells),
-    # Use site IDs as row names for easier lookup later
     dimnames = list(as.character(site_geoms_sf$site), NULL) 
   )
   
-  # --- 4. Attach 'w' as an attribute and return ---
   attr(site_geoms_sf, "w_matrix") <- w
   
   return(site_geoms_sf)
