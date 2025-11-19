@@ -67,68 +67,16 @@ calcDescriptiveClusteringStats <- function(clustered_df) {
 
 
 
-
-
-# Make sure these libraries are loaded where this function is called
-
-
-# --- NEW HELPER FUNCTION FOR GEOMETRY DIAMETER ---
-#' Calculates the maximum diameter of an sf geometry
-#'
-#' Finds all vertices of a geometry, computes the Euclidean distance
-#' matrix between them, and returns the maximum distance.
-#' Assumes the geometry is in a projected CRS (e..g, Albers)
-#' where Euclidean distance is meaningful (i.e., in meters).
-#'
-#' @param geom An individual 'sfc' geometry object.
-#' @return The maximum diameter (numeric).
-.calculate_geom_diameter <- function(geom) {
-  coords <- sf::st_coordinates(geom)
-  # st_coordinates returns X, Y, and sometimes L1, L2 etc.
-  # We only want the X, Y coordinates for distance.
-  coords_xy <- coords[, 1:2]
-  
-  # Need at least two vertices to calculate a distance
-  if (nrow(unique(coords_xy)) < 2) {
-    return(0)
-  }
-  
-  # Use Euclidean distance (dist) since data is in Albers (meters)
-  max_dist <- max(dist(coords_xy))
-  return(max_dist)
-}
-
-
-#' Summarize Cluster Geometries and Point Distributions
-#'
-#' Calculates descriptive statistics for each clustering method, including
-#' point counts per site, site diameter (from geometry),
-#' and site area (from geometry).
-#'
-#' @param all_clusterings A list where keys are method names and values are
-#'   dataframes of clustered points (e.g., from `get_clusterings`).
-#'   Handles the nested list for 'BayesOptClustGeo'.
-#' @param all_site_geometries A list where keys are method names and values
-#'   are 'sf' objects containing the geometry for each site (e.g., from
-#'   `create_site_geometries`).
-#' @param units A string, either "m" (meters) or "km" (kilometers),
-#'   for outputting diameter and area metrics.
-#'
-#' @return A dataframe where each row summarizes one clustering method.
 summarize_clusterings <- function(all_clusterings, all_site_geometries, units = "m") {
   
   all_summaries_list <- list()
   
   # Set unit divisors
-  diam_divisor <- 1.0
   area_divisor <- 1.0
-  diam_unit_label <- "m"
   area_unit_label <- "m2"
   
   if (units == "km") {
-    diam_divisor <- 1000.0
     area_divisor <- 1000000.0
-    diam_unit_label <- "km"
     area_unit_label <- "km2"
   }
   
@@ -169,7 +117,7 @@ summarize_clusterings <- function(all_clusterings, all_site_geometries, units = 
       dplyr::left_join(point_stats, by = "site") 
       
     # Handle sites that might have had 0 points (n_points=NA)
-    site_summary$n_points[is.na(site_summary$n_points)] <- 0
+    # site_summary$n_points[is.na(site_summary$n_points)] <- 0
 
       
     # --- 7. Apply Unit Conversions ---
