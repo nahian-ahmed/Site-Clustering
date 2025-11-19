@@ -154,7 +154,7 @@ cat("--- Geometry pre-computing complete. ---\n")
 clustering_summary_df <- summarize_clusterings(
   all_clusterings = all_clusterings,
   all_site_geometries = all_site_geometries,
-  units = "m" 
+  units = "km" 
 )
 
 # Define output directory (create if it doesn't exist yet)

@@ -157,17 +157,7 @@ summarize_clusterings <- function(all_clusterings, all_site_geometries, units = 
       group_by(site) %>%
       dplyr::summarise(n_points = n())
       
-    # --- 4. Calculate Diameter Stats (Metrics 6-9) ---
-    # *** MODIFIED BLOCK ***
-    # (max distance between vertices of the site's geometry)
-    diameter_stats <- geom_data %>%
-      mutate(
-        # Apply the helper function to each geometry
-        diameter_m = sapply(geometry, .calculate_geom_diameter)
-      ) %>%
-      sf::st_drop_geometry() %>% # Drop geometry to make it a simple dataframe
-      select(site, diameter_m)  # Keep only site and the new diameter
-      
+ 
     # --- 5. Calculate Area Stats (Metrics 10-13) ---
     # (area of the site geometry)
     # Geometries are in Albers (meters), so st_area() returns m^2
@@ -176,16 +166,13 @@ summarize_clusterings <- function(all_clusterings, all_site_geometries, units = 
     # --- 6. Join all stats by site ---
     # We use geom_data as the base, as it represents the definitive list of sites
     site_summary <- geom_data %>%
-      dplyr::left_join(point_stats, by = "site") %>%
-      dplyr::left_join(diameter_stats, by = "site")
+      dplyr::left_join(point_stats, by = "site") 
       
     # Handle sites that might have had 0 points (n_points=NA)
     site_summary$n_points[is.na(site_summary$n_points)] <- 0
-    # diameter_m should be 0 from the helper, but handle NAs just in case
-    site_summary$diameter_m[is.na(site_summary$diameter_m)] <- 0
+
       
     # --- 7. Apply Unit Conversions ---
-    site_summary$diameter <- site_summary$diameter_m / diam_divisor
     site_summary$area <- site_summary$area_m2 / area_divisor
     
     # --- 8. Aggregate final metrics for the method ---
@@ -196,10 +183,6 @@ summarize_clusterings <- function(all_clusterings, all_site_geometries, units = 
         min_points = min(n_points),
         max_points = max(n_points),
         mean_points = mean(n_points),
-        
-        min_diameter = min(diameter),
-        max_diameter = max(diameter),
-        mean_diameter = mean(diameter),
         
         min_area = min(area),
         max_area = max(area),
@@ -216,7 +199,6 @@ summarize_clusterings <- function(all_clusterings, all_site_geometries, units = 
   final_df <- dplyr::bind_rows(all_summaries_list)
   
   # Rename columns to include units
-  colnames(final_df) <- gsub("_diameter", paste0("_diameter_", diam_unit_label), colnames(final_df))
   colnames(final_df) <- gsub("_area", paste0("_area_", area_unit_label), colnames(final_df))
   
   # Reorder columns to be logical
@@ -227,9 +209,6 @@ summarize_clusterings <- function(all_clusterings, all_site_geometries, units = 
       min_points,
       max_points,
       mean_points,
-      dplyr::starts_with("min_diameter"),
-      dplyr::starts_with("max_diameter"),
-      dplyr::starts_with("mean_diameter"),
       dplyr::starts_with("min_area"),
       dplyr::starts_with("max_area"),
       dplyr::starts_with("mean_area"),
