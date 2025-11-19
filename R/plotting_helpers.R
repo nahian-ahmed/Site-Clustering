@@ -202,7 +202,7 @@ plot_sites <- function(
             geom_point(
                 data = pts_df_distinct,
                 aes(x = longitude, y = latitude, fill = site),
-                shape = 21, size = 2.5, 
+                shape = 21, size = 0.5, 
                 color = "black",
                 show.legend = FALSE
             ) +
