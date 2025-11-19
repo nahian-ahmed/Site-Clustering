@@ -1,5 +1,3 @@
-
-fullContent:
 library(sf)
 library(dplyr)
 library(terra)
