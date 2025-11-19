@@ -53,10 +53,10 @@ comparison_method_list <- c(
     "BayesOptClustGeo"
 )
 
-comparison_method_list <- c(
-    "1to10",
-    "SVS"
-)
+# comparison_method_list <- c(
+#     "1to10",
+#     "SVS"
+# )
 
 
 
