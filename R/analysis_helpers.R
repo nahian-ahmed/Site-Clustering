@@ -196,17 +196,14 @@ summarize_clusterings <- function(all_clusterings, all_site_geometries, units = 
         min_points = min(n_points),
         max_points = max(n_points),
         mean_points = mean(n_points),
-        median_points = median(n_points),
         
         min_diameter = min(diameter),
         max_diameter = max(diameter),
         mean_diameter = mean(diameter),
-        median_diameter = median(diameter),
         
         min_area = min(area),
         max_area = max(area),
-        mean_area = mean(area),
-        median_area = median(area)
+        mean_area = mean(area)
       )
     
     method_summary$method <- method_name
@@ -230,15 +227,12 @@ summarize_clusterings <- function(all_clusterings, all_site_geometries, units = 
       min_points,
       max_points,
       mean_points,
-      median_points,
       dplyr::starts_with("min_diameter"),
       dplyr::starts_with("max_diameter"),
       dplyr::starts_with("mean_diameter"),
-      dplyr::starts_with("median_diameter"),
       dplyr::starts_with("min_area"),
       dplyr::starts_with("max_area"),
       dplyr::starts_with("mean_area"),
-      dplyr::starts_with("median_area")
     )
   
   return(final_df)
