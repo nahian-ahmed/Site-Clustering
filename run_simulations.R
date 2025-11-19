@@ -81,7 +81,7 @@ n_fit_repeats <- 25
 n_test_repeats <- 1
 
 res_m <- 30 # Cell size in meters
-buffer_m <- 15 # Buffer radius
+buffer_m <- 300 # Buffer radius
 
 state_cov_names <- names(sim_params)[2:6]
 obs_cov_names <- names(sim_params)[8:12]
