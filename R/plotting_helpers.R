@@ -2,15 +2,14 @@ library(ggplot2)
 library(terra)
 library(sf)
 library(dplyr)
-library(ggforce) # For geom_mark_ellipse
-library(patchwork) # For combining plots
-library(ggnewscale) # For multiple color scales
-
+library(ggforce) 
+library(patchwork) 
+library(ggnewscale) 
 
 plot_sites <- function(
     base_train_df,
     all_clusterings,
-    all_site_geometries, # <-- NEW ARGUMENT
+    all_site_geometries, 
     elevation_raster,
     methods_to_plot,
     boundary_shp_path,
@@ -29,7 +28,6 @@ plot_sites <- function(
     region <- terra::crop(elevation_raster[[1]], valid_boundary, mask = TRUE)
     
     base_rast_df <- as.data.frame(region, xy = TRUE)
-    # Get the name of the elevation column
     elev_col_name <- names(base_rast_df)[3] 
     
     base_rast_min <- min(base_rast_df[[elev_col_name]], na.rm = TRUE)
@@ -37,8 +35,7 @@ plot_sites <- function(
 
     bbox_full <- terra::ext(region)
     
-    # --- Define WGS84 CRS for transformations ---
-    # FIX: Use EPSG code 4326 instead of PROJ string to ensure unit definitions are robust
+    # --- Define WGS84 CRS for transformations (Using EPSG code is safer) ---
     wgs84_crs <- sf::st_crs(4326)
 
     # --- 2. Create Left Plot (Observations) ---
@@ -84,7 +81,6 @@ plot_sites <- function(
             y = "Latitude"
         ) +
         theme_bw() +
-        # Use coord_sf to set map limits and CRS
         coord_sf(
             xlim = c(bbox_full$xmin, bbox_full$xmax),
             ylim = c(bbox_full$ymin, bbox_full$ymax),
@@ -96,7 +92,7 @@ plot_sites <- function(
             legend.position = "bottom",
             legend.direction = "horizontal",
             legend.key.width = unit(1.5, "cm"),
-            axis.title = element_blank() # Remove axis titles for maps
+            axis.title = element_blank() 
         )
 
     # --- 3. Create Right Plots (Zoomed Clusters) ---
@@ -127,55 +123,51 @@ plot_sites <- function(
         }
         
         # --- Transform Geometries to WGS84 for plotting ---
-        # FIX: Ensure input has valid CRS before transform
+        # Ensure we have a valid CRS before transform
         if (is.na(sf::st_crs(geom_sf))) {
-             # Assuming Albers/Meters if missing, based on create_site_geometries
-             sf::st_crs(geom_sf) <- 5070 # Or your specific Albers string if standard
+             sf::st_crs(geom_sf) <- 5070 # Fallback to Albers if missing
         }
         geom_sf_wgs84 <- sf::st_transform(geom_sf, crs = wgs84_crs)
         geom_sf_wgs84$site <- as.factor(geom_sf_wgs84$site)
         
-
-        # +++ START OF FIX (v4) +++
         
-        # --- Create an sf bounding box for cropping ---
+        # +++ START OF FIX (Robust Intersection Logic) +++
+        
+        # 1. Create bbox
         zoom_bbox_sf <- sf::st_bbox(c(
             xmin = zoom_box$longitude[1], 
             xmax = zoom_box$longitude[2],
             ymin = zoom_box$latitude[1], 
             ymax = zoom_box$latitude[2]
         ), crs = wgs84_crs)
-        
-        # --- Convert the bbox to an sfc polygon object ---
         zoom_poly_sfc <- sf::st_as_sfc(zoom_bbox_sf)
 
-        # --- Manually *clip* the geometries to the zoom box ---
-        
-        # Suppress warnings about attribute assumptions *only* for the sf data frame
+        # 2. Clean geometry BEFORE intersection
+        # (Fixes issues where fine grids get corrupted during clipping)
         sf::st_agr(geom_sf_wgs84) = "constant"
-        
-        # FIX: Make valid BEFORE intersection to avoid topological errors with fine grids
         geom_sf_wgs84 <- sf::st_make_valid(geom_sf_wgs84)
 
-        # Use suppressWarnings because clipping can create small/invalid geometries.
+        # 3. Intersect
         geom_sf_zoom <- suppressWarnings(
             sf::st_intersection(geom_sf_wgs84, zoom_poly_sfc)
         )
         
-        # FIX: Validate and filter geometries after intersection
+        # 4. Post-Intersection Filtering
         if (nrow(geom_sf_zoom) > 0) {
-            geom_sf_zoom <- sf::st_make_valid(geom_sf_zoom)
+            # Fix validity again after cut
+            geom_sf_zoom <- sf::st_make_valid(geom_sf_zoom) 
             
-            # Filter to only keep area features (Polygon/MultiPolygon)
+            # Keep only Polygons (drops lines/points from edges)
             geom_sf_zoom <- geom_sf_zoom[sf::st_geometry_type(geom_sf_zoom) %in% c("POLYGON", "MULTIPOLYGON"), ]
             
-            # FIX: safely drop units to avoid "ud_compare" errors during plotting
-            # Calculate area, strip units, then filter > 0
-            areas <- sf::st_area(geom_sf_zoom)
-            geom_sf_zoom <- geom_sf_zoom[as.numeric(areas) > 0, ]
+            # FILTER BY AREA SAFELY (Strip units to prevent logical errors)
+            # Only if we still have rows
+            if (nrow(geom_sf_zoom) > 0) {
+                areas <- as.numeric(sf::st_area(geom_sf_zoom)) # Force to numeric
+                geom_sf_zoom <- geom_sf_zoom[areas > 1e-6, ]   # Filter tiny artifacts
+            }
         }
-        
-        # +++ END OF FIX (v4) +++
+        # +++ END OF FIX +++
 
 
         # --- Filter Point Data ---
@@ -190,7 +182,6 @@ plot_sites <- function(
             distinct(latitude, longitude, .keep_all = TRUE)
             
         p_zoom <- ggplot() +
-            # Faded background
             geom_raster(
                 data = base_rast_df, 
                 aes(x = x, y = y, fill = .data[[elev_col_name]]),
@@ -201,10 +192,10 @@ plot_sites <- function(
                 limits = c(base_rast_min, base_rast_max),
                 aesthetics = "fill"
             ) +
-            new_scale_fill() + # Allows for a new fill scale
+            new_scale_fill() + 
             
-            # --- NEW LAYER: Site Geometries ---
-            # Check if we have data to plot to avoid errors
+            # --- Site Geometries ---
+            # Only add layer if data exists
             {if (nrow(geom_sf_zoom) > 0) 
                 geom_sf(
                     data = geom_sf_zoom, 
@@ -213,11 +204,11 @@ plot_sites <- function(
                     color = "black",  
                     linewidth = 0.5,  
                     show.legend = FALSE,
-                    inherit.aes = FALSE # Ensure it doesn't inherit incompatible aesthetics
+                    inherit.aes = FALSE 
                 )
             } +
             
-            # --- Clustered points (ON TOP) ---
+            # --- Clustered points ---
             geom_point(
                 data = pts_df_distinct,
                 aes(x = longitude, y = latitude, fill = site),
@@ -226,14 +217,13 @@ plot_sites <- function(
                 show.legend = FALSE
             ) +
             
-            scale_fill_discrete() + # This scale applies to both geom_sf and geom_point
+            scale_fill_discrete() + 
             
-            # --- Use coord_sf to set zoom and CRS ---
             coord_sf(
                 xlim = c(zoom_box$longitude[1], zoom_box$longitude[2]),
                 ylim = c(zoom_box$latitude[1], zoom_box$latitude[2]),
                 crs = wgs84_crs,
-                expand = FALSE
+                expand = FALSE 
             ) +
             theme_bw() +
             labs(title = method_name) +
@@ -242,7 +232,7 @@ plot_sites <- function(
                 axis.text = element_blank(),
                 axis.ticks = element_blank(),
                 plot.title = element_text(size = 10, hjust = 0.5),
-                panel.grid.major = element_blank(), # Remove gridlines
+                panel.grid.major = element_blank(),
                 panel.grid.minor = element_blank()
             )
             
@@ -250,15 +240,9 @@ plot_sites <- function(
     }
     
     # --- 4. Assemble the Final Plot ---
-    
-    # Arrange the grid of zoom plots
     plot_clust <- patchwork::wrap_plots(zoom_plots, ncol = 6)
-    
-    # Combine the main plot and the grid
     final_plot <- obs_plot + plot_clust +
-        plot_layout(nrow = 1, widths = c(2, 6)) # Adjust width ratio as needed
-
-
+        plot_layout(nrow = 1, widths = c(2, 6)) 
 
     ggsave(
         output_path,
