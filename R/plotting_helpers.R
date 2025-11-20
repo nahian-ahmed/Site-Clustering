@@ -105,13 +105,19 @@ plot_sites <- function(
             
             # --- 1. Pull Title Closer ---
             # Negative bottom margin (b = -15) pulls the title down towards the map
-            plot.title = element_text(hjust = 0.5, face = "bold", margin = margin(b = -100)),
+            # plot.title = element_text(hjust = 0.5, face = "bold", margin = margin(b = -100)),
+            plot.title = element_text(
+                hjust = 0.5, 
+                face = "bold", 
+                vjust = -25,  # <--- ADD THIS (Tweak number until it lands right)
+                margin = margin(b = -10) # Keep a small margin adjustment if needed
+            ),
 
             # --- 2. Legend Position & Margins ---
             legend.position = "bottom",
             legend.direction = "horizontal",
             # Negative top margin (t = -15) pulls the legend up towards the map
-            legend.margin = margin(t = -100),
+            legend.margin = margin(t = -300),
             # Remove extra box spacing
             legend.box.margin = margin(0, 0, 0, 0),
 
