@@ -58,7 +58,7 @@ plot_sites <- function(
         ) +
         annotate(
             "segment",
-            x = -123.75, xend = zoom_box$longitude[1],
+            x = -123.85, xend = zoom_box$longitude[1],
             y = 44.425, yend = (zoom_box$latitude[1] + zoom_box$latitude[2]) / 2,
             colour = "yellow"
         ) +
@@ -88,7 +88,7 @@ plot_sites <- function(
         #     expand = FALSE
         # ) +
         coord_fixed(
-            ratio = 1.25,
+            ratio = 1.0,
             xlim = c(bbox_full$xmin, bbox_full$xmax),
             ylim = c(bbox_full$ymin, bbox_full$ymax),
             expand = FALSE
@@ -254,7 +254,7 @@ plot_sites <- function(
     ggsave(
         output_path,
         plot = final_plot,
-        width = 16,
+        width = 12,
         height = 8,
         dpi = 300
     )
