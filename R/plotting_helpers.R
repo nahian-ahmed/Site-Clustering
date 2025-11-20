@@ -123,7 +123,7 @@ plot_sites <- function(
 
             # --- 3. Shrink Legend Keys & Text ---
             # Make the color bar much shorter and thinner
-            legend.key.width = unit(1.0, "cm"),  
+            legend.key.width = unit(0.75, "cm"),  
             legend.key.height = unit(0.5, "cm"),
             
             # Reduce text sizes
