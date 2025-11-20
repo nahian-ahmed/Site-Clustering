@@ -93,14 +93,38 @@ plot_sites <- function(
             ylim = c(bbox_full$ymin, bbox_full$ymax),
             expand = FALSE
         ) +
+        # theme(
+        #     plot.title = element_text(hjust = 0.5, face = "bold"),
+        #     legend.position = "bottom",
+        #     legend.direction = "horizontal",
+        #     legend.key.width = unit(1.5, "cm"),
+        #     axis.title = element_blank()
+        # )
+
         theme(
-            plot.title = element_text(hjust = 0.5, face = "bold"),
+            # --- 1. Pull Title Closer ---
+            # Negative bottom margin (b = -15) pulls the title down towards the map
+            plot.title = element_text(hjust = 0.5, face = "bold", margin = margin(b = -15)),
+
+            # --- 2. Legend Position & Margins ---
             legend.position = "bottom",
             legend.direction = "horizontal",
-            legend.key.width = unit(1.5, "cm"),
+            # Negative top margin (t = -15) pulls the legend up towards the map
+            legend.margin = margin(t = -15),
+            # Remove extra box spacing
+            legend.box.margin = margin(0, 0, 0, 0),
+
+            # --- 3. Shrink Legend Keys & Text ---
+            # Make the color bar much shorter and thinner
+            legend.key.width = unit(0.5, "cm"),  
+            legend.key.height = unit(0.2, "cm"),
+            
+            # Reduce text sizes
+            legend.title = element_text(size = 8, face = "bold", vjust = 1),
+            legend.text = element_text(size = 7),
+
             axis.title = element_blank()
         )
-
     # --- 3. Create Right Plots (Zoomed Clusters) ---
     
     zoom_plots <- list()
@@ -249,12 +273,12 @@ plot_sites <- function(
     # --- 4. Assemble the Final Plot ---
     plot_clust <- patchwork::wrap_plots(zoom_plots, ncol = 6)
     final_plot <- obs_plot + plot_clust +
-        plot_layout(nrow = 1, widths = c(1, 6)) 
+        plot_layout(nrow = 1, widths = c(2, 6)) 
 
     ggsave(
         output_path,
         plot = final_plot,
-        width = 14,
+        width = 16,
         height = 8,
         dpi = 300
     )
