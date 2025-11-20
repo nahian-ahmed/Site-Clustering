@@ -117,6 +117,12 @@ cat("--- Albers projection and cell area complete ---\n")
 reference_method_list <- sim_clusterings$method
 all_method_names <- unique(c(reference_method_list, comparison_method_list))
 
+all_method_names_plot_order <- c(
+  "1to10", "2to10", "2to10-sameObs", "lat-long", "SVS", "1-per-UL", 
+  "2-kmSq", "1-kmSq", "0.5-kmSq", "0.25-kmSq", "0.125-kmSq", "rounded-4",
+  "clustGeo-50-20", "clustGeo-50-40", "clustGeo-50-60", "clustGeo-50-80", "BayesOptClustGeo", "DBSC"
+)
+
 print(all_method_names)
 
 cat("--- Pre-computing ALL clusterings... ---\n")
@@ -179,7 +185,7 @@ site_plot <- plot_sites(
     all_clusterings = all_clusterings,
     all_site_geometries = all_site_geometries,
     elevation_raster = state_cov_raster,
-    methods_to_plot = names(all_clusterings),
+    methods_to_plot = all_method_names_plot_order,
     boundary_shp_path = boundary_shapefile_path,
     output_path = file.path(output_dir, "site_cluster_visualization.png")
 )
