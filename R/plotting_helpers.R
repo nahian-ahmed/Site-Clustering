@@ -39,7 +39,6 @@ plot_sites <- function(
     wgs84_crs <- sf::st_crs(4326)
 
     # --- 2. Create Left Plot (Observations) ---
-    # UPDATED: Using coord_fixed(ratio = 1) to force square aspect ratio
     obs_plot <- ggplot() +
         geom_raster(
             data = base_rast_df, 
@@ -82,7 +81,12 @@ plot_sites <- function(
             y = "Latitude"
         ) +
         theme_bw() +
-        # REPLACED coord_sf with coord_fixed for 1:1 lat/long ratio
+        # coord_sf(
+        #     xlim = c(bbox_full$xmin, bbox_full$xmax),
+        #     ylim = c(bbox_full$ymin, bbox_full$ymax),
+        #     crs = wgs84_crs,
+        #     expand = FALSE
+        # ) +
         coord_fixed(
             ratio = 1,
             xlim = c(bbox_full$xmin, bbox_full$xmax),
@@ -152,32 +156,24 @@ plot_sites <- function(
             sf::st_intersection(geom_sf_wgs84, zoom_poly_sfc)
         )
         
-        # 4. Post-Intersection Extraction
-        geom_poly_df <- data.frame() # Initialize empty for logic check later
-        
+        # 4. Post-Intersection Extraction (CRITICAL CHANGE)
         if (nrow(geom_sf_zoom) > 0) {
             
-            # Ensure we extract POLYGONS from any GEOMETRYCOLLECTIONS
+            # Ensure we extract POLYGONS from any GEOMETRYCOLLECTIONS created by the cut
+            # This replaces the previous "filter" which was dropping the collections
             geom_sf_zoom <- sf::st_collection_extract(geom_sf_zoom, "POLYGON")
             
             # Make valid again after extraction
             geom_sf_zoom <- sf::st_make_valid(geom_sf_zoom)
             
-            # Filter by area
+            # Filter by area (explicitly stripping units to avoid errors)
             if (nrow(geom_sf_zoom) > 0) {
+                # Calculate area
                 area_vals <- sf::st_area(geom_sf_zoom)
+                
+                # Convert to numeric (strips 'm^2' unit class) for safe comparison
+                # 1e-6 m^2 is effectively 0, checking for non-empty polygons
                 geom_sf_zoom <- geom_sf_zoom[as.numeric(area_vals) > 1e-6, ]
-            }
-            
-            # UPDATED: Convert SF to Dataframe for geom_polygon usage (allows coord_fixed)
-            if (nrow(geom_sf_zoom) > 0) {
-                # Cast to polygons to ensure consistency
-                geom_poly_cast <- sf::st_cast(geom_sf_zoom, "POLYGON")
-                # Extract coordinates
-                geom_coords <- sf::st_coordinates(geom_poly_cast) %>% as.data.frame()
-                # Map L1 (polygon index) back to Site ID
-                geom_coords$site <- geom_poly_cast$site[geom_coords$L1]
-                geom_poly_df <- geom_coords
             }
         }
         # +++ FIX END +++
@@ -207,15 +203,16 @@ plot_sites <- function(
             ) +
             new_scale_fill() + 
             
-            # --- Site Geometries (UPDATED: using geom_polygon) ---
-            {if (nrow(geom_poly_df) > 0) 
-                geom_polygon(
-                    data = geom_poly_df, 
-                    aes(x = X, y = Y, group = interaction(L1, L2), fill = site), 
+            # --- Site Geometries ---
+            {if (nrow(geom_sf_zoom) > 0) 
+                geom_sf(
+                    data = geom_sf_zoom, 
+                    aes(fill = site), 
                     alpha = 0.4,      
                     color = "black",  
-                    linewidth = 0.5,
-                    show.legend = FALSE
+                    linewidth = 0.5,  # Adjust this if the small grids look too thick
+                    show.legend = FALSE,
+                    inherit.aes = FALSE 
                 )
             } +
             
@@ -223,14 +220,18 @@ plot_sites <- function(
             geom_point(
                 data = pts_df_distinct,
                 aes(x = longitude, y = latitude, fill = site),
-                shape = 21, size = 1.0, 
+                shape = 21, size = 2.0, 
                 color = "black",
                 show.legend = FALSE
             ) +
             
             scale_fill_discrete() + 
-            
-            # UPDATED: Replaced coord_sf with coord_fixed(ratio=1)
+            # coord_sf(
+            #     xlim = c(zoom_box$longitude[1], zoom_box$longitude[2]),
+            #     ylim = c(zoom_box$latitude[1], zoom_box$latitude[2]),
+            #     crs = wgs84_crs,
+            #     expand = FALSE 
+            # ) +
             coord_fixed(
                 ratio = 1,
                 xlim = c(zoom_box$longitude[1], zoom_box$longitude[2]),
@@ -259,7 +260,7 @@ plot_sites <- function(
     ggsave(
         output_path,
         plot = final_plot,
-        width = 20,
+        width = 18,
         height = 8,
         dpi = 300
     )
