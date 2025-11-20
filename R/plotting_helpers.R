@@ -88,7 +88,7 @@ plot_sites <- function(
         #     expand = FALSE
         # ) +
         coord_fixed(
-            ratio = 1.0,
+            ratio = 1.25,
             xlim = c(bbox_full$xmin, bbox_full$xmax),
             ylim = c(bbox_full$ymin, bbox_full$ymax),
             expand = FALSE
