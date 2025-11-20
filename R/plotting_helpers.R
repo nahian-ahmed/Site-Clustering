@@ -238,7 +238,7 @@ plot_sites <- function(
                 axis.title = element_blank(),
                 axis.text = element_blank(),
                 axis.ticks = element_blank(),
-                plot.title = element_text(size = 10, hjust = 0.5, face = "bold"),
+                plot.title = element_text(size = 10, hjust = 0.5),
                 panel.grid.major = element_blank(),
                 panel.grid.minor = element_blank()
             )
@@ -249,12 +249,12 @@ plot_sites <- function(
     # --- 4. Assemble the Final Plot ---
     plot_clust <- patchwork::wrap_plots(zoom_plots, ncol = 6)
     final_plot <- obs_plot + plot_clust +
-        plot_layout(nrow = 1, widths = c(2, 6)) 
+        plot_layout(nrow = 1, widths = c(1, 6)) 
 
     ggsave(
         output_path,
         plot = final_plot,
-        width = 12,
+        width = 14,
         height = 8,
         dpi = 300
     )
