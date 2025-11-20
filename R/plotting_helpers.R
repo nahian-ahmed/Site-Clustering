@@ -245,7 +245,7 @@ plot_sites <- function(
     
     # --- 4. Assemble the Final Plot ---
     # Reduced grid to 5 columns to allow more width per plot
-    plot_clust <- patchwork::wrap_plots(zoom_plots, ncol = 5) 
+    plot_clust <- patchwork::wrap_plots(zoom_plots, ncol = 6) 
     
     final_plot <- obs_plot + plot_clust +
         plot_layout(nrow = 1, widths = c(1.5, 6)) 
