@@ -104,24 +104,24 @@ plot_sites <- function(
         theme(
             # --- 1. Pull Title Closer ---
             # Negative bottom margin (b = -15) pulls the title down towards the map
-            plot.title = element_text(hjust = 0.5, face = "bold", margin = margin(b = -15)),
+            plot.title = element_text(hjust = 0.5, face = "bold", margin = margin(b = -25)),
 
             # --- 2. Legend Position & Margins ---
             legend.position = "bottom",
             legend.direction = "horizontal",
             # Negative top margin (t = -15) pulls the legend up towards the map
-            legend.margin = margin(t = -15),
+            legend.margin = margin(t = -25),
             # Remove extra box spacing
             legend.box.margin = margin(0, 0, 0, 0),
 
             # --- 3. Shrink Legend Keys & Text ---
             # Make the color bar much shorter and thinner
-            legend.key.width = unit(0.5, "cm"),  
-            legend.key.height = unit(0.2, "cm"),
+            legend.key.width = unit(1.0, "cm"),  
+            legend.key.height = unit(0.5, "cm"),
             
             # Reduce text sizes
-            legend.title = element_text(size = 8, face = "bold", vjust = 1),
-            legend.text = element_text(size = 7),
+            legend.title = element_text(size = 10, vjust = 1),
+            legend.text = element_text(size = 8),
 
             axis.title = element_blank()
         )
@@ -273,12 +273,12 @@ plot_sites <- function(
     # --- 4. Assemble the Final Plot ---
     plot_clust <- patchwork::wrap_plots(zoom_plots, ncol = 6)
     final_plot <- obs_plot + plot_clust +
-        plot_layout(nrow = 1, widths = c(2, 6)) 
+        plot_layout(nrow = 1, widths = c(1, 4)) 
 
     ggsave(
         output_path,
         plot = final_plot,
-        width = 16,
+        width = 14,
         height = 8,
         dpi = 300
     )
