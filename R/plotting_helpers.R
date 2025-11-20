@@ -109,7 +109,7 @@ plot_sites <- function(
             plot.title = element_text(
                 hjust = 0.5, 
                 face = "bold", 
-                vjust = -5,  # <--- ADD THIS (Tweak number until it lands right)
+                vjust = -5.5,  # <--- ADD THIS (Tweak number until it lands right)
                 margin = margin(b = -10) # Keep a small margin adjustment if needed
             ),
 
@@ -117,7 +117,7 @@ plot_sites <- function(
             legend.position = "bottom",
             legend.direction = "horizontal",
             # Negative top margin (t = -15) pulls the legend up towards the map
-            legend.margin = margin(t = -200),
+            legend.margin = margin(t = -175),
             # Remove extra box spacing
             legend.box.margin = margin(0, 0, 0, 0),
 
@@ -238,9 +238,9 @@ plot_sites <- function(
             {if (nrow(geom_sf_zoom) > 0) 
                 geom_sf(
                     data = geom_sf_zoom, 
-                    aes(fill = site, color = site), 
+                    aes(fill = site), 
                     alpha = 0.4,      
-                    # color = "black",  
+                    color = "black",  
                     linewidth = 0.25,
                     show.legend = FALSE,
                     inherit.aes = FALSE 
