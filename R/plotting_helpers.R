@@ -81,16 +81,10 @@ plot_sites <- function(
             y = "Latitude"
         ) +
         theme_bw() +
-        # coord_sf(
-        #     xlim = c(bbox_full$xmin, bbox_full$xmax),
-        #     ylim = c(bbox_full$ymin, bbox_full$ymax),
-        #     crs = wgs84_crs,
-        #     expand = FALSE
-        # ) +
-        coord_fixed(
-            ratio = 1,
+        coord_sf(
             xlim = c(bbox_full$xmin, bbox_full$xmax),
             ylim = c(bbox_full$ymin, bbox_full$ymax),
+            crs = wgs84_crs,
             expand = FALSE
         ) +
         theme(
@@ -226,16 +220,10 @@ plot_sites <- function(
             ) +
             
             scale_fill_discrete() + 
-            # coord_sf(
-            #     xlim = c(zoom_box$longitude[1], zoom_box$longitude[2]),
-            #     ylim = c(zoom_box$latitude[1], zoom_box$latitude[2]),
-            #     crs = wgs84_crs,
-            #     expand = FALSE 
-            # ) +
-            coord_fixed(
-                ratio = 1,
+            coord_sf(
                 xlim = c(zoom_box$longitude[1], zoom_box$longitude[2]),
                 ylim = c(zoom_box$latitude[1], zoom_box$latitude[2]),
+                crs = wgs84_crs,
                 expand = FALSE 
             ) +
             theme_bw() +
@@ -260,7 +248,7 @@ plot_sites <- function(
     ggsave(
         output_path,
         plot = final_plot,
-        width = 18,
+        width = 16,
         height = 8,
         dpi = 300
     )
