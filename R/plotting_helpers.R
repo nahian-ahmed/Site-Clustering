@@ -20,6 +20,22 @@ plot_sites <- function(
     )
 ) {
 
+    # --- 0. Aspect Ratio Correction (Fixing the "Squeeze") ---
+    # Calculate the center of the box
+    mid_lon <- mean(zoom_box$longitude)
+    mid_lat <- mean(zoom_box$latitude)
+    
+    # Determine height in degrees
+    lat_height <- zoom_box$latitude[2] - zoom_box$latitude[1]
+    
+    # Calculate required width in degrees to make it visually square
+    # Adjustment factor: 1 / cos(latitude in radians)
+    lon_width_correction <- 1 / cos(mid_lat * pi / 180)
+    required_lon_width <- lat_height * lon_width_correction
+    
+    # Update the zoom_box longitude to be physically square
+    zoom_box$longitude <- c(mid_lon - required_lon_width/2, mid_lon + required_lon_width/2)
+
     # --- 1. Prepare Base Raster for Plotting ---
     valid_boundary <- terra::vect(boundary_shp_path)
     terra::crs(valid_boundary) <- terra::crs(elevation_raster)
@@ -103,7 +119,6 @@ plot_sites <- function(
         
         # --- Get Point Data ---
         if (!method_name %in% names(all_clusterings)) {
-            warning(paste("Method not found in all_clusterings:", method_name))
             next
         }
         pts_df <- all_clusterings[[method_name]]
@@ -113,12 +128,10 @@ plot_sites <- function(
         
         # --- Get Geometry Data ---
         if (!method_name %in% names(all_site_geometries)) {
-            warning(paste("Method not found in all_site_geometries:", method_name))
             next
         }
         geom_sf <- all_site_geometries[[method_name]]
         if (is.null(geom_sf)) {
-            warning(paste("NULL geometry for method:", method_name))
             next
         }
         
@@ -130,7 +143,7 @@ plot_sites <- function(
         geom_sf_wgs84$site <- as.factor(geom_sf_wgs84$site)
         
         
-        # +++ FIX START: Robust Intersection Logic +++
+        # --- Robust Intersection Logic ---
         
         # 1. Create bbox
         zoom_bbox_sf <- sf::st_bbox(c(
@@ -141,7 +154,7 @@ plot_sites <- function(
         ), crs = wgs84_crs)
         zoom_poly_sfc <- sf::st_as_sfc(zoom_bbox_sf)
 
-        # 2. Make valid BEFORE intersection (Crucial for fine grids)
+        # 2. Make valid BEFORE intersection
         sf::st_agr(geom_sf_wgs84) = "constant"
         geom_sf_wgs84 <- sf::st_make_valid(geom_sf_wgs84)
 
@@ -150,28 +163,16 @@ plot_sites <- function(
             sf::st_intersection(geom_sf_wgs84, zoom_poly_sfc)
         )
         
-        # 4. Post-Intersection Extraction (CRITICAL CHANGE)
+        # 4. Post-Intersection Extraction
         if (nrow(geom_sf_zoom) > 0) {
-            
-            # Ensure we extract POLYGONS from any GEOMETRYCOLLECTIONS created by the cut
-            # This replaces the previous "filter" which was dropping the collections
             geom_sf_zoom <- sf::st_collection_extract(geom_sf_zoom, "POLYGON")
-            
-            # Make valid again after extraction
             geom_sf_zoom <- sf::st_make_valid(geom_sf_zoom)
             
-            # Filter by area (explicitly stripping units to avoid errors)
             if (nrow(geom_sf_zoom) > 0) {
-                # Calculate area
                 area_vals <- sf::st_area(geom_sf_zoom)
-                
-                # Convert to numeric (strips 'm^2' unit class) for safe comparison
-                # 1e-6 m^2 is effectively 0, checking for non-empty polygons
                 geom_sf_zoom <- geom_sf_zoom[as.numeric(area_vals) > 1e-6, ]
             }
         }
-        # +++ FIX END +++
-
 
         # --- Filter Point Data ---
         pts_df$site <- as.factor(pts_df$site)
@@ -204,7 +205,7 @@ plot_sites <- function(
                     aes(fill = site), 
                     alpha = 0.4,      
                     color = "black",  
-                    linewidth = 0.5,  # Adjust this if the small grids look too thick
+                    linewidth = 0.3, 
                     show.legend = FALSE,
                     inherit.aes = FALSE 
                 )
@@ -233,24 +234,27 @@ plot_sites <- function(
                 axis.title = element_blank(),
                 axis.text = element_blank(),
                 axis.ticks = element_blank(),
-                plot.title = element_text(size = 10, hjust = 0.5),
+                plot.title = element_text(size = 9, hjust = 0.5), # Reduced title size
                 panel.grid.major = element_blank(),
-                panel.grid.minor = element_blank()
+                panel.grid.minor = element_blank(),
+                plot.margin = margin(0, 0, 2, 0) # Removed margins (Top, Right, Bottom, Left)
             )
             
         zoom_plots[[method_name]] <- p_zoom
     }
     
     # --- 4. Assemble the Final Plot ---
-    plot_clust <- patchwork::wrap_plots(zoom_plots, ncol = 6)
+    # Reduced grid to 5 columns to allow more width per plot
+    plot_clust <- patchwork::wrap_plots(zoom_plots, ncol = 5) 
+    
     final_plot <- obs_plot + plot_clust +
-        plot_layout(nrow = 1, widths = c(2, 6)) 
+        plot_layout(nrow = 1, widths = c(1.5, 6)) 
 
     ggsave(
         output_path,
         plot = final_plot,
-        width = 20,
-        height = 8,
+        width = 18, # Slightly narrower to force height/width balance
+        height = 9,
         dpi = 300
     )
     
