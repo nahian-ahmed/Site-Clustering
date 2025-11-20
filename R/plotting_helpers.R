@@ -81,10 +81,16 @@ plot_sites <- function(
             y = "Latitude"
         ) +
         theme_bw() +
-        coord_sf(
+        # coord_sf(
+        #     xlim = c(bbox_full$xmin, bbox_full$xmax),
+        #     ylim = c(bbox_full$ymin, bbox_full$ymax),
+        #     crs = wgs84_crs,
+        #     expand = FALSE
+        # ) +
+        coord_fixed(
+            ratio = 1.0,
             xlim = c(bbox_full$xmin, bbox_full$xmax),
             ylim = c(bbox_full$ymin, bbox_full$ymax),
-            crs = wgs84_crs,
             expand = FALSE
         ) +
         theme(
@@ -92,7 +98,7 @@ plot_sites <- function(
             legend.position = "bottom",
             legend.direction = "horizontal",
             legend.key.width = unit(1.5, "cm"),
-            axis.title = element_blank() 
+            axis.title = element_blank()
         )
 
     # --- 3. Create Right Plots (Zoomed Clusters) ---
@@ -204,7 +210,7 @@ plot_sites <- function(
                     aes(fill = site), 
                     alpha = 0.4,      
                     color = "black",  
-                    linewidth = 0.5,  # Adjust this if the small grids look too thick
+                    linewidth = 0.25,
                     show.legend = FALSE,
                     inherit.aes = FALSE 
                 )
@@ -232,7 +238,7 @@ plot_sites <- function(
                 axis.title = element_blank(),
                 axis.text = element_blank(),
                 axis.ticks = element_blank(),
-                plot.title = element_text(size = 10, hjust = 0.5),
+                plot.title = element_text(size = 10, hjust = 0.5, face = "bold"),
                 panel.grid.major = element_blank(),
                 panel.grid.minor = element_blank()
             )
