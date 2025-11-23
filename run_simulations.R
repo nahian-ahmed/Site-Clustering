@@ -100,6 +100,51 @@ if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 write.csv(clustering_summary_df, file.path(output_dir, "clustering_descriptive_stats.csv"), row.names = FALSE)
 
 
+# === CALCULATE CLUSTERING SIMILARITY STATISTICS ===
+cat("--- Calculating pairwise clustering similarity metrics (ARI, AMI, NID) ---\n")
+
+clustering_similarity_list <- list()
+
+# We want to compare every Reference method against every Comparison method
+# (and potentially Reference vs Reference if you want to check stability)
+
+# 1. Define the pairs to compare
+# Usually: Reference methods (Sim Truth) vs All other methods
+ref_methods_to_check <- sim_clusterings$method
+comp_methods_to_check <- unique(c(sim_clusterings$method, comparison_method_list))
+
+for (ref_name in ref_methods_to_check) {
+  for (comp_name in comp_methods_to_check) {
+    
+    # Extract Dataframes
+    ref_dat <- all_clusterings[[ref_name]]
+    if (is.list(ref_dat) && "result_df" %in% names(ref_dat)) ref_dat <- ref_dat$result_df
+    
+    comp_dat <- all_clusterings[[comp_name]]
+    if (is.list(comp_dat) && "result_df" %in% names(comp_dat)) comp_dat <- comp_dat$result_df
+    
+    if (is.null(ref_dat) || is.null(comp_dat)) next
+    
+    # Calculate Stats
+    stats <- calculate_clustering_stats(ref_dat, comp_dat)
+    
+    # Store
+    clustering_similarity_list[[length(clustering_similarity_list) + 1]] <- data.frame(
+      reference_method = ref_name,
+      comparison_method = comp_name,
+      ARI = stats$ARI,
+      AMI = stats$AMI,
+      NID = stats$NID
+    )
+  }
+}
+
+# Bind and Save
+clustering_similarity_df <- dplyr::bind_rows(clustering_similarity_list)
+write.csv(clustering_similarity_df, file.path(output_dir, "clustering_similarity_stats.csv"), row.names = FALSE)
+cat(sprintf("--- Clustering similarity stats saved to %s/clustering_similarity_stats.csv ---\n", output_dir))
+
+
 # all_method_names_plot_order <- c(
 #   "1to10", "2to10", "2to10-sameObs", "lat-long", "SVS", "1-per-UL", 
 #   "2-kmSq", "1-kmSq", "0.5-kmSq", "0.25-kmSq", "0.125-kmSq", "rounded-4",
@@ -167,7 +212,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
 
       # Dataset Stats
       ds_stats <- summarize_datasets(train_data, test_data_full)
-      ds_stats$cluster_method <- current_clustering_method
+      ds_stats$reference_method <- current_clustering_method
       ds_stats$param_set <- param_idx
       ds_stats$sim_num <- sim_num
       all_dataset_stats[[length(all_dataset_stats) + 1]] <- ds_stats
@@ -182,9 +227,13 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
       # --- 6.4 Method Loop (Fit ONCE) ---
       methods_to_test <- unique(c(current_clustering_method, comparison_method_list))
       
+      # === 4. LOOP OVER METHODS (Fit Model ONCE per Sim) ===
       for (method_name in methods_to_test) {
-          
-          # A. Prepare Data
+        
+          cat(sprintf("\n    [Sim %d, Param %d] Fitting Method: %s (Ref: %s)\n", 
+                      sim_num, param_idx, method_name, current_clustering_method))
+
+          # === 4.1. PREPARE occuN DATA ===
           current_clustering_df <- all_clusterings[[method_name]]
           if (is.list(current_clustering_df) && "result_df" %in% names(current_clustering_df)) {
                current_clustering_df <- current_clustering_df$result_df
@@ -197,36 +246,54 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
               cat(sprintf("      Skipping %s (No W matrix)\n", method_name)); next
           }
 
-          # Use new modular function
+          # Use modular function
           umf <- prepare_occuN_data(train_data, current_clustering_df, w_matrix, obs_cov_names, full_raster_covs)
 
-          # B. Fit Model
+          # === 4.2. FIT MODEL ===
           cat(sprintf("      Fitting %s (M=%d)... ", method_name, nrow(umf@y)))
           
           obs_formula <- as.formula(paste("~", paste(obs_cov_names, collapse = " + ")))
           state_formula <- as.formula(paste("~", paste(state_cov_names, collapse = " + ")))
           
-          # Use new modular function
+          # Use modular function
           fm <- fit_occuN_model(umf, state_formula, obs_formula, n_reps = n_fit_repeats, optimizer = selected_optimizer)
           
+          # Define desired column names for coefficients
+          state_col_names <- c("state_intercept", state_cov_names)
+          obs_col_names   <- c("obs_intercept", obs_cov_names)
+          
+          # === 4.3. HANDLE FAILURE (Store NAs with correct names) ===
           if (is.null(fm)) {
               cat("FAILED.\n")
-              # Record NAs
               for(r in 1:n_test_repeats) {
-                  all_results[[length(all_results)+1]] <- data.frame(
-                      cluster_method=current_clustering_method, param_set=param_idx, sim_num=sim_num,
-                      test_repeat=r, comparison_method=method_name, 
-                      auc=NA, auprc=NA, nll=NA, convergence=1
+                  na_results <- data.frame(
+                      reference_method = current_clustering_method, 
+                      param_set = param_idx, 
+                      sim_num = sim_num,
+                      test_repeat = r, 
+                      comparison_method = method_name, 
+                      auc = NA, 
+                      auprc = NA, 
+                      nll = NA, 
+                      convergence = 1
                   )
+                  
+                  # Fill specific columns with NA
+                  for(col in c(state_col_names, obs_col_names)) {
+                      na_results[[col]] <- NA
+                  }
+                  
+                  all_results[[length(all_results)+1]] <- na_results
               }
               next
           }
           cat("Done.\n")
 
-          # C. Predict & Test (Repeat N times)
-          est_alphas <- coef(fm, 'det')
-          est_betas <- coef(fm, 'state')
+          # === 4.4. EXTRACT COEFFICIENTS ===
+          est_alphas <- coef(fm, 'det')   # Observation model (p)
+          est_betas <- coef(fm, 'state')  # State model (lambda)
           
+          # === 4.5. PREDICT & TEST (Repeat N times) ===
           for (repeat_num in 1:n_test_repeats) {
               test_df <- test_splits_list[[repeat_num]]
               
@@ -236,14 +303,14 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
               
               pred_psi <- 1 - exp(-(exp(X_state %*% est_betas) * test_df$area_j))
               pred_det <- plogis(X_obs %*% est_alphas)
-              pred_obs_prob <- pred_psi * pred_det # Y = Z * y
+              pred_obs_prob <- pred_psi * pred_det 
               
-              # Metrics using new modular function
+              # Metrics
               metrics <- calculate_classification_metrics(pred_obs_prob, test_df$species_observed)
               
-              # Store
+              # Store basic info
               res_row <- data.frame(
-                  cluster_method = current_clustering_method,
+                  reference_method = current_clustering_method,
                   param_set = param_idx,
                   sim_num = sim_num,
                   test_repeat = repeat_num,
@@ -253,9 +320,19 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
                   nll = fm@negLogLike,
                   convergence = 0
               )
-              # Add coeffs
-              for(i in seq_along(est_betas)) res_row[[paste0("beta_", names(est_betas)[i])]] <- est_betas[i]
-              for(i in seq_along(est_alphas)) res_row[[paste0("alpha_", names(est_alphas)[i])]] <- est_alphas[i]
+              
+              # --- STORE COEFFICIENTS WITH CORRECT NAMES ---
+              
+              # Store State Coefficients (Intercept + Covariates)
+              for(i in seq_along(state_col_names)){
+                  res_row[[state_col_names[i]]] <- est_betas[i]
+              }
+
+              # Store Obs Coefficients (Intercept + Covariates)
+              for(i in seq_along(obs_col_names)){
+                  res_row[[obs_col_names[i]]] <- est_alphas[i]
+              }
+       
               
               all_results[[length(all_results) + 1]] <- res_row
           }

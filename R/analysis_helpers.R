@@ -1,6 +1,54 @@
+library(aricode)
 library(PRROC)
 library(dplyr)
 library(sf)
+
+
+
+calculate_clustering_stats <- function(ref_df, comp_df) {
+  
+  # Ensure we have the required libraries
+  if (!requireNamespace("aricode", quietly = TRUE)) {
+    warning("Package 'aricode' is required for AMI and NID. Returning NAs.")
+    return(list(ARI = NA, AMI = NA, NID = NA))
+  }
+  
+  # 1. Align the dataframes by checklist_id
+  # We use inner_join to ensure we are comparing the exact same checklists
+  # Renaming columns to avoid collision
+  aligned_data <- dplyr::inner_join(
+    ref_df %>% dplyr::select(checklist_id, ref_label = site),
+    comp_df %>% dplyr::select(checklist_id, comp_label = site),
+    by = "checklist_id"
+  )
+  
+  if (nrow(aligned_data) == 0) {
+    warning("No matching checklists found between the two clusterings.")
+    return(list(ARI = NA, AMI = NA, NID = NA))
+  }
+  
+  # 2. Calculate Metrics
+  c1 <- aligned_data$ref_label
+  c2 <- aligned_data$comp_label
+  
+  # Adjusted Rand Index
+  ari_val <- aricode::ARI(c1, c2)
+  
+  # Adjusted Mutual Information
+  ami_val <- aricode::AMI(c1, c2)
+  
+  # Normalized Information Distance (1 - NMI)
+  # aricode::NID usually calculates 1 - NMI. 
+  nid_val <- aricode::NID(c1, c2)
+  
+  return(list(
+    ARI = ari_val,
+    AMI = ami_val,
+    NID = nid_val
+  ))
+}
+
+
 
 
 #' Calculate Classification Metrics (AUC/AUPRC)
@@ -52,24 +100,6 @@ calculate_classification_metrics <- function(pred_prob, true_labels) {
     auc = auc_val,
     auprc = auprc_val
   ))
-}
-
-calcClusteringStats <- function(pred_df, og_df){
-    
-  
-    pred_df <- pred_df[order(pred_df$checklist_id),]
-    og_df <- og_df[order(og_df$checklist_id),]
-    
-    pred_sites <- as.factor(pred_df$site)
-    og_sites <- as.factor(og_df$site)
-
-    ari <- adjustedRandIndex(og_sites, pred_sites)
-    ami <- AMI(og_sites, pred_sites)
-    nid <- NID(og_sites, pred_sites)
-    
- 
-    return(list(ari=ari, ami=ami , nid=nid))
-
 }
 
 
