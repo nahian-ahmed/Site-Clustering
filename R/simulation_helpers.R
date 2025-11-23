@@ -126,6 +126,8 @@ simulate_train_data <-  function (
   
   # Store this in the site_geoms_sf dataframe
   site_geoms_sf$lambda_tilde_i <- lambda_tilde_i_df[,1]
+
+  site_geoms_sf$lambda_tilde_i[is.na(site_geoms_sf$lambda_tilde_i)] <- 0
   
   # === 6. SIMULATE SITE-LEVEL ABUNDANCE (N_i) & OCCUPANCY (Z_i) ===
   message("  (sim_train) Simulating site-level abundance (N_i) and occupancy (Z_i)...")

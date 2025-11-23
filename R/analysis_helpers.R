@@ -6,20 +6,27 @@ library(sf)
 #' Calculate Classification Metrics (AUC/AUPRC)
 #'
 #' Calculates AUC-ROC and AUC-PR based on predicted probabilities vs truth.
+#' Returns NA if calculation fails or returns empty values.
 calculate_classification_metrics <- function(pred_prob, true_labels) {
   
-  # Basic validation
+  # 1. Basic length validation
   if (length(pred_prob) != length(true_labels)) {
     warning("Length of predictions and truth do not match")
     return(list(auc = NA, auprc = NA))
   }
   
-  # Handle cases with only 1 class in the test set (PRROC fails otherwise)
+  # 2. Handle NAs in predictions (treat as 0 or skip)
+  # Removing NAs ensures PRROC doesn't crash
+  valid_idx <- !is.na(pred_prob) & !is.na(true_labels)
+  pred_prob <- pred_prob[valid_idx]
+  true_labels <- true_labels[valid_idx]
+
+  # 3. Handle edge case: Only 1 class present (e.g., all 0s)
   if (length(unique(true_labels)) < 2) {
     return(list(auc = NA, auprc = NA))
   }
   
-  # PRROC::pr.curve calculation
+  # 4. Attempt PRROC calculation
   pr_metrics <- try({
     PRROC::pr.curve(
       scores.class0 = pred_prob[true_labels == 1], # Positives
@@ -28,13 +35,22 @@ calculate_classification_metrics <- function(pred_prob, true_labels) {
     )
   }, silent = TRUE)
   
-  if (inherits(pr_metrics, "try-error") || is.null(pr_metrics)) {
-    return(list(auc = NA, auprc = NA))
+  # 5. Extract values safely
+  # If pr_metrics is error OR if the specific slot is NULL, return NA
+  
+  auc_val <- NA
+  if (!inherits(pr_metrics, "try-error") && !is.null(pr_metrics$auc.roc)) {
+    auc_val <- pr_metrics$auc.roc
+  }
+
+  auprc_val <- NA
+  if (!inherits(pr_metrics, "try-error") && !is.null(pr_metrics$auc.integral)) {
+    auprc_val <- pr_metrics$auc.integral
   }
   
   return(list(
-    auc = pr_metrics$auc.roc,
-    auprc = pr_metrics$auc.integral
+    auc = auc_val,
+    auprc = auprc_val
   ))
 }
 
