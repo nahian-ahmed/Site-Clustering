@@ -290,283 +290,283 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
       # to get fresh models for each stochastic replicate.
       model_list <- list()
 
-      # # === 3. RUN EXPERIMENTS FOR EACH TEST REPEAT ===
-      # for (repeat_num in 1:n_test_repeats) {
+      # === 3. RUN EXPERIMENTS FOR EACH TEST REPEAT ===
+      for (repeat_num in 1:n_test_repeats) {
 
-      #   # Spatially subsample the test data for this repeat
-      #   test_df <- spatial_subsample_dataset(test_data_full = test_data_full, spacing = res_m/1000, repeat_num = repeat_num)
+        # Spatially subsample the test data for this repeat
+        test_df <- spatial_subsample_dataset(test_data_full = test_data_full, spacing = res_m/1000, repeat_num = repeat_num)
 
-      #   # === 4. LOOP OVER EACH CLUSTERING METHOD ===
-      #   for(method_name in comparison_method_list){
+        # === 4. LOOP OVER EACH CLUSTERING METHOD ===
+        for(method_name in comparison_method_list){
         
-      #     cat(sprintf("\n    [Sim %d, Param %d, Rep %d] Running method: %s\n", sim_num, param_idx, repeat_num, method_name))
+          cat(sprintf("\n    [Sim %d, Param %d, Rep %d] Running method: %s\n", sim_num, param_idx, repeat_num, method_name))
 
-      #     # === 4.1. PREPARE occuN DATA ===
+          # === 4.1. PREPARE occuN DATA ===
 
-      #     train_data_prepped <- train_data %>%    # [Line 284]
-      #       group_by(site) %>%
-      #       mutate(visit_id = row_number()) %>%
-      #       ungroup()
+          train_data_prepped <- train_data %>%    # [Line 284]
+            group_by(site) %>%
+            mutate(visit_id = row_number()) %>%
+            ungroup()
 
-      #     current_geoms <- all_site_geometries[[method_name]] # [Line 286]
-      #     current_clustering_df <- all_clusterings[[method_name]] # [Line 287]
+          current_geoms <- all_site_geometries[[method_name]] # [Line 286]
+          current_clustering_df <- all_clusterings[[method_name]] # [Line 287]
           
-      #     comparison_site_lookup <- current_clustering_df %>%
-      #       select(checklist_id, comparison_site = site)
+          comparison_site_lookup <- current_clustering_df %>%
+            select(checklist_id, comparison_site = site)
           
-      #     train_data_prepped <- train_data_prepped %>%
-      #       left_join(comparison_site_lookup, by = "checklist_id") %>%
-      #       select(-site) %>%
-      #       rename(site = comparison_site) %>%
-      #       filter(!is.na(site))
+          train_data_prepped <- train_data_prepped %>%
+            left_join(comparison_site_lookup, by = "checklist_id") %>%
+            select(-site) %>%
+            rename(site = comparison_site) %>%
+            filter(!is.na(site))
             
-      #     # Handle potential method failure (e.g., if w doesn't exist)
-      #     w_matrix <- attr(current_geoms, "w_matrix")
-      #     if (is.null(current_geoms) || is.null(w_matrix)) {
-      #         cat(sprintf("    SKIPPING %s: No geometry or 'w' matrix (attribute) found.\n", method_name))
-      #         next
-      #     }
+          # Handle potential method failure (e.g., if w doesn't exist)
+          w_matrix <- attr(current_geoms, "w_matrix")
+          if (is.null(current_geoms) || is.null(w_matrix)) {
+              cat(sprintf("    SKIPPING %s: No geometry or 'w' matrix (attribute) found.\n", method_name))
+              next
+          }
 
-      #     train_data_prepped <- train_data %>%
-      #       group_by(site) %>%
-      #       mutate(visit_id = row_number()) %>%
-      #       ungroup()
+          train_data_prepped <- train_data %>%
+            group_by(site) %>%
+            mutate(visit_id = row_number()) %>%
+            ungroup()
 
-      #     # 1. Create a lookup with just the checklist_id and the COMPARISON site
-      #     comparison_site_lookup <- current_clustering_df %>%
-      #       select(checklist_id, comparison_site = site)
+          # 1. Create a lookup with just the checklist_id and the COMPARISON site
+          comparison_site_lookup <- current_clustering_df %>%
+            select(checklist_id, comparison_site = site)
 
-      #     # 2. Join this to train_data_prepped. This replaces the old 'site'
-      #     #    column (from the reference) with the new 'comparison_site' column.
-      #     train_data_prepped <- train_data_prepped %>%
-      #       left_join(comparison_site_lookup, by = "checklist_id") %>%
-      #       select(-site) %>%          # Remove the old REFERENCE site column
-      #       rename(site = comparison_site) # Keep the new COMPARISON site column
+          # 2. Join this to train_data_prepped. This replaces the old 'site'
+          #    column (from the reference) with the new 'comparison_site' column.
+          train_data_prepped <- train_data_prepped %>%
+            left_join(comparison_site_lookup, by = "checklist_id") %>%
+            select(-site) %>%          # Remove the old REFERENCE site column
+            rename(site = comparison_site) # Keep the new COMPARISON site column
             
-      #     # 3. Filter out any checklists that might have been dropped by the
-      #     #    comparison clustering method (e.g., DBSC filtering).
-      #     #    Your new re-indexing code (at line 299) will handle NAs,
-      #     #    but it's safer to remove them entirely.
-      #     train_data_prepped <- train_data_prepped %>%
-      #       filter(!is.na(site))
+          # 3. Filter out any checklists that might have been dropped by the
+          #    comparison clustering method (e.g., DBSC filtering).
+          #    Your new re-indexing code (at line 299) will handle NAs,
+          #    but it's safer to remove them entirely.
+          train_data_prepped <- train_data_prepped %>%
+            filter(!is.na(site))
 
-      #      # Get M (number of sites)
-      #     M <- nrow(w_matrix)
-      #     # Get J (max visits)
-      #     J <- max(train_data_prepped$visit_id) # <-- Use the new variable
+           # Get M (number of sites)
+          M <- nrow(w_matrix)
+          # Get J (max visits)
+          J <- max(train_data_prepped$visit_id) # <-- Use the new variable
 
 
-      #     # Create a lookup mapping the character/factor site IDs (from w_matrix rownames)
-      #     # to a new numeric index (1:M).
-      #     site_id_lookup <- data.frame(
-      #       site_char = rownames(w_matrix),  # The character/factor ID
-      #       site_numeric = 1:M                # The new integer ID
-      #     )
+          # Create a lookup mapping the character/factor site IDs (from w_matrix rownames)
+          # to a new numeric index (1:M).
+          site_id_lookup <- data.frame(
+            site_char = rownames(w_matrix),  # The character/factor ID
+            site_numeric = 1:M                # The new integer ID
+          )
 
-      #     # Ensure both 'site' columns are characters for a safe join.
-      #     # train_data_prepped$site is a factor/char from the clustering method.
-      #     train_data_prepped$site <- as.character(train_data_prepped$site)
-      #     site_id_lookup$site_char <- as.character(site_id_lookup$site_char)
+          # Ensure both 'site' columns are characters for a safe join.
+          # train_data_prepped$site is a factor/char from the clustering method.
+          train_data_prepped$site <- as.character(train_data_prepped$site)
+          site_id_lookup$site_char <- as.character(site_id_lookup$site_char)
 
-      #     # Join the lookup table to get the new numeric ID.
-      #     train_data_prepped <- train_data_prepped %>%
-      #       left_join(site_id_lookup, by = c("site" = "site_char"))
+          # Join the lookup table to get the new numeric ID.
+          train_data_prepped <- train_data_prepped %>%
+            left_join(site_id_lookup, by = c("site" = "site_char"))
           
-      #     # Check for any sites that didn't match (shouldn't happen if w_matrix is correct)
-      #     if(any(is.na(train_data_prepped$site_numeric))) {
-      #       warning("NA values produced during site ID re-indexing. Check w_matrix rownames.")
-      #     }
+          # Check for any sites that didn't match (shouldn't happen if w_matrix is correct)
+          if(any(is.na(train_data_prepped$site_numeric))) {
+            warning("NA values produced during site ID re-indexing. Check w_matrix rownames.")
+          }
 
-      #     # Replace the old character 'site' column with the new numeric 'site' column
-      #     # for the pivoting.
-      #     train_data_prepped <- train_data_prepped %>%
-      #       select(-site) %>%
-      #       rename(site = site_numeric)
+          # Replace the old character 'site' column with the new numeric 'site' column
+          # for the pivoting.
+          train_data_prepped <- train_data_prepped %>%
+            select(-site) %>%
+            rename(site = site_numeric)
 
             
          
-      #     # --- 1. Create y_wide matrix ---
-      #     y_wide <- train_data_prepped %>% # <-- Use the new variable
-      #       pivot_wider(
-      #         id_cols = site,
-      #         names_from = visit_id,
-      #         values_from = species_observed,
-      #         values_fill = NA 
-      #       ) %>%
-      #       right_join(data.frame(site = 1:M), by = "site") %>%
-      #       arrange(site) %>%
-      #       select(-site) %>%
-      #       as.matrix()
+          # --- 1. Create y_wide matrix ---
+          y_wide <- train_data_prepped %>% # <-- Use the new variable
+            pivot_wider(
+              id_cols = site,
+              names_from = visit_id,
+              values_from = species_observed,
+              values_fill = NA 
+            ) %>%
+            right_join(data.frame(site = 1:M), by = "site") %>%
+            arrange(site) %>%
+            select(-site) %>%
+            as.matrix()
 
-      #     # --- 2. Create obsCovs_wide list ---
-      #     obs_covs_wide <- list()
-      #     for (cov_name in obs_cov_names) {
-      #       obs_covs_wide[[cov_name]] <- train_data_prepped %>% # <-- Use the new variable
-      #         pivot_wider(
-      #           id_cols = site,
-      #           names_from = visit_id,
-      #           values_from = all_of(cov_name),
-      #           values_fill = NA
-      #         ) %>%
-      #         right_join(data.frame(site = 1:M), by = "site") %>%
-      #         arrange(site) %>%
-      #         select(-site) %>%
-      #         as.matrix()
-      #     }
+          # --- 2. Create obsCovs_wide list ---
+          obs_covs_wide <- list()
+          for (cov_name in obs_cov_names) {
+            obs_covs_wide[[cov_name]] <- train_data_prepped %>% # <-- Use the new variable
+              pivot_wider(
+                id_cols = site,
+                names_from = visit_id,
+                values_from = all_of(cov_name),
+                values_fill = NA
+              ) %>%
+              right_join(data.frame(site = 1:M), by = "site") %>%
+              arrange(site) %>%
+              select(-site) %>%
+              as.matrix()
+          }
 
-      #     # The 'cellCovs' for occuN is the original, cell-level data frame
-      #     # The 'w' matrix maps sites to these cells
-      #     umf <- unmarkedFrameOccuN(
-      #       y = y_wide,              # The new M x J matrix
-      #       obsCovs = obs_covs_wide, # The new list of M x J matrices
-      #       cellCovs = base_train_df[, state_cov_names, drop = FALSE],
-      #       w = as.matrix(w_matrix)
-      #     )
-      #     # === 4.2. DEFINE MODEL FORMULAS ===
-      #     obs_formula_char <- paste("~", paste(obs_cov_names, collapse = " + "))
-      #     state_formula_char <- paste("~", paste(state_cov_names, collapse = " + "))
-      #     occuN_formula <- as.formula(paste(obs_formula_char, state_formula_char, sep = " "))
+          # The 'cellCovs' for occuN is the original, cell-level data frame
+          # The 'w' matrix maps sites to these cells
+          umf <- unmarkedFrameOccuN(
+            y = y_wide,              # The new M x J matrix
+            obsCovs = obs_covs_wide, # The new list of M x J matrices
+            cellCovs = base_train_df[, state_cov_names, drop = FALSE],
+            w = as.matrix(w_matrix)
+          )
+          # === 4.2. DEFINE MODEL FORMULAS ===
+          obs_formula_char <- paste("~", paste(obs_cov_names, collapse = " + "))
+          state_formula_char <- paste("~", paste(state_cov_names, collapse = " + "))
+          occuN_formula <- as.formula(paste(obs_formula_char, state_formula_char, sep = " "))
 
-      #     # === 4.3. FIT occuN MODEL (with repetitions) ===
-      #     # This logic is from occuN_demo.R
-      #     best_fm <- NULL
-      #     min_nll <- Inf
-      #     n_state_params <- length(state_cov_names) + 1 # +1 for intercept
-      #     n_obs_params <- length(obs_cov_names) + 1   # +1 for intercept
-      #     n_params <- n_state_params + n_obs_params
+          # === 4.3. FIT occuN MODEL (with repetitions) ===
+          # This logic is from occuN_demo.R
+          best_fm <- NULL
+          min_nll <- Inf
+          n_state_params <- length(state_cov_names) + 1 # +1 for intercept
+          n_obs_params <- length(obs_cov_names) + 1   # +1 for intercept
+          n_params <- n_state_params + n_obs_params
 
-      #     cat(sprintf("    Fitting occuN for %s (M=%d)... running %d reps: ", method_name, nrow(umf@y), n_fit_repeats))
+          cat(sprintf("    Fitting occuN for %s (M=%d)... running %d reps: ", method_name, nrow(umf@y), n_fit_repeats))
 
-      #     fit_successful <- FALSE
-      #     for (rep in 1:n_fit_repeats) {
-      #         if(rep %% 5 == 0) cat(paste(rep, "..."))
+          fit_successful <- FALSE
+          for (rep in 1:n_fit_repeats) {
+              if(rep %% 5 == 0) cat(paste(rep, "..."))
               
-      #         rand_starts <- runif(n_params, -5, 5) 
+              rand_starts <- runif(n_params, -5, 5) 
               
-      #         fm_rep <- try(occuN(
-      #             formula = occuN_formula,
-      #             data = umf,
-      #             starts = rand_starts,
-      #             se = TRUE, # se=TRUE is needed to get coefs, but we'll re-run for best
-      #             method = selected_optimizer
-      #         ), silent = TRUE)
+              fm_rep <- try(occuN(
+                  formula = occuN_formula,
+                  data = umf,
+                  starts = rand_starts,
+                  se = TRUE, # se=TRUE is needed to get coefs, but we'll re-run for best
+                  method = selected_optimizer
+              ), silent = TRUE)
               
-      #         if (inherits(fm_rep, "try-error")) {
-      #             next
-      #         }
+              if (inherits(fm_rep, "try-error")) {
+                  next
+              }
               
-      #         current_nll <- fm_rep@negLogLike
-      #         if (current_nll < min_nll) {
-      #             min_nll <- current_nll
-      #             best_fm <- fm_rep
-      #             fit_successful <- TRUE
-      #         }
-      #     } # --- End of rep loop ---
+              current_nll <- fm_rep@negLogLike
+              if (current_nll < min_nll) {
+                  min_nll <- current_nll
+                  best_fm <- fm_rep
+                  fit_successful <- TRUE
+              }
+          } # --- End of rep loop ---
 
-      #     # === 4.4. HANDLE FIT FAILURE ===
-      #     if (!fit_successful) {
-      #         cat(sprintf("\n    !!! ALL %d REPS FAILED for %s. Skipping. !!!\n", n_fit_repeats, method_name))
+          # === 4.4. HANDLE FIT FAILURE ===
+          if (!fit_successful) {
+              cat(sprintf("\n    !!! ALL %d REPS FAILED for %s. Skipping. !!!\n", n_fit_repeats, method_name))
               
-      #         # Store NA results
-      #         na_results <- data.frame(
-      #             cluster_method = current_clustering_method,
-      #             param_set = param_idx,
-      #             sim_num = sim_num,
-      #             test_repeat = repeat_num,
-      #             comparison_method = method_name,
-      #             auc = NA,
-      #             auprc = NA,
-      #             nll = NA,
-      #             convergence = 1 # 1 for failure
-      #         )
-      #         # Add NA columns for all parameters
-      #         for(p in c(paste0("est_beta_", c("int", state_cov_names)), paste0("est_alpha_", c("int", obs_cov_names)))) {
-      #           na_results[[p]] <- NA
-      #         }
+              # Store NA results
+              na_results <- data.frame(
+                  cluster_method = current_clustering_method,
+                  param_set = param_idx,
+                  sim_num = sim_num,
+                  test_repeat = repeat_num,
+                  comparison_method = method_name,
+                  auc = NA,
+                  auprc = NA,
+                  nll = NA,
+                  convergence = 1 # 1 for failure
+              )
+              # Add NA columns for all parameters
+              for(p in c(paste0("est_beta_", c("int", state_cov_names)), paste0("est_alpha_", c("int", obs_cov_names)))) {
+                na_results[[p]] <- NA
+              }
               
-      #         all_results[[length(all_results) + 1]] <- na_results
-      #         next # Skip to the next method_name
-      #     }
+              all_results[[length(all_results) + 1]] <- na_results
+              next # Skip to the next method_name
+          }
 
-      #     cat(sprintf("\n    Best model for %s found. NLL: %.2f\n", method_name, min_nll))
-      #     fm <- best_fm # Rename for clarity
+          cat(sprintf("\n    Best model for %s found. NLL: %.2f\n", method_name, min_nll))
+          fm <- best_fm # Rename for clarity
 
-      #     # === 4.5. EXTRACT PARAMETERS ===
-      #     est_alphas <- coef(fm, 'det')
-      #     est_betas <- coef(fm, 'state')
+          # === 4.5. EXTRACT PARAMETERS ===
+          est_alphas <- coef(fm, 'det')
+          est_betas <- coef(fm, 'state')
 
-      #     # === 4.6. CALCULATE TEST SET PREDICTIONS & AUC/AUPRC ===
+          # === 4.6. CALCULATE TEST SET PREDICTIONS & AUC/AUPRC ===
 
-      #     # We need to build the X_design matrix for the test set cells
-      #     state_formula_obj <- as.formula(paste("~", state_formula_char))
-      #     test_X_cell <- model.matrix(state_formula_obj, data = test_df)
+          # We need to build the X_design matrix for the test set cells
+          state_formula_obj <- as.formula(paste("~", state_formula_char))
+          test_X_cell <- model.matrix(state_formula_obj, data = test_df)
 
-      #     # Calculate estimated log(lambda_j) for each test cell
-      #     # est_log_lambda_j = B0 + B1*cov1 + ...
-      #     est_log_lambda_j <- test_X_cell %*% est_betas
+          # Calculate estimated log(lambda_j) for each test cell
+          # est_log_lambda_j = B0 + B1*cov1 + ...
+          est_log_lambda_j <- test_X_cell %*% est_betas
 
-      #     # Calculate estimated N_j (abundance) for each cell
-      #     # est_N_j = exp(est_log_lambda_j) * area_j
-      #     # We assume area_j is in test_df (from simulate_test_data)
-      #     est_N_j <- exp(est_log_lambda_j) * test_df$area_j
+          # Calculate estimated N_j (abundance) for each cell
+          # est_N_j = exp(est_log_lambda_j) * area_j
+          # We assume area_j is in test_df (from simulate_test_data)
+          est_N_j <- exp(est_log_lambda_j) * test_df$area_j
 
-      #     # Calculate predicted psi (prob. of occupancy) for each cell
-      #     # pred_psi = 1 - exp(-est_N_j)
-      #     pred_psi <- 1 - exp(-est_N_j)
+          # Calculate predicted psi (prob. of occupancy) for each cell
+          # pred_psi = 1 - exp(-est_N_j)
+          pred_psi <- 1 - exp(-est_N_j)
 
-      #     # Get the TRUE occupancy state (Z_i) from the test set
-      #     # This is the correct "truth" to compare our state model against
-      #     true_Z <- test_df$Z_i
+          # Get the TRUE occupancy state (Z_i) from the test set
+          # This is the correct "truth" to compare our state model against
+          true_Z <- test_df$Z_i
 
-      #     # Calculate AUC and AUPRC
-      #     pr_metrics <- PRROC::pr.curve(
-      #         scores.class0 = pred_psi[true_Z == 1],
-      #         scores.class1 = pred_psi[true_Z == 0], # Note: PRROC convention can be tricky
-      #         curve = FALSE
-      #     )
+          # Calculate AUC and AUPRC
+          pr_metrics <- PRROC::pr.curve(
+              scores.class0 = pred_psi[true_Z == 1],
+              scores.class1 = pred_psi[true_Z == 0], # Note: PRROC convention can be tricky
+              curve = FALSE
+          )
 
-      #     auc_val <- if (is.null(pr_metrics$auc.roc) || length(pr_metrics$auc.roc) == 0) {
-      #         NA_real_
-      #     } else {
-      #         pr_metrics$auc.roc
-      #     }
+          auc_val <- if (is.null(pr_metrics$auc.roc) || length(pr_metrics$auc.roc) == 0) {
+              NA_real_
+          } else {
+              pr_metrics$auc.roc
+          }
           
-      #     auprc_val <- if (is.null(pr_metrics$auc.integral) || length(pr_metrics$auc.integral) == 0) {
-      #         NA_real_
-      #     } else {
-      #         pr_metrics$auc.integral
-      #     }
+          auprc_val <- if (is.null(pr_metrics$auc.integral) || length(pr_metrics$auc.integral) == 0) {
+              NA_real_
+          } else {
+              pr_metrics$auc.integral
+          }
 
-      #     # === 4.7. STORE RESULTS ===
-      #     result_row_df <- data.frame(
-      #         cluster_method = current_clustering_method,
-      #         param_set = param_idx,
-      #         sim_num = sim_num,
-      #         test_repeat = repeat_num,
-      #         comparison_method = method_name,
-      #         auc = auc_val,
-      #         auprc = auprc_val,
-      #         nll = min_nll,
-      #         convergence = 0 # 0 for success
-      #     )
+          # === 4.7. STORE RESULTS ===
+          result_row_df <- data.frame(
+              cluster_method = current_clustering_method,
+              param_set = param_idx,
+              sim_num = sim_num,
+              test_repeat = repeat_num,
+              comparison_method = method_name,
+              auc = auc_val,
+              auprc = auprc_val,
+              nll = min_nll,
+              convergence = 0 # 0 for success
+          )
 
-      #     # Add state/beta parameters
-      #     beta_names <- paste0("est_beta_", c("int", state_cov_names))
-      #     for (i in seq_along(est_betas)) {
-      #       result_row_df[[beta_names[i]]] <- est_betas[i]
-      #     }
+          # Add state/beta parameters
+          beta_names <- paste0("est_beta_", c("int", state_cov_names))
+          for (i in seq_along(est_betas)) {
+            result_row_df[[beta_names[i]]] <- est_betas[i]
+          }
 
-      #     # Add detection/alpha parameters
-      #     alpha_names <- paste0("est_alpha_", c("int", obs_cov_names))
-      #     for (i in seq_along(est_alphas)) {
-      #       result_row_df[[alpha_names[i]]] <- est_alphas[i]
-      #     }
+          # Add detection/alpha parameters
+          alpha_names <- paste0("est_alpha_", c("int", obs_cov_names))
+          for (i in seq_along(est_alphas)) {
+            result_row_df[[alpha_names[i]]] <- est_alphas[i]
+          }
 
-      #     # Add the row (as a data frame) to the list
-      #     all_results[[length(all_results) + 1]] <- result_row_df
+          # Add the row (as a data frame) to the list
+          all_results[[length(all_results) + 1]] <- result_row_df
 
-      #   } # End loop over comparison methods
-      # } # End loop over test repeats (repeat_num)
+        } # End loop over comparison methods
+      } # End loop over test repeats (repeat_num)
 
 
     } # End simulation loop (sim_num)
