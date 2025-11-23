@@ -190,6 +190,21 @@ cat("--- Generating and saving site cluster plot... ---\n")
 # )
 
 
+# Ensure state_cov_raster is the exact one used for create_site_geometries (reference_raster)
+
+# 1. Convert raster to dataframe (values only)
+# This must match the cell order used in 'create_site_geometries'
+full_raster_covs <- as.data.frame(terra::values(state_cov_raster))
+
+# 2. Ensure columns match state_cov_names
+# You might need to subset or rename if the raster has extra layers
+full_raster_covs <- full_raster_covs[, state_cov_names, drop = FALSE]
+
+# Handle NAs if your raster has masked areas (TMB cannot handle NA in X)
+# If your 'w' matrix correctly excludes NA cells, you might still need to impute 
+# or ensure 'w' columns align with these rows.
+# For safety, replace NAs with 0 or mean (if they are not used by sites)
+full_raster_covs[is.na(full_raster_covs)] <- 0
 
 all_dataset_stats <- list()
 all_results <- list()
@@ -419,7 +434,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
           umf <- unmarkedFrameOccuN(
             y = y_wide,              # The new M x J matrix
             obsCovs = obs_covs_wide, # The new list of M x J matrices
-            cellCovs = base_train_df[, state_cov_names, drop = FALSE],
+            cellCovs = full_raster_covs,
             w = w_matrix
           )
           # === 4.2. DEFINE MODEL FORMULAS ===
