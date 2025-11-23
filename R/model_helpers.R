@@ -2,80 +2,139 @@ library(sf)
 library(dplyr)
 library(terra)
 library(Matrix)
+library(tidyr)
+library(unmarked)
 
-##########
-# site closure for Occ Model:
-#   1. constant site covariates
-#   2. no false positives (detected only if occupied)
-##########
-enforceClosure <- function(sites_df, occ_cov_list, sites_list){
-  j<-1
-  closed_df <- NA
+# ... [Keep create_site_geometries and other helpers you still use] ...
 
-  for(eBird_site in sites_list){
-    
+#' Prepare Data for occuN Model
+#'
+#' Handles the joining of checklists to sites, re-indexing site IDs,
+#' pivoting data to wide format, and creating the unmarkedFrame.
+prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_names, cell_covs) {
   
-    checklists_at_site <- sites_df[sites_df$site == eBird_site,]
-    
-    for(occCov_i in occ_cov_list){
-      checklists_at_site[occCov_i] <- mean(checklists_at_site[[occCov_i]])
-    
-    }
-
-    
-    if(j==1){
-      closed_df = checklists_at_site
-    } else {
-      closed_df = rbind(closed_df, checklists_at_site)
-    }
-    j = j+1
+  # 1. Join checklists to the specific clustering method's site IDs
+  comparison_site_lookup <- clustering_df %>%
+    dplyr::select(checklist_id, comparison_site = site)
   
-  }
-  return(closed_df)
-}
-
-
-#######
-# calculates the occupancy model from a given dataset
-# containing checklists and sites
-#######
-# 1. enforces closure
-# 2. formats it w/r/t eBird data
-# 3. runs through occupancy model
-#######
-calcOccModel <- function(df, occ_covs, det_covs, skip_closure=FALSE){
-
-  sites_occ <- subset(df, !duplicated(site))$site
-
+  train_data_prepped <- train_data %>%
+    dplyr::left_join(comparison_site_lookup, by = "checklist_id") %>%
+    dplyr::filter(!is.na(comparison_site)) %>%
+    dplyr::select(-site) %>%          
+    dplyr::rename(site = comparison_site) 
   
-  closed_df <- df
-  if(!skip_closure){
-    closed_df <- enforceClosure(df, occ_covs, sites_occ)
-  } 
-  
-  
-  umf_AUK <- auk::format_unmarked_occu(
-    closed_df,
-    site_id = "site",
-    response = "species_observed",
-    site_covs = occ_covs,
-    obs_covs = det_covs
+  # 2. Create numeric site index matching the W matrix rows
+  M <- nrow(w_matrix)
+  site_id_lookup <- data.frame(
+    site_char = rownames(w_matrix),  
+    site_numeric = 1:M
   )
   
-  det_cov_str <- paste("", paste(det_covs, collapse="+"), sep=" ~ ")
-  occ_cov_str <- paste("", paste(occ_covs, collapse="+"), sep=" ~ ")
+  # Ensure character matching
+  train_data_prepped$site <- as.character(train_data_prepped$site)
+  site_id_lookup$site_char <- as.character(site_id_lookup$site_char)
   
-  species_formula <- paste(det_cov_str, occ_cov_str, sep = " ")
-  species_formula <- as.formula(species_formula)
+  # 3. Re-index and create visit IDs
+  train_data_prepped <- train_data_prepped %>%
+    dplyr::inner_join(site_id_lookup, by = c("site" = "site_char")) %>%
+    dplyr::select(-site) %>%
+    dplyr::rename(site = site_numeric) %>%
+    dplyr::group_by(site) %>%
+    dplyr::mutate(visit_id = dplyr::row_number()) %>%
+    dplyr::ungroup()
   
-  occ_um <- unmarked::formatWide(umf_AUK, type = "unmarkedFrameOccu")
-
-  og_syn_gen_form <- unmarked::occu(formula = species_formula, data = occ_um)
+  # 4. Pivot Observations (y)
+  # Join with 1:M to ensure all sites in W exist in Y, even if no detections
+  y_wide <- train_data_prepped %>% 
+    tidyr::pivot_wider(
+      id_cols = site,
+      names_from = visit_id,
+      values_from = species_observed,
+      values_fill = NA 
+    ) %>%
+    dplyr::right_join(data.frame(site = 1:M), by = "site") %>%
+    dplyr::arrange(site) %>%
+    dplyr::select(-site) %>%
+    as.matrix()
   
-  return(og_syn_gen_form)
-
+  # 5. Pivot Observation Covariates
+  obs_covs_wide <- list()
+  for (cov_name in obs_cov_names) {
+    obs_covs_wide[[cov_name]] <- train_data_prepped %>% 
+      tidyr::pivot_wider(
+        id_cols = site,
+        names_from = visit_id,
+        values_from = dplyr::all_of(cov_name),
+        values_fill = NA
+      ) %>%
+      dplyr::right_join(data.frame(site = 1:M), by = "site") %>%
+      dplyr::arrange(site) %>%
+      dplyr::select(-site) %>%
+      as.matrix()
+  }
+  
+  # 6. Create Unmarked Frame
+  umf <- unmarked::unmarkedFrameOccuN(
+    y = y_wide,
+    obsCovs = obs_covs_wide,
+    cellCovs = cell_covs,
+    w = w_matrix
+  )
+  
+  return(umf)
 }
-#######
+
+#' Fit occuN Model with Random Starts
+#'
+#' repeatedly fits the model to find the global minimum NLL.
+fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30, optimizer = "nlminb") {
+  
+  # Combine formulas
+  occuN_formula <- as.formula(paste(
+    paste(deparse(obs_formula), collapse = ""), 
+    paste(deparse(state_formula), collapse = "")
+  ))
+  
+  # Determine number of parameters
+  # We fit once briefly or inspect design to get param count, 
+  # or calculate based on covariates. 
+  # Assuming basic formula structure:
+  n_obs_pars <- length(all.vars(obs_formula)) + 1 # +1 intercept
+  n_state_pars <- length(all.vars(state_formula)) + 1
+  n_params <- n_obs_pars + n_state_pars
+  
+  best_fm <- NULL
+  min_nll <- Inf
+  fit_successful <- FALSE
+  
+  # Loop for random starts
+  for (rep in 1:n_reps) {
+    rand_starts <- runif(n_params, -2, 2) # Slightly tighter bounds usually safer
+    
+    fm_rep <- try(unmarked::occuN(
+      formula = occuN_formula,
+      data = umf,
+      starts = rand_starts,
+      se = FALSE, # Optimization speedup
+      method = optimizer
+    ), silent = TRUE)
+    
+    if (!inherits(fm_rep, "try-error")) {
+      # Basic check for valid convergence (code 0 or 1 usually ok in R optim)
+      if (fm_rep@negLogLike < min_nll && !is.nan(fm_rep@negLogLike)) {
+        min_nll <- fm_rep@negLogLike
+        best_fm <- fm_rep
+        fit_successful <- TRUE
+      }
+    }
+  }
+  
+  if (!fit_successful) return(NULL)
+  
+  # Refit best model with SE=TRUE to get Hessians/SEs if needed later, 
+  # or just return the best object found.
+  return(best_fm)
+}
 
 
 

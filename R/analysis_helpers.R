@@ -1,5 +1,42 @@
+library(PRROC)
 library(dplyr)
 library(sf)
+
+
+#' Calculate Classification Metrics (AUC/AUPRC)
+#'
+#' Calculates AUC-ROC and AUC-PR based on predicted probabilities vs truth.
+calculate_classification_metrics <- function(pred_prob, true_labels) {
+  
+  # Basic validation
+  if (length(pred_prob) != length(true_labels)) {
+    warning("Length of predictions and truth do not match")
+    return(list(auc = NA, auprc = NA))
+  }
+  
+  # Handle cases with only 1 class in the test set (PRROC fails otherwise)
+  if (length(unique(true_labels)) < 2) {
+    return(list(auc = NA, auprc = NA))
+  }
+  
+  # PRROC::pr.curve calculation
+  pr_metrics <- try({
+    PRROC::pr.curve(
+      scores.class0 = pred_prob[true_labels == 1], # Positives
+      scores.class1 = pred_prob[true_labels == 0], # Negatives
+      curve = FALSE
+    )
+  }, silent = TRUE)
+  
+  if (inherits(pr_metrics, "try-error") || is.null(pr_metrics)) {
+    return(list(auc = NA, auprc = NA))
+  }
+  
+  return(list(
+    auc = pr_metrics$auc.roc,
+    auprc = pr_metrics$auc.integral
+  ))
+}
 
 calcClusteringStats <- function(pred_df, og_df){
     
