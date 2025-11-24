@@ -4,152 +4,6 @@ library(dplyr)
 library(sf)
 
 
-
-calculate_clustering_stats <- function(ref_df, comp_df) {
-  
-  # Ensure we have the required libraries
-  if (!requireNamespace("aricode", quietly = TRUE)) {
-    warning("Package 'aricode' is required for AMI and NID. Returning NAs.")
-    return(list(ARI = NA, AMI = NA, NID = NA))
-  }
-  
-  # 1. Align the dataframes by checklist_id
-  # We use inner_join to ensure we are comparing the exact same checklists
-  # Renaming columns to avoid collision
-  aligned_data <- dplyr::inner_join(
-    ref_df %>% dplyr::select(checklist_id, ref_label = site),
-    comp_df %>% dplyr::select(checklist_id, comp_label = site),
-    by = "checklist_id"
-  )
-  
-  if (nrow(aligned_data) == 0) {
-    warning("No matching checklists found between the two clusterings.")
-    return(list(ARI = NA, AMI = NA, NID = NA))
-  }
-  
-  # 2. Calculate Metrics
-  c1 <- aligned_data$ref_label
-  c2 <- aligned_data$comp_label
-  
-  # Adjusted Rand Index
-  ari_val <- aricode::ARI(c1, c2)
-  
-  # Adjusted Mutual Information
-  ami_val <- aricode::AMI(c1, c2)
-  
-  # Normalized Information Distance (1 - NMI)
-  # aricode::NID usually calculates 1 - NMI. 
-  nid_val <- aricode::NID(c1, c2)
-  
-  return(list(
-    ARI = ari_val,
-    AMI = ami_val,
-    NID = nid_val
-  ))
-}
-
-
-
-
-#' Calculate Classification Metrics (AUC/AUPRC)
-#'
-#' Calculates AUC-ROC and AUC-PR based on predicted probabilities vs truth.
-#' Returns NA if calculation fails or returns empty values.
-calculate_classification_metrics <- function(pred_prob, true_labels) {
-  
-  # 1. Basic length validation
-  if (length(pred_prob) != length(true_labels)) {
-    warning("Length of predictions and truth do not match")
-    return(list(auc = NA, auprc = NA))
-  }
-  
-  # 2. Handle NAs in predictions (treat as 0 or skip)
-  # Removing NAs ensures PRROC doesn't crash
-  valid_idx <- !is.na(pred_prob) & !is.na(true_labels)
-  pred_prob <- pred_prob[valid_idx]
-  true_labels <- true_labels[valid_idx]
-
-  # 3. Handle edge case: Only 1 class present (e.g., all 0s)
-  if (length(unique(true_labels)) < 2) {
-    return(list(auc = NA, auprc = NA))
-  }
-  
-  # 4. Attempt PRROC calculation
-  pr_metrics <- try({
-    PRROC::pr.curve(
-      scores.class0 = pred_prob[true_labels == 1], # Positives
-      scores.class1 = pred_prob[true_labels == 0], # Negatives
-      curve = FALSE
-    )
-  }, silent = TRUE)
-  
-  # 5. Extract values safely
-  # If pr_metrics is error OR if the specific slot is NULL, return NA
-  
-  auc_val <- NA
-  if (!inherits(pr_metrics, "try-error") && !is.null(pr_metrics$auc.roc)) {
-    auc_val <- pr_metrics$auc.roc
-  }
-
-  auprc_val <- NA
-  if (!inherits(pr_metrics, "try-error") && !is.null(pr_metrics$auc.integral)) {
-    auprc_val <- pr_metrics$auc.integral
-  }
-  
-  return(list(
-    auc = auc_val,
-    auprc = auprc_val
-  ))
-}
-
-
-calcDescriptiveClusteringStatsWithReference <- function(df, cluster_col, feature_cols, normalize = FALSE) {
-    
-    if (normalize) {
-        df[feature_cols] <- lapply(df[feature_cols], function(x) {
-            (x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
-        })
-    }
-    
-    cluster_sizes <- df %>%
-        group_by(!!as.name(cluster_col)) %>%
-        summarise(freq = n(), .groups = "drop")
-
-
-
- 
-    descr_stats <- list(
-        n_points = nrow(df),
-        n_clusters = nrow(cluster_sizes),
-        min_size = min(cluster_sizes$freq),
-        max_size = max(cluster_sizes$freq),
-        mean_size = round(mean(cluster_sizes$freq), 4),
-        sd_size = round(sd(cluster_sizes$freq), 4),
-        perc_svs = round((sum(cluster_sizes$freq == 1) / nrow(cluster_sizes)) * 100, 4)
-    )
-    
-    return(descr_stats)
-}
-
-calcDescriptiveClusteringStats <- function(clustered_df) {
-    
-        # Calculate clustering and species specific stats
-    clust_freq_df <- clustered_df %>% group_by(site) %>% dplyr::summarise(freq=n())
-
-    descr_stats <- list(
-        n_points = nrow(clustered_df),
-        n_clusters = nrow(clust_freq_df),
-        min_size = min(clust_freq_df$freq),
-        max_size = max(clust_freq_df$freq),
-        mean_size = round(mean(clust_freq_df$freq), 4),
-        sd_size = round(sd(clust_freq_df$freq), 4),
-        perc_svs = round((nrow(clust_freq_df[clust_freq_df$freq==1,])/nrow(clust_freq_df)) *100, 4)
-     )
-    return(descr_stats)
-}
-
-
-
 summarize_clusterings <- function(all_clusterings, all_site_geometries, units = "m") {
   
   all_summaries_list <- list()
@@ -249,21 +103,114 @@ summarize_clusterings <- function(all_clusterings, all_site_geometries, units = 
 }
 
 
+calculate_clustering_stats <- function(ref_df, comp_df) {
+  
+  # Ensure we have the required libraries
+  if (!requireNamespace("aricode", quietly = TRUE)) {
+    warning("Package 'aricode' is required for AMI and NID. Returning NAs.")
+    return(list(ARI = NA, AMI = NA, NID = NA))
+  }
+  
+  # 1. Align the dataframes by checklist_id
+  # We use inner_join to ensure we are comparing the exact same checklists
+  # Renaming columns to avoid collision
+  aligned_data <- dplyr::inner_join(
+    ref_df %>% dplyr::select(checklist_id, ref_label = site),
+    comp_df %>% dplyr::select(checklist_id, comp_label = site),
+    by = "checklist_id"
+  )
+  
+  if (nrow(aligned_data) == 0) {
+    warning("No matching checklists found between the two clusterings.")
+    return(list(ARI = NA, AMI = NA, NID = NA))
+  }
+  
+  # 2. Calculate Metrics
+  c1 <- aligned_data$ref_label
+  c2 <- aligned_data$comp_label
+  
+  # Adjusted Rand Index
+  ari_val <- aricode::ARI(c1, c2)
+  
+  # Adjusted Mutual Information
+  ami_val <- aricode::AMI(c1, c2)
+  
+  # Normalized Information Distance (1 - NMI)
+  # aricode::NID usually calculates 1 - NMI. 
+  nid_val <- aricode::NID(c1, c2)
+  
+  return(list(
+    ARI = ari_val,
+    AMI = ami_val,
+    NID = nid_val
+  ))
+}
+
+
+
+
+#' Calculate Classification Metrics (AUC/AUPRC)
+#'
+#' Calculates AUC-ROC and AUC-PR based on predicted probabilities vs truth.
+#' Returns NA if calculation fails or returns empty values.
+calculate_classification_metrics <- function(pred_prob, true_labels) {
+  
+  # 1. Basic length validation
+  if (length(pred_prob) != length(true_labels)) {
+    warning("Length of predictions and truth do not match")
+    return(list(auc = NA, auprc = NA))
+  }
+  
+  # 2. Handle NAs in predictions (treat as 0 or skip)
+  # Removing NAs ensures PRROC doesn't crash
+  valid_idx <- !is.na(pred_prob) & !is.na(true_labels)
+  pred_prob <- pred_prob[valid_idx]
+  true_labels <- true_labels[valid_idx]
+
+  # 3. Handle edge case: Only 1 class present (e.g., all 0s)
+  if (length(unique(true_labels)) < 2) {
+    return(list(auc = NA, auprc = NA))
+  }
+  
+  # 4. Attempt PRROC calculation
+  pr_metrics <- try({
+    PRROC::pr.curve(
+      scores.class0 = pred_prob[true_labels == 1], # Positives
+      scores.class1 = pred_prob[true_labels == 0], # Negatives
+      curve = FALSE
+    )
+  }, silent = TRUE)
+  
+  # 5. Extract values safely
+  # If pr_metrics is error OR if the specific slot is NULL, return NA
+  
+  auc_val <- NA
+  if (!inherits(pr_metrics, "try-error") && !is.null(pr_metrics$auc.roc)) {
+    auc_val <- pr_metrics$auc.roc
+  }
+
+  auprc_val <- NA
+  if (!inherits(pr_metrics, "try-error") && !is.null(pr_metrics$auc.integral)) {
+    auprc_val <- pr_metrics$auc.integral
+  }
+  
+  return(list(
+    auc = auc_val,
+    auprc = auprc_val
+  ))
+}
+
+
+
+
+
+
 
 
 #' Calculate Descriptive Statistics for Simulated Datasets
 #'
 #' This function takes simulated training and test dataframes and calculates
 #' key descriptive statistics for both, returning them as a single-row dataframe.
-#'
-#' @param train_data The dataframe of simulated training checklists,
-#'   as generated by `simulate_train_data`. Must contain 'site',
-#'   'occupied', 'detection', 'species_observed', and 'N'.
-#' @param test_data The dataframe of simulated test checklists,
-#'   as generated by `simulate_test_data`. Must contain
-#'   'occupied', 'detection', 'species_observed', and 'N'.
-#'
-#' @return A 1-row data.frame containing the 8 calculated statistics.
 summarize_datasets <- function(train_data, test_data) {
   
   # --- 1. Calculate Training Statistics ---
