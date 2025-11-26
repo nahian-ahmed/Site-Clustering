@@ -76,7 +76,7 @@ base_test_df <- prepare_test_data(state_cov_names, obs_cov_names, state_cov_rast
 # Pre-calculate Albers info
 albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
 cov_tif_albers <- terra::project(state_cov_raster, albers_crs_str, method="bilinear", res = res_m)
-area_j_raster <- terra::cellSize(cov_tif_albers, unit="m")
+area_j_raster <- terra::cellSize(cov_tif_albers, unit="km")
 full_raster_covs <- as.data.frame(terra::values(state_cov_raster))[, state_cov_names, drop = FALSE]
 full_raster_covs[is.na(full_raster_covs)] <- 0
 
