@@ -235,10 +235,65 @@ prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_name
   return(umf)
 }
 
-#' Fit occuN Model with Random Starts
+# #' Fit occuN Model with Random Starts
+# #'
+# #' repeatedly fits the model to find the global minimum NLL.
+# fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30, optimizer = "nlminb") {
+  
+#   # Combine formulas
+#   occuN_formula <- as.formula(paste(
+#     paste(deparse(obs_formula), collapse = ""), 
+#     paste(deparse(state_formula), collapse = "")
+#   ))
+  
+#   # Determine number of parameters
+#   # We fit once briefly or inspect design to get param count, 
+#   # or calculate based on covariates. 
+#   # Assuming basic formula structure:
+#   n_obs_pars <- length(all.vars(obs_formula)) + 1 # +1 intercept
+#   n_state_pars <- length(all.vars(state_formula)) + 1
+#   n_params <- n_obs_pars + n_state_pars
+  
+#   best_fm <- NULL
+#   min_nll <- Inf
+#   fit_successful <- FALSE
+  
+#   # Loop for random starts
+#   for (rep in 1:n_reps) {
+#     rand_starts <- runif(n_params, -2, 2) # Slightly tighter bounds usually safer
+    
+#     fm_rep <- try(unmarked::occuN(
+#       formula = occuN_formula,
+#       data = umf,
+#       starts = rand_starts,
+#       se = FALSE, # Optimization speedup
+#       method = optimizer
+#     ), silent = TRUE)
+    
+#     if (!inherits(fm_rep, "try-error")) {
+#       # Basic check for valid convergence (code 0 or 1 usually ok in R optim)
+#       if (fm_rep@negLogLike < min_nll && !is.nan(fm_rep@negLogLike)) {
+#         min_nll <- fm_rep@negLogLike
+#         best_fm <- fm_rep
+#         fit_successful <- TRUE
+#       }
+#     }
+#   }
+  
+#   if (!fit_successful) return(NULL)
+  
+#   # Refit best model with SE=TRUE to get Hessians/SEs if needed later, 
+#   # or just return the best object found.
+#   return(best_fm)
+# }
+
+
+
+#' Fit occuN Model with Random Starts and Early Stopping
 #'
-#' repeatedly fits the model to find the global minimum NLL.
-fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30, optimizer = "nlminb") {
+#' Repeatedly fits the model to find the global minimum NLL.
+#' Stops early if the same minimum is found multiple times.
+fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30, stable_reps = 3, optimizer = "nlminb") {
   
   # Combine formulas
   occuN_formula <- as.formula(paste(
@@ -246,11 +301,9 @@ fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30, optimi
     paste(deparse(state_formula), collapse = "")
   ))
   
-  # Determine number of parameters
-  # We fit once briefly or inspect design to get param count, 
-  # or calculate based on covariates. 
-  # Assuming basic formula structure:
-  n_obs_pars <- length(all.vars(obs_formula)) + 1 # +1 intercept
+  # Determine number of parameters to generate valid random starts
+  # Assuming basic formula structure (1 intercept + N covariates)
+  n_obs_pars <- length(all.vars(obs_formula)) + 1 
   n_state_pars <- length(all.vars(state_formula)) + 1
   n_params <- n_obs_pars + n_state_pars
   
@@ -258,35 +311,62 @@ fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30, optimi
   min_nll <- Inf
   fit_successful <- FALSE
   
+  # Early stopping counters
+  stable_count <- 0
+  tolerance <- 0.01  # NLL difference threshold to consider "same result"
+  
   # Loop for random starts
   for (rep in 1:n_reps) {
-    rand_starts <- runif(n_params, -2, 2) # Slightly tighter bounds usually safer
+    rand_starts <- runif(n_params, -2, 2) # Random starts [-2, 2]
     
     fm_rep <- try(unmarked::occuN(
       formula = occuN_formula,
       data = umf,
       starts = rand_starts,
-      se = FALSE, # Optimization speedup
+      se = FALSE, # Disable SE calculation during search for speed
       method = optimizer
     ), silent = TRUE)
     
     if (!inherits(fm_rep, "try-error")) {
-      # Basic check for valid convergence (code 0 or 1 usually ok in R optim)
-      if (fm_rep@negLogLike < min_nll && !is.nan(fm_rep@negLogLike)) {
-        min_nll <- fm_rep@negLogLike
-        best_fm <- fm_rep
-        fit_successful <- TRUE
+      current_nll <- fm_rep@negLogLike
+      
+      # Basic check for valid convergence
+      if (!is.nan(current_nll)) {
+        
+        # Case 1: We found a strictly better model
+        if (current_nll < min_nll) {
+          
+          # Check if improvement is significant or just numerical noise
+          if (abs(min_nll - current_nll) < tolerance) {
+             stable_count <- stable_count + 1
+          } else {
+             # Significant improvement found: reset stability counter
+             stable_count <- 0
+          }
+          
+          min_nll <- current_nll
+          best_fm <- fm_rep
+          fit_successful <- TRUE
+          
+        } 
+        # Case 2: We hit the existing best minimum again (within tolerance)
+        else if (abs(current_nll - min_nll) < tolerance) {
+          stable_count <- stable_count + 1
+        }
+        
+        # Early Stopping: If we've hit the same best minimum 3 times, stop.
+        if (stable_count >= stable_reps) {
+          # cat(sprintf("    Converged early at rep %d\n", rep)) # Optional debug
+          break 
+        }
       }
     }
   }
   
   if (!fit_successful) return(NULL)
   
-  # Refit best model with SE=TRUE to get Hessians/SEs if needed later, 
-  # or just return the best object found.
   return(best_fm)
 }
-
 
 
 
