@@ -3,7 +3,7 @@
 # -----------------------------------------------------------------
 
 # --- 1. Setup & Dependencies ---
-install_now = TRUE # Set to TRUE if first run
+install_now = FALSE # Set to TRUE if first run
 if (install_now){
   options(repos = c(CRAN = "https://cloud.r-project.org/"))
   if (!requireNamespace("devtools", quietly = FALSE)) install.packages("devtools")
@@ -18,6 +18,7 @@ library(terra)
 library(Matrix)
 library(doParallel) # For parallel processing
 library(foreach)    # For parallel loops
+library(dggridR)    # Ensure this is loaded
 
 # Load Helpers
 source(file.path("R", "utils.R"))
@@ -46,10 +47,6 @@ sim_clusterings <- read.delim(file.path("config", "simulation_clusterings.csv"),
 n_simulations <- 25
 n_fit_repeats <- 10 # Reduced from 25 (Early stopping handles the rest)
 n_test_repeats <- 25
-
-n_simulations <- 1 # Debug override
-n_fit_repeats <- 1 # Debug override
-n_test_repeats <- 1 # Debug override
 
 res_m <- 30 
 buffer_m <- 150 
@@ -113,7 +110,9 @@ for (method_name in names(all_site_geometries)) {
       i = extraction$ID,
       j = extraction$cell,
       x = extraction$fraction, 
-      dims = c(nrow(geoms), terra::ncell(dummy_raster))
+      dims = c(nrow(geoms), terra::ncell(dummy_raster)),
+      # +++ CRITICAL FIX: Add Row Names (Site IDs) +++
+      dimnames = list(as.character(geoms$site), NULL)
     )
   }
 }
@@ -186,7 +185,6 @@ site_plot <- plot_sites(
 )
 
 
-
 # --- 6. Main Simulation Loop (PARALLELIZED) ---
 
 # Setup Parallel Backend
@@ -233,7 +231,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
     # We use foreach to distribute the 'sim_num' loop
     sim_results_list <- foreach(
       sim_num = 1:n_simulations,
-      .packages = c('terra', 'dplyr', 'unmarked', 'Matrix', 'rje', 'PRROC'),
+      .packages = c('terra', 'dplyr', 'unmarked', 'Matrix', 'rje', 'PRROC', 'dggridR'),
       .export = c('simulate_train_data', 'simulate_test_data', 
                   'prepare_occuN_data', 'fit_occuN_model',
                   'calculate_weighted_sum', 'norm_ds', 
