@@ -111,7 +111,7 @@ for (method_name in names(all_site_geometries)) {
       j = extraction$cell,
       x = extraction$fraction, 
       dims = c(nrow(geoms), terra::ncell(dummy_raster)),
-      # +++ CRITICAL FIX: Add Row Names (Site IDs) to prevent "differing number of rows" error +++
+      # +++ CRITICAL FIX: Add Row Names (Site IDs) +++
       dimnames = list(as.character(geoms$site), NULL)
     )
   }
@@ -224,9 +224,13 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
     names(obs_par_list)[1] <- "intercept"
     
     # +++ RASTER SAFETY FIX: Ensure rasters are in memory before wrapping +++
-    # This prevents "file does not exist" errors on workers
-    terra::readAll(N_j_raster)
-    terra::readAll(area_j_raster)
+    # This prevents "file does not exist" errors on workers by loading the data from temp files into RAM.
+    if (!terra::inMemory(N_j_raster)) {
+      terra::values(N_j_raster) <- terra::values(N_j_raster)
+    }
+    if (!terra::inMemory(area_j_raster)) {
+      terra::values(area_j_raster) <- terra::values(area_j_raster)
+    }
     
     # Wrap rasters for passing to parallel workers
     packed_N_j <- terra::wrap(N_j_raster)
