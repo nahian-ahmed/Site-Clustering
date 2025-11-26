@@ -286,7 +286,7 @@ plot_sites <- function(
         output_path,
         plot = final_plot,
         width = 14,
-        height = 8,
+        height = 6,
         dpi = 300
     )
     
