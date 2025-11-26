@@ -3,7 +3,7 @@
 # -----------------------------------------------------------------
 
 # --- 1. Setup & Dependencies ---
-install_now = FALSE # Set to TRUE if first run
+install_now = TRUE # Set to TRUE if first run
 if (install_now){
   options(repos = c(CRAN = "https://cloud.r-project.org/"))
   if (!requireNamespace("devtools", quietly = FALSE)) install.packages("devtools")
