@@ -55,10 +55,19 @@ buffer_m <- 150
 state_cov_names <- names(sim_params)[2:6]
 obs_cov_names <- names(sim_params)[8:12]
 
+
 # --- 4. Pre-processing (Static Data) ---
-state_cov_raster <- terra::rast(file.path("state_covariate_raster", "state_covariates.tif"))
-terra::crs(state_cov_raster) <- "+proj=longlat +datum=WGS84"
-names(state_cov_raster) <- state_cov_names
+
+# 1. Load the raw raster (Unscaled values, e.g., meters)
+state_cov_raster_raw <- terra::rast(file.path("state_covariate_raster", "state_covariates.tif"))
+terra::crs(state_cov_raster_raw) <- "+proj=longlat +datum=WGS84"
+names(state_cov_raster_raw) <- state_cov_names
+
+# 2. Create the Normalized Raster for Simulation/Modeling (0-1)
+r_min <- terra::minmax(state_cov_raster_raw)[1,]
+r_max <- terra::minmax(state_cov_raster_raw)[2,]
+state_cov_raster <- (state_cov_raster_raw - r_min) / (r_max - r_min)
+
 
 boundary_shapefile_path <- file.path("state_covariate_raster", "boundary", "boundary.shp")
 
@@ -154,7 +163,7 @@ site_plot <- plot_sites(
   base_train_df = base_train_df,
   all_clusterings = all_clusterings,
   all_site_geometries = all_site_geometries,
-  elevation_raster = state_cov_raster,
+  elevation_raster = state_cov_raster_raw,
   methods_to_plot = all_method_names_plot_order,
   boundary_shp_path = boundary_shapefile_path,
   output_path = file.path(output_dir, "site_cluster_visualization.png")

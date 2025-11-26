@@ -37,7 +37,7 @@ prepare_train_data <- function (
   train_df <- inner_join(train_df, train_env_df, by = "checklist_id")
   
   # Use standardized var names
-  norm_res <- norm_ds(train_df, obs_covs, state_covs) 
+  norm_res <- norm_ds(train_df, obs_covs, state_covs = NULL) 
 
   train_df <- norm_res$df
   norm_list <- norm_res$n_l
@@ -80,7 +80,7 @@ prepare_test_data <- function (
   test_df <- inner_join(test_df, test_env_df, by = "checklist_id")
   
   # Use standardized var names AND the norm_list from training
-  norm_res <- norm_ds(test_df, obs_covs, state_covs, norm_list = norm_list) 
+  norm_res <- norm_ds(test_df, obs_covs, state_covs = NULL, norm_list = norm_list) 
   
   test_df <- norm_res$df
   
