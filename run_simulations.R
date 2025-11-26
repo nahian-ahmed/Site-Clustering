@@ -111,7 +111,7 @@ for (method_name in names(all_site_geometries)) {
       j = extraction$cell,
       x = extraction$fraction, 
       dims = c(nrow(geoms), terra::ncell(dummy_raster)),
-      # +++ CRITICAL FIX: Add Row Names (Site IDs) +++
+      # +++ CRITICAL FIX: Add Row Names (Site IDs) to prevent "differing number of rows" error +++
       dimnames = list(as.character(geoms$site), NULL)
     )
   }
@@ -223,6 +223,11 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
     obs_par_list <- as.list(current_parameter_set[, c("obs_intercept", obs_cov_names)])
     names(obs_par_list)[1] <- "intercept"
     
+    # +++ RASTER SAFETY FIX: Ensure rasters are in memory before wrapping +++
+    # This prevents "file does not exist" errors on workers
+    terra::readAll(N_j_raster)
+    terra::readAll(area_j_raster)
+    
     # Wrap rasters for passing to parallel workers
     packed_N_j <- terra::wrap(N_j_raster)
     packed_area_j <- terra::wrap(area_j_raster)
@@ -231,6 +236,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
     # We use foreach to distribute the 'sim_num' loop
     sim_results_list <- foreach(
       sim_num = 1:n_simulations,
+      # +++ FIX: Added dggridR to .packages +++
       .packages = c('terra', 'dplyr', 'unmarked', 'Matrix', 'rje', 'PRROC', 'dggridR'),
       .export = c('simulate_train_data', 'simulate_test_data', 
                   'prepare_occuN_data', 'fit_occuN_model',
