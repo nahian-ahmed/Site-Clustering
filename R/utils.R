@@ -7,6 +7,41 @@
 library(terra) # geospatial operations
 library(dggridR)
 
+
+
+# Normalize state covs
+norm_state_covs <- function (state_cov_raster_raw){
+
+  # 1. Calculate Min/Max for each layer, explicitly ignoring NAs
+  #    'na.rm = TRUE' is critical here.
+  r_min <- terra::minmax(state_cov_raster_raw, compute = TRUE)[1,]
+  r_max <- terra::minmax(state_cov_raster_raw, compute = TRUE)[2,]
+
+  # 2. Initialize the output raster
+  state_cov_raster <- state_cov_raster_raw
+
+  # 3. Loop through bands to normalize safely
+  #    This ensures we handle each layer's specific range
+  for (i in 1:terra::nlyr(state_cov_raster)) {
+    
+    # Get range for this specific band
+    band_min <- r_min[i]
+    band_max <- r_max[i]
+    band_range <- band_max - band_min
+    
+    # Safety check: If band is constant, avoid division by zero
+    if (band_range == 0) {
+      # If constant, set to 0 (or 0.5, or keep raw if range is 0-1)
+      state_cov_raster[[i]] <- 0 
+    } else {
+      # Apply (x - min) / (max - min)
+      # terra automatically preserves NAs during this arithmetic
+      state_cov_raster[[i]] <- (state_cov_raster_raw[[i]] - band_min) / band_range
+    }
+  }
+  return(state_cov_raster)
+}
+
 #######
 # extract environmental features
 # at checklist locations

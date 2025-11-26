@@ -58,16 +58,12 @@ obs_cov_names <- names(sim_params)[8:12]
 
 # --- 4. Pre-processing (Static Data) ---
 
-# 1. Load the raw raster (Unscaled values, e.g., meters)
+# --- 4. Pre-processing (Static Data) ---
 state_cov_raster_raw <- terra::rast(file.path("state_covariate_raster", "state_covariates.tif"))
 terra::crs(state_cov_raster_raw) <- "+proj=longlat +datum=WGS84"
 names(state_cov_raster_raw) <- state_cov_names
 
-# 2. Create the Normalized Raster for Simulation/Modeling (0-1)
-r_min <- terra::minmax(state_cov_raster_raw)[1,]
-r_max <- terra::minmax(state_cov_raster_raw)[2,]
-state_cov_raster <- (state_cov_raster_raw - r_min) / (r_max - r_min)
-
+state_cov_raster <- norm_state_covs(state_cov_raster_raw)
 
 boundary_shapefile_path <- file.path("state_covariate_raster", "boundary", "boundary.shp")
 
