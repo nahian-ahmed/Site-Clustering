@@ -38,8 +38,8 @@ bayesianOptimizedClustGeo <- function(
     train_data, 
     state_covs, 
     fit_func,
-    n_init = 20,
-    n_iter = 10  
+    n_init = 100,
+    n_iter = 30  
 ){
     
     # --- 1. PRE-CALCULATE ALL STATIC DATA ---
