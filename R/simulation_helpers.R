@@ -190,56 +190,102 @@ simulate_train_data <-  function (
 
 
 
-# +++ CORRECTED FUNCTION +++
+# # +++ CORRECTED FUNCTION +++
+# simulate_test_data <- function (
+#     base_test_df,
+#     obs_cov_names,
+#     obs_par_list,
+#     N_j_raster,
+#     albers_crs_str,
+#     area_j_raster  # <--- ADD THIS ARGUMENT
+# ){
+  
+#   # === 1. START WITH PRE-PROCESSED DATA ===
+#   test_df <- base_test_df
+  
+#   # === 2. EXTRACT PARAMETERS (Observation only) ===
+#   # state_par_list is no longer needed
+  
+#   # === 3. PROJECT TEST POINTS ===
+#   test_sf <- sf::st_as_sf(
+#     test_df, 
+#     coords = c("longitude", "latitude"), 
+#     crs = "+proj=longlat +datum=WGS84"
+#   )
+#   test_sf_albers <- sf::st_transform(test_sf, crs = albers_crs_str)
+#   test_df$area_j <- terra::extract(area_j_raster, test_sf_albers, ID = FALSE)[,1]
+  
+#   # === 4. SIMULATE ABUNDANCE (N_j) & OCCUPANCY (Z_j) (CELL-LEVEL) ===
+  
+#   # +++ FIX: Extract expected abundance directly from N_j_raster +++
+#   # This is the expected abundance for the cell
+#   lambda_j_cell_df <- terra::extract(N_j_raster, test_sf_albers, ID = FALSE)
+#   test_df$lambda_j_cell <- lambda_j_cell_df[, 1]
+
+#   # Simulate N_j ~ Poisson(lambda_j_cell)
+#   test_df$N <- rpois(n = nrow(test_df), lambda = test_df$lambda_j_cell)
+  
+#   # Derive occupied state Z_j from N_j
+#   test_df$Z_i <- ifelse(test_df$N > 0, 1, 0)
+  
+#   # Store the true occupancy probability (P(N_j > 0))
+#   test_df$occupied_prob <- 1 - exp(-test_df$lambda_j_cell)
+
+#   # === 5. SIMULATE DETECTION (y_j) ===
+#   test_df$det_prob <- calculate_weighted_sum(obs_par_list, test_df)
+#   test_df$det_prob <- rje::expit(test_df$det_prob)
+#   test_df$detection <- rbinom(nrow(test_df), 1, test_df$det_prob)
+  
+#   # === 6. FINAL OBSERVATION ===
+#   test_df$species_observed <- test_df$Z_i * test_df$detection
+
+#   message("  (sim_test) Simulation of test data complete.")
+
+#   return (test_df)
+# }
+
+
 simulate_test_data <- function (
     base_test_df,
     obs_cov_names,
     obs_par_list,
     N_j_raster,
-    albers_crs_str,
-    area_j_raster  # <--- ADD THIS ARGUMENT
+    test_geoms_sf # <--- NEW ARGUMENT: The pre-calculated polygons
 ){
   
-  # === 1. START WITH PRE-PROCESSED DATA ===
+  # Start with the base df (which now has 'area_j' pre-calculated)
   test_df <- base_test_df
   
-  # === 2. EXTRACT PARAMETERS (Observation only) ===
-  # state_par_list is no longer needed
+  # === 1. Calculate Expected Abundance (Lambda) ===
+  # We must do this here because N_j_raster changes in the loop.
+  # We use the pre-calculated 'test_geoms_sf' for speed.
   
-  # === 3. PROJECT TEST POINTS ===
-  test_sf <- sf::st_as_sf(
-    test_df, 
-    coords = c("longitude", "latitude"), 
-    crs = "+proj=longlat +datum=WGS84"
-  )
-  test_sf_albers <- sf::st_transform(test_sf, crs = albers_crs_str)
-  test_df$area_j <- terra::extract(area_j_raster, test_sf_albers, ID = FALSE)[,1]
+  lambda_extract <- terra::extract(N_j_raster, test_geoms_sf, fun = "sum", exact = TRUE, ID = FALSE)
+  test_df$lambda_j_site <- lambda_extract[, 1]
+  test_df$lambda_j_site[is.na(test_df$lambda_j_site)] <- 0
   
-  # === 4. SIMULATE ABUNDANCE (N_j) & OCCUPANCY (Z_j) (CELL-LEVEL) ===
+  # === 2. Simulate Biological State ===
+  # N ~ Poisson(Lambda)
+  test_df$N <- rpois(n = nrow(test_df), lambda = test_df$lambda_j_site)
   
-  # +++ FIX: Extract expected abundance directly from N_j_raster +++
-  # This is the expected abundance for the cell
-  lambda_j_cell_df <- terra::extract(N_j_raster, test_sf_albers, ID = FALSE)
-  test_df$lambda_j_cell <- lambda_j_cell_df[, 1]
-
-  # Simulate N_j ~ Poisson(lambda_j_cell)
-  test_df$N <- rpois(n = nrow(test_df), lambda = test_df$lambda_j_cell)
-  
-  # Derive occupied state Z_j from N_j
+  # Z (Occupancy)
   test_df$Z_i <- ifelse(test_df$N > 0, 1, 0)
-  
-  # Store the true occupancy probability (P(N_j > 0))
-  test_df$occupied_prob <- 1 - exp(-test_df$lambda_j_cell)
+  test_df$occupied_prob <- 1 - exp(-test_df$lambda_j_site)
 
-  # === 5. SIMULATE DETECTION (y_j) ===
+  # === 3. Simulate Detection ===
   test_df$det_prob <- calculate_weighted_sum(obs_par_list, test_df)
   test_df$det_prob <- rje::expit(test_df$det_prob)
   test_df$detection <- rbinom(nrow(test_df), 1, test_df$det_prob)
   
-  # === 6. FINAL OBSERVATION ===
+  # === 4. Finalize ===
   test_df$species_observed <- test_df$Z_i * test_df$detection
 
-  message("  (sim_test) Simulation of test data complete.")
+  # === IMPORTANT: Ensure it is a plain dataframe ===
+  # If 'base_test_df' was a standard DF, 'test_df' is likely still standard.
+  # But if it somehow became an sf object, drop geometry here to be safe for subsampling.
+  if (inherits(test_df, "sf")) {
+    test_df <- sf::st_drop_geometry(test_df)
+  }
 
   return (test_df)
 }

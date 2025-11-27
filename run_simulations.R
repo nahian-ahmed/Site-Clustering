@@ -98,6 +98,27 @@ for (method_name in all_method_names) {
   }
 }
 
+# --- 5b. Pre-compute Test Geometries (Static) ---
+cat("--- Pre-computing test site geometries... ---\n")
+
+# 1. Create SF object
+test_sf <- sf::st_as_sf(
+  base_test_df, 
+  coords = c("longitude", "latitude"), 
+  crs = "+proj=longlat +datum=WGS84"
+)
+
+# 2. Transform and Buffer (150m)
+# Use the same 'buffer_m' variable you defined in config (150)
+test_sf_albers <- sf::st_transform(test_sf, crs = albers_crs_str)
+test_geoms <- sf::st_buffer(test_sf_albers, dist = buffer_m)
+
+# 3. Pre-calculate Site Area (Static)
+# Sum of raster cell areas within the buffer
+test_area_vals <- terra::extract(area_j_raster, test_geoms, fun = "sum", exact = TRUE, ID = FALSE)
+base_test_df$area_j <- test_area_vals[, 1]
+
+
 # Save clustering stats
 clustering_summary_df <- summarize_clusterings(all_clusterings, all_site_geometries, units = "km")
 output_dir <- file.path("simulation_experiments", "output")
@@ -208,13 +229,20 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
     N_j_raster = N_j_raster
     )
       
+    # test_data_full <- simulate_test_data(
+    #   base_test_df = base_test_df,
+    #   obs_cov_names = obs_cov_names,
+    #   obs_par_list = obs_par_list,
+    #   N_j_raster = N_j_raster,
+    #   albers_crs_str = albers_crs_str,
+    #   area_j_raster = area_j_raster
+    # )
     test_data_full <- simulate_test_data(
       base_test_df = base_test_df,
       obs_cov_names = obs_cov_names,
       obs_par_list = obs_par_list,
       N_j_raster = N_j_raster,
-      albers_crs_str = albers_crs_str,
-      area_j_raster = area_j_raster
+      test_geoms_sf = test_geoms
     )
 
     # Dataset Stats
