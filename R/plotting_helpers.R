@@ -109,7 +109,7 @@ plot_sites <- function(
             plot.title = element_text(
                 hjust = 0.5, 
                 face = "bold", 
-                vjust = -1.5,  # <--- ADD THIS (Tweak number until it lands right)
+                vjust = -1.25,  # <--- ADD THIS (Tweak number until it lands right)
                 margin = margin(b = -10) # Keep a small margin adjustment if needed
             ),
 
