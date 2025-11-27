@@ -237,10 +237,10 @@ summarize_datasets <- function(train_data, test_data) {
   # For test data, each point is effectively its own "site".
   
   # 5. Mean point-level abundance (N_j)
-  test_point_mean_abundance <- mean(test_data$N, na.rm = TRUE)
+  test_site_mean_abundance <- mean(test_data$N, na.rm = TRUE)
   
   # 6. Point-level occupancy rate (Z_j)
-  test_point_occupancy_rate <- mean(test_data$occupied, na.rm = TRUE)
+  test_site_occupancy_rate <- mean(test_data$occupied, na.rm = TRUE)
   
   # 7. Point-level detection rate (d_j)
   test_point_detection_rate <- mean(test_data$detection, na.rm = TRUE)
@@ -257,8 +257,8 @@ summarize_datasets <- function(train_data, test_data) {
     train_site_occupancy_rate = train_site_occupancy_rate,
     train_point_detection_rate = train_point_detection_rate,
     train_point_prevalence = train_point_prevalence,
-    test_point_mean_abundance = test_point_mean_abundance,
-    test_point_occupancy_rate = test_point_occupancy_rate,
+    test_site_mean_abundance = test_site_mean_abundance,
+    test_site_occupancy_rate = test_site_occupancy_rate,
     test_point_detection_rate = test_point_detection_rate,
     test_point_prevalence = test_point_prevalence
   )
