@@ -293,7 +293,7 @@ prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_name
 #'
 #' Repeatedly fits the model to find the global minimum NLL.
 #' Stops early if the same minimum is found multiple times.
-fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30, stable_reps = 3, optimizer = "nlminb") {
+fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30, stable_reps = 5, optimizer = "nlminb") {
   
   # Combine formulas
   occuN_formula <- as.formula(paste(
