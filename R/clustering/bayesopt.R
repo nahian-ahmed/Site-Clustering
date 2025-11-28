@@ -16,20 +16,43 @@ normalize <- function(x) {
     return((x- min(x)) /(max(x)-min(x)))
 }
 
-get_pairwise_distances <- function(df, sp_features, env_features, normalize = TRUE) {
+# get_pairwise_distances <- function(df, sp_features, env_features, normalize = TRUE) {
     
+#     if (normalize){
+#         for (sp_feature in sp_features){
+#             df[,sp_feature] <- normalize(df[,sp_feature])
+#         }
+#     }
+#     df <- df[,c(sp_features,env_features)]
+    
+#     m_dist <- distances::distances(as.data.frame(df))
+    
+#     return(m_dist)
+# }
+
+get_pairwise_distances <- function(df, sp_features, env_features, normalize = TRUE, env_weight = 5) {
+    
+    # 1. Normalize Spatial Features (0-1)
     if (normalize){
         for (sp_feature in sp_features){
             df[,sp_feature] <- normalize(df[,sp_feature])
         }
     }
+    
+    # 2. Apply Weight to Environmental Features
+    # Multiplying the values effectively increases their contribution 
+    # to the Euclidean distance calculation.
+    for (env_feature in env_features){
+        df[, env_feature] <- df[, env_feature] * env_weight
+    }
+
+    # 3. Select columns and calculate distance
     df <- df[,c(sp_features,env_features)]
     
     m_dist <- distances::distances(as.data.frame(df))
     
     return(m_dist)
 }
-
 
 # --- Main Bayesian Optimization Function ---
 
@@ -39,7 +62,9 @@ bayesianOptimizedClustGeo <- function(
     state_covs, 
     fit_func,
     n_init = 30,
-    n_iter = 30  
+    n_iter = 30,
+    env_weight = 5
+
 ){
     
     # --- 1. PRE-CALCULATE ALL STATIC DATA ---
@@ -51,8 +76,7 @@ bayesianOptimizedClustGeo <- function(
     uniq_loc_df <- dplyr::distinct(train_data_cgul, lat_long, .keep_all = T)
     
     message("BayesOpt: Pre-calculating pairwise distance matrix...")
-    m_dist <- get_pairwise_distances(train_data_cgul, c("latitude","longitude"), state_covs)
-    
+    m_dist <- get_pairwise_distances(train_data_cgul, c("latitude","longitude"), state_covs, env_weight = env_weight)
     
 
     # --- 2. DEFINE THE FITNESS FUNCTION (as a Closure) ---
