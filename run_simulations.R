@@ -46,7 +46,7 @@ n_fit_repeats <- 25
 n_test_repeats <- 25
 
 n_simulations <- 1 # Debug override
-n_fit_repeats <- 10 # Debug override
+n_fit_repeats <- 25 # Debug override
 n_test_repeats <- 1 # Debug override
 
 res_m <- 30 
