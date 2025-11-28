@@ -149,63 +149,6 @@ calculate_clustering_stats <- function(ref_df, comp_df) {
 
 
 
-#' Calculate Classification Metrics (AUC/AUPRC)
-#'
-#' Calculates AUC-ROC and AUC-PR based on predicted probabilities vs truth.
-#' Returns NA if calculation fails or returns empty values.
-calculate_classification_metrics <- function(pred_prob, true_labels) {
-  
-  # 1. Basic length validation
-  if (length(pred_prob) != length(true_labels)) {
-    warning("Length of predictions and truth do not match")
-    return(list(auc = NA, auprc = NA))
-  }
-  
-  # 2. Handle NAs in predictions (treat as 0 or skip)
-  # Removing NAs ensures PRROC doesn't crash
-  valid_idx <- !is.na(pred_prob) & !is.na(true_labels)
-  pred_prob <- pred_prob[valid_idx]
-  true_labels <- true_labels[valid_idx]
-
-  # 3. Handle edge case: Only 1 class present (e.g., all 0s)
-  if (length(unique(true_labels)) < 2) {
-    return(list(auc = NA, auprc = NA))
-  }
-  
-  # 4. Attempt PRROC calculation
-  pr_metrics <- try({
-    PRROC::pr.curve(
-      scores.class0 = pred_prob[true_labels == 1], # Positives
-      scores.class1 = pred_prob[true_labels == 0], # Negatives
-      curve = FALSE
-    )
-  }, silent = TRUE)
-  
-  # 5. Extract values safely
-  # If pr_metrics is error OR if the specific slot is NULL, return NA
-  
-  auc_val <- NA
-  if (!inherits(pr_metrics, "try-error") && !is.null(pr_metrics$auc.roc)) {
-    auc_val <- pr_metrics$auc.roc
-  }
-
-  auprc_val <- NA
-  if (!inherits(pr_metrics, "try-error") && !is.null(pr_metrics$auc.integral)) {
-    auprc_val <- pr_metrics$auc.integral
-  }
-  
-  return(list(
-    auc = auc_val,
-    auprc = auprc_val
-  ))
-}
-
-
-
-
-
-
-
 
 #' Calculate Descriptive Statistics for Simulated Datasets
 #'
@@ -264,4 +207,62 @@ summarize_datasets <- function(train_data, test_data) {
   )
   
   return(stats_row)
+}
+
+
+
+
+#' Calculate Classification Metrics (AUC/AUPRC)
+calculate_classification_metrics <- function(pred_prob, true_labels) {
+  
+  # 1. Basic length validation
+  if (length(pred_prob) != length(true_labels)) {
+    warning("Length of predictions and truth do not match")
+    return(list(auc = NA, auprc = NA))
+  }
+  
+  # 2. Handle NAs
+  valid_idx <- !is.na(pred_prob) & !is.na(true_labels)
+  pred_prob <- pred_prob[valid_idx]
+  true_labels <- true_labels[valid_idx]
+
+  # 3. Handle edge case
+  if (length(unique(true_labels)) < 2) {
+    return(list(auc = NA, auprc = NA))
+  }
+
+  
+  # 4. Calculate AUPRC (Precision-Recall)
+  pr_obj <- try({
+    PRROC::pr.curve(
+      scores.class0 = pred_prob[true_labels == 1], 
+      scores.class1 = pred_prob[true_labels == 0], 
+      curve = FALSE
+    )
+  }, silent = TRUE)
+  
+  # 5. Calculate AUC (ROC) - THIS WAS MISSING
+  roc_obj <- try({
+    PRROC::roc.curve(
+      scores.class0 = pred_prob[true_labels == 1], 
+      scores.class1 = pred_prob[true_labels == 0], 
+      curve = FALSE
+    )
+  }, silent = TRUE)
+  
+  # 6. Extract values safely
+  auprc_val <- NA
+  if (!inherits(pr_obj, "try-error") && !is.null(pr_obj$auc.integral)) {
+    auprc_val <- pr_obj$auc.integral
+  }
+
+  auc_val <- NA
+  if (!inherits(roc_obj, "try-error") && !is.null(roc_obj$auc)) {
+    auc_val <- roc_obj$auc
+  }
+  
+  return(list(
+    auc = auc_val,
+    auprc = auprc_val
+  ))
 }
