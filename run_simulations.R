@@ -372,7 +372,16 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
         
         all_pred_results[[length(all_pred_results) + 1]] <- pred_row
       }
+
+      # 6. CRITICAL MEMORY CLEANUP
+      rm(umf, fm) # Remove heavy objects
+      gc() # Force garbage collection
+      
     } # End Method Loop
+
+    # Periodic cleanup after every simulation
+    rm(train_data, test_data_full, test_splits_list)
+    gc()
   } # End Sim Loop
   } # End Param Loop
 } # End Clustering Loop
