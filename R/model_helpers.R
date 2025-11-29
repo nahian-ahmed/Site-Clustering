@@ -60,36 +60,28 @@ voronoi_clipped_buffers <- function(sites_sf, buffer_dist) {
     sf::st_collection_extract(type = "POLYGON") %>%
     sf::st_sf()
   
-  # 3. Buffer the original geometries (overlapping at this stage)
+  # 3. Match Tiles to Site IDs (The Fix)
+  #    Spatially join the tiles back to the centroids to get the correct 'site' ID for each tile
+  voronoi_w_id <- sf::st_join(voronoi_tiles, centroids, join = sf::st_contains)
+  
+  # 4. Buffer the original sites
   buffered_sites <- sf::st_buffer(sites_sf, dist = buffer_dist)
   
-  # 4. Map Voronoi Tiles to Site IDs
-  #    Join centroids to tiles so each tile gets the 'site' ID of the point inside it
-  voronoi_with_ids <- sf::st_join(voronoi_tiles, centroids, join = sf::st_contains)
+  # 5. Intersect (All Overlaps)
+  #    This computes the intersection of every buffer with every tile it touches.
+  #    It returns columns 'site' (from buffer) and 'site.1' (from tile).
+  intersections <- sf::st_intersection(buffered_sites, voronoi_w_id)
   
-  # 5. Create temporary matching IDs to ensure valid intersections
-  #    (Using row numbers is safer than relying on 'site' column existence)
-  buffered_sites$temp_match_id <- 1:nrow(buffered_sites)
-  voronoi_with_ids$temp_match_id <- 1:nrow(voronoi_with_ids)
+  # 6. Filter for Self-Intersection
+  #    Keep only the part where the Buffer for Site X intersects the Tile for Site X
+  #    (Discard where Buffer for Site X bleeds into Tile for Site Y)
+  final_sf <- intersections[intersections$site == intersections$site.1, ]
   
-  # 6. Intersect Buffered Sites with Voronoi Tiles
-  #    This physically clips the buffer by the Voronoi boundary
-  intersections <- sf::st_intersection(
-    buffered_sites[, "temp_match_id"], 
-    voronoi_with_ids[, "temp_match_id"]
-  )
-  
-  # 7. Filter: Keep only the intersection where the Buffer belongs to the same site as the Tile
-  final_geoms <- intersections[intersections$temp_match_id == intersections$temp_match_id.1, ]
-  
-  # 8. Restore original attributes
-  final_sf <- final_geoms %>%
-    dplyr::select(-temp_match_id, -temp_match_id.1) %>%
-    dplyr::bind_cols(sf::st_drop_geometry(sites_sf))
+  # 7. Clean up columns (remove the duplicate site ID column)
+  final_sf <- final_sf %>% dplyr::select(-site.1)
     
   return(final_sf)
 }
-
 
 
 create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15, method_name = NULL, area_unit = "m") {
