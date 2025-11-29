@@ -50,39 +50,43 @@ calculate_weighted_sum <- function(pars, covs_df, intercept = TRUE){
 
 voronoi_clipped_buffers <- function(sites_sf, buffer_dist) {
   
-  # 1. Get centroids (defines the "center" of the site for tessellation)
+  # 1. Add a temporary unique ID to track geometries
+  #    This makes the function independent of input column names (site, checklist_id, etc.)
+  sites_sf$temp_uid_for_clip <- 1:nrow(sites_sf)
+  
+  # 2. Get centroids (defines the "center" of the site for tessellation)
   centroids <- sf::st_centroid(sites_sf)
   
-  # 2. Create Voronoi Tessellation
+  # 3. Create Voronoi Tessellation
   #    Use an envelope buffer to ensure edge sites get closed polygons
   bbox_polygon <- sf::st_as_sfc(sf::st_bbox(centroids) + buffer_dist * 2)
   voronoi_tiles <- sf::st_voronoi(sf::st_union(centroids), envelope = bbox_polygon) %>%
     sf::st_collection_extract(type = "POLYGON") %>%
     sf::st_sf()
   
-  # 3. Match Tiles to Site IDs (The Fix)
-  #    Spatially join the tiles back to the centroids to get the correct 'site' ID for each tile
-  voronoi_w_id <- sf::st_join(voronoi_tiles, centroids, join = sf::st_contains)
+  # 4. Match Tiles to the Temp ID
+  #    Join centroids to tiles so each tile gets the temp_uid_for_clip of the point inside it
+  #    We select ONLY the temp ID column to avoid column name collisions with other attributes
+  voronoi_w_id <- sf::st_join(voronoi_tiles, centroids["temp_uid_for_clip"], join = sf::st_contains)
   
-  # 4. Buffer the original sites
+  # 5. Buffer the original sites
   buffered_sites <- sf::st_buffer(sites_sf, dist = buffer_dist)
   
-  # 5. Intersect (All Overlaps)
+  # 6. Intersect (All Overlaps)
   #    This computes the intersection of every buffer with every tile it touches.
-  #    It returns columns 'site' (from buffer) and 'site.1' (from tile).
+  #    Because both inputs have 'temp_uid_for_clip', sf will rename the second one to 'temp_uid_for_clip.1'
   intersections <- sf::st_intersection(buffered_sites, voronoi_w_id)
   
-  # 6. Filter for Self-Intersection
-  #    Keep only the part where the Buffer for Site X intersects the Tile for Site X
-  #    (Discard where Buffer for Site X bleeds into Tile for Site Y)
-  final_sf <- intersections[intersections$site == intersections$site.1, ]
+  # 7. Filter for Self-Intersection
+  #    Keep only the part where the Buffer for ID X intersects the Tile for ID X
+  final_sf <- intersections[intersections$temp_uid_for_clip == intersections$temp_uid_for_clip.1, ]
   
-  # 7. Clean up columns (remove the duplicate site ID column)
-  final_sf <- final_sf %>% dplyr::select(-site.1)
+  # 8. Clean up columns (remove the temp IDs)
+  final_sf <- final_sf %>% 
+    dplyr::select(-temp_uid_for_clip, -temp_uid_for_clip.1)
     
   return(final_sf)
 }
-
 
 create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15, method_name = NULL, area_unit = "m") {
   
