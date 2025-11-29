@@ -101,6 +101,8 @@ for (method_name in all_method_names) {
 # --- 5b. Pre-compute Test Geometries (Static) ---
 cat("--- Pre-computing test site geometries... ---\n")
 
+base_test_df$site <- seq_len(nrow(base_test_df))
+
 # 1. Create SF object
 test_sf <- sf::st_as_sf(
   base_test_df, 
