@@ -9,37 +9,27 @@ library(unmarked)
 ########
 calculate_weighted_sum <- function(pars, covs_df, intercept = TRUE){
 
-  # --- NEW Vectorized Logic ---
-  # This is much faster than the original R loop.
-  
-  # 1. Get parameter names and values
-  # The order is guaranteed to be consistent
+  # --- Vectorized Logic ---
   par_names <- names(pars)
   par_values <- unlist(pars)
   
   if (intercept) {
-    # 2a. Separate intercept from covariates
     intercept_val <- par_values[1]
     cov_names <- par_names[-1]
     cov_values <- par_values[-1]
     
-    # 3a. Get the covariate matrix (X)
-    # Ensure columns are in the *exact* same order as cov_values
+    # Ensure columns are in the exact same order as cov_values
     X_matrix <- as.matrix(covs_df[, cov_names, drop = FALSE])
     
-    # 4a. Calculate (X %*% B) + intercept
-    # as.numeric() ensures it's a simple vector, not a 1-column matrix
+    # Calculate (X %*% B) + intercept
     weighted_sum <- as.numeric(intercept_val + (X_matrix %*% cov_values))
     
   } else {
-    # 2b. No intercept, use all parameters
     cov_names <- par_names
     cov_values <- par_values
     
-    # 3b. Get the covariate matrix (X)
     X_matrix <- as.matrix(covs_df[, cov_names, drop = FALSE])
     
-    # 4b. Calculate (X %*% B)
     weighted_sum <- as.numeric(X_matrix %*% cov_values)
   }
   
@@ -47,65 +37,68 @@ calculate_weighted_sum <- function(pars, covs_df, intercept = TRUE){
 }
 
 
-
-voronoi_clipped_buffers <- function(sites_sf, buffer_dist) {
+#' Generate Jigsaw-style Site Geometries
+#' 
+#' Creates site boundaries by:
+#' 1. Generating Voronoi tiles for ALL individual points (Partitioning space).
+#' 2. Aggregating tiles by Site ID (Defining exclusive territory).
+#' 3. Intersecting with a unioned buffer (Limiting territory to max range).
+voronoi_clipped_buffers <- function(points_sf, buffer_dist) {
   
-  # 1. Add a temporary unique ID to track geometries
-  sites_sf$temp_uid_for_clip <- 1:nrow(sites_sf)
+  # 1. Prepare Envelope (BBox + Buffer) to ensure edge points get tiles
+  bbox_polygon <- sf::st_as_sfc(sf::st_bbox(points_sf) + buffer_dist * 3)
   
-  # 2. Densify Geometries
-  #    Add extra vertices to long straight edges so the Voronoi diagram 
-  #    respects the shape of the polygon, not just its corners.
-  #    Heuristic: segments should be smaller than the buffer distance.
-  densified_sf <- sf::st_segmentize(sites_sf, dfMaxLength = buffer_dist / 2)
-  
-  # 3. Extract All Vertices
-  #    Convert polygons/lines into a cloud of points. 
-  #    Single-point sites remain as single points.
-  #    st_cast preserves the 'temp_uid_for_clip' attribute for every vertex.
-  vertices_sf <- sf::st_cast(densified_sf, "POINT")
-  
-  # 4. Create Voronoi Tessellation from ALL vertices
-  #    This creates a tile for every single vertex in the dataset.
-  bbox_polygon <- sf::st_as_sfc(sf::st_bbox(sites_sf) + buffer_dist * 2)
-  
-  #    Using st_union on vertices makes a MULTIPOINT, required for st_voronoi
-  voronoi_tiles <- sf::st_voronoi(sf::st_union(vertices_sf), envelope = bbox_polygon) %>%
+  # 2. Generate Voronoi Tiles for EVERY point
+  #    We use st_union because st_voronoi requires a MULTIPOINT input
+  #    dTolerance fixes potential topology errors with very close points
+  voronoi_tiles <- sf::st_voronoi(sf::st_union(points_sf), envelope = bbox_polygon, dTolerance = 0.1) %>%
     sf::st_collection_extract(type = "POLYGON") %>%
     sf::st_sf()
   
-  # 5. Map Tiles back to Site IDs
-  #    Each tile contains exactly one vertex. We join to find out which 
-  #    Site ID that vertex belongs to.
-  voronoi_w_id <- sf::st_join(voronoi_tiles, vertices_sf, join = sf::st_contains)
+  # 3. Map Tiles back to Site IDs
+  #    st_voronoi strips attributes, so we join spatially to get the Site ID back.
+  #    Using st_contains ensures we match the tile to the point inside it.
+  voronoi_w_id <- sf::st_join(voronoi_tiles, points_sf, join = sf::st_contains)
   
-  # 6. Dissolve Tiles by Site (Reassemble the Jigsaw)
-  #    Union all the small tiles belonging to the same Site ID into one "Territory"
+  # 4. Define "Exclusive Domain" (The Jigsaw Piece)
+  #    Union all tiles belonging to the same site.
+  #    This creates a partition of the map where every inch belongs to exactly one site.
   site_territories <- voronoi_w_id %>%
-    dplyr::group_by(temp_uid_for_clip) %>%
-    dplyr::summarise(geometry = sf::st_union(geometry), .groups = "drop")
+    dplyr::group_by(site) %>%
+    dplyr::summarise(geometry = sf::st_union(geometry), .groups = "drop") %>%
+    sf::st_make_valid()
   
-  # 7. Buffer Original Sites (The "Ideal" Extent)
-  buffered_sites <- sf::st_buffer(sites_sf, dist = buffer_dist)
+  # 5. Define "Ideal Domain" (The Buffer Blob)
+  #    Buffer every point, then union them by site. 
+  #    This creates the "melted" shape limited by distance.
+  site_buffers <- points_sf %>%
+    dplyr::group_by(site) %>%
+    dplyr::summarise(geometry = sf::st_union(sf::st_buffer(geometry, dist = buffer_dist)), .groups = "drop") %>%
+    sf::st_make_valid()
   
-  # 8. Intersect "Ideal Buffer" with "Voronoi Territory"
-  #    This allows the site to expand up to the buffer limit, OR stop at the 
-  #    Voronoi boundary (midpoint to neighbor), whichever comes first.
-  intersections <- sf::st_intersection(
-    buffered_sites,
-    site_territories
-  )
+  # 6. Intersect to get Final Shapes
+  #    We want the area that is BOTH within the Exclusive Domain AND within the Buffer.
+  #    This forces sites to "melt" into each other at the midpoint (Voronoi edge)
+  #    but stay rounded on the outside (Buffer edge).
   
-  # 9. Filter for Self-Intersection
-  #    Keep only the intersection where Buffer(Site A) overlaps Territory(Site A)
-  final_geoms <- intersections[intersections$temp_uid_for_clip == intersections$temp_uid_for_clip.1, ]
+  # Use an inner join logic via intersection
+  # We rename columns to ensure we match the correct site to itself
+  site_territories <- dplyr::rename(site_territories, site_t = site)
+  site_buffers <- dplyr::rename(site_buffers, site_b = site)
   
-  # 10. Clean up
-  final_sf <- final_geoms %>%
-    dplyr::select(-temp_uid_for_clip, -temp_uid_for_clip.1)
-    
-  return(final_sf)
+  intersections <- sf::st_intersection(site_territories, site_buffers)
+  
+  # Filter for self-intersection (Site A's Territory with Site A's Buffer)
+  final_geoms <- intersections %>%
+    dplyr::filter(site_t == site_b) %>%
+    dplyr::rename(site = site_t) %>%
+    dplyr::select(site, geometry) %>%
+    sf::st_make_valid() %>%
+    sf::st_collection_extract("POLYGON") # Ensure no stray points/lines
+  
+  return(final_geoms)
 }
+
 
 create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15, method_name = NULL, area_unit = "m") {
   
@@ -127,62 +120,43 @@ create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15
   
   if (is_kmsq) {
     # --- A. SQUARE GRID GEOMETRIES (kmSq) ---
+    # (Grid logic remains unchanged as it works correctly)
     parts <- unlist(strsplit(method_name, "-"))
     rad_m <- NA
     
     if (parts[1] == "kmSq") {
-      # Format: "kmSq-1000"
       rad_m <- as.numeric(parts[2])
     } else {
-      # Format: "1-kmSq" or "0.125-kmSq"
       area_km <- as.numeric(parts[1])
-      
-      # FIX: Use as.integer to match R/clustering_helpers.R logic
-      # This ensures the grid used for plotting aligns exactly with the grid used for clustering
       rad_m <- as.integer(sqrt(area_km) * 1000)
     }
     
-    # 1. Get bounding box 
     bbox <- sf::st_bbox(points_albers)
     
-    # 2. Define grid extent (using the exact same expansion logic as kmsq.R)
-    # Note: If site_data_sf is a subset, this bbox might differ from the original clustering bbox.
-    # Ideally, you should pass the full dataset's bbox, but matching rad_m fixes the main drift.
     x_seq <- seq(from = bbox["xmin"] - (rad_m * 5), to = bbox["xmax"] + (rad_m * 5), by = rad_m)
     y_seq <- seq(from = bbox["ymin"] - (rad_m * 5), to = bbox["ymax"] + (rad_m * 5), by = rad_m)
     
-    # 3. Create grid points
     grid_points <- expand.grid(x = x_seq, y = y_seq)
     grid_points_sf <- sf::st_as_sf(grid_points, coords = c("x", "y"), crs = albers_crs_str)
     
-    # 4. Create square polygons
     grid_geom <- sf::st_make_grid(grid_points_sf, cellsize = rad_m, square = TRUE)
     grid_sf <- sf::st_sf(geometry = grid_geom)
-    
-    # 5. Assign IDs 
     grid_sf$site <- as.character(seq_len(nrow(grid_sf)))
     
-    # 6. Filter to keep only sites present in the data
     present_sites <- unique(as.character(site_data_sf$site))
     site_geoms_sf <- grid_sf[grid_sf$site %in% present_sites, ]
     
   } else {
-    # --- B. CONVEX HULL + VORONOI CLIP ---
-    
-    # 1. Create the base geometries (Convex Hulls)
-    #    Do NOT buffer here yet.
-    base_geoms <- points_albers %>%
-      group_by(site) %>%
-      summarise(
-        geometry = sf::st_convex_hull(sf::st_union(geometry)),
-        .groups = "drop"
-      )
-    
-    # 2. Apply Voronoi Clipping + Buffering
-    site_geoms_sf <- voronoi_clipped_buffers(base_geoms, buffer_m)
+    # --- B. POINT-BASED VORONOI CLIP ---
+    # Pass the raw points directly. Do not aggregate to hulls yet.
+    # This prevents overlapping hulls from breaking the Voronoi generation.
+    site_geoms_sf <- voronoi_clipped_buffers(points_albers, buffer_m)
   }
   
   # --- 3. Create the 'w' (overlap weight) matrix ---
+  # Standardize site IDs to character
+  site_geoms_sf$site <- as.character(site_geoms_sf$site)
+  
   site_vect <- terra::vect(site_geoms_sf)
   site_vect_proj <- terra::project(site_vect, terra::crs(reference_raster))
   
@@ -206,12 +180,14 @@ create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15
   n_sites <- nrow(site_geoms_sf)
   n_cells <- terra::ncell(reference_raster)
   
+  # Note: Use site_geoms_sf$site[overlap_df$ID] if IDs are not 1:N sequential
+  # But here we assume we construct the sparse matrix row-by-row based on the geom DF order
   w <- Matrix::sparseMatrix(
     i = overlap_df$ID,
     j = overlap_df$cell,
     x = overlap_df$w_area,
     dims = c(n_sites, n_cells),
-    dimnames = list(as.character(site_geoms_sf$site), NULL) 
+    dimnames = list(site_geoms_sf$site, NULL) 
   )
   
   attr(site_geoms_sf, "w_matrix") <- w
@@ -221,9 +197,6 @@ create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15
 
 
 #' Prepare Data for occuN Model
-#'
-#' Handles the joining of checklists to sites, re-indexing site IDs,
-#' pivoting data to wide format, and creating the unmarkedFrame.
 prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_names, cell_covs) {
   
   # 1. Join checklists to the specific clustering method's site IDs
@@ -257,7 +230,6 @@ prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_name
     dplyr::ungroup()
   
   # 4. Pivot Observations (y)
-  # Join with 1:M to ensure all sites in W exist in Y, even if no detections
   y_wide <- train_data_prepped %>% 
     tidyr::pivot_wider(
       id_cols = site,
@@ -297,74 +269,15 @@ prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_name
   return(umf)
 }
 
-# #' Fit occuN Model with Random Starts
-# #'
-# #' repeatedly fits the model to find the global minimum NLL.
-# fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30, optimizer = "nlminb") {
-  
-#   # Combine formulas
-#   occuN_formula <- as.formula(paste(
-#     paste(deparse(obs_formula), collapse = ""), 
-#     paste(deparse(state_formula), collapse = "")
-#   ))
-  
-#   # Determine number of parameters
-#   # We fit once briefly or inspect design to get param count, 
-#   # or calculate based on covariates. 
-#   # Assuming basic formula structure:
-#   n_obs_pars <- length(all.vars(obs_formula)) + 1 # +1 intercept
-#   n_state_pars <- length(all.vars(state_formula)) + 1
-#   n_params <- n_obs_pars + n_state_pars
-  
-#   best_fm <- NULL
-#   min_nll <- Inf
-#   fit_successful <- FALSE
-  
-#   # Loop for random starts
-#   for (rep in 1:n_reps) {
-#     rand_starts <- runif(n_params, -2, 2) # Slightly tighter bounds usually safer
-    
-#     fm_rep <- try(unmarked::occuN(
-#       formula = occuN_formula,
-#       data = umf,
-#       starts = rand_starts,
-#       se = FALSE, # Optimization speedup
-#       method = optimizer
-#     ), silent = TRUE)
-    
-#     if (!inherits(fm_rep, "try-error")) {
-#       # Basic check for valid convergence (code 0 or 1 usually ok in R optim)
-#       if (fm_rep@negLogLike < min_nll && !is.nan(fm_rep@negLogLike)) {
-#         min_nll <- fm_rep@negLogLike
-#         best_fm <- fm_rep
-#         fit_successful <- TRUE
-#       }
-#     }
-#   }
-  
-#   if (!fit_successful) return(NULL)
-  
-#   # Refit best model with SE=TRUE to get Hessians/SEs if needed later, 
-#   # or just return the best object found.
-#   return(best_fm)
-# }
-
-
 
 #' Fit occuN Model with Random Starts and Early Stopping
-#'
-#' Repeatedly fits the model to find the global minimum NLL.
-#' Stops early if the same minimum is found multiple times.
 fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30, stable_reps = 5, optimizer = "nlminb") {
   
-  # Combine formulas
   occuN_formula <- as.formula(paste(
     paste(deparse(obs_formula), collapse = ""), 
     paste(deparse(state_formula), collapse = "")
   ))
   
-  # Determine number of parameters to generate valid random starts
-  # Assuming basic formula structure (1 intercept + N covariates)
   n_obs_pars <- length(all.vars(obs_formula)) + 1 
   n_state_pars <- length(all.vars(state_formula)) + 1
   n_params <- n_obs_pars + n_state_pars
@@ -372,53 +285,39 @@ fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30, stable
   best_fm <- NULL
   min_nll <- Inf
   fit_successful <- FALSE
-  
-  # Early stopping counters
   stable_count <- 0
-  tolerance <- 0.01  # NLL difference threshold to consider "same result"
+  tolerance <- 0.01 
   
-  # Loop for random starts
   for (rep in 1:n_reps) {
-    rand_starts <- runif(n_params, -2, 2) # Random starts [-2, 2]
+    rand_starts <- runif(n_params, -2, 2)
     
     fm_rep <- try(unmarked::occuN(
       formula = occuN_formula,
       data = umf,
       starts = rand_starts,
-      se = FALSE, # Disable SE calculation during search for speed
+      se = FALSE, 
       method = optimizer
     ), silent = TRUE)
     
     if (!inherits(fm_rep, "try-error")) {
       current_nll <- fm_rep@negLogLike
       
-      # Basic check for valid convergence
       if (!is.nan(current_nll)) {
-        
-        # Case 1: We found a strictly better model
         if (current_nll < min_nll) {
-          
-          # Check if improvement is significant or just numerical noise
           if (abs(min_nll - current_nll) < tolerance) {
              stable_count <- stable_count + 1
           } else {
-             # Significant improvement found: reset stability counter
              stable_count <- 0
           }
-          
           min_nll <- current_nll
           best_fm <- fm_rep
           fit_successful <- TRUE
-          
         } 
-        # Case 2: We hit the existing best minimum again (within tolerance)
         else if (abs(current_nll - min_nll) < tolerance) {
           stable_count <- stable_count + 1
         }
         
-        # Early Stopping: If we've hit the same best minimum 3 times, stop.
         if (stable_count >= stable_reps) {
-          # cat(sprintf("    Converged early at rep %d\n", rep)) # Optional debug
           break 
         }
       }
@@ -426,10 +325,8 @@ fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30, stable
   }
   
   if (!fit_successful) return(NULL)
-  
   return(best_fm)
 }
-
 
 
 ########
@@ -453,11 +350,9 @@ get_parameters <- function(df, i, occ_covs, det_covs, occ_intercept = TRUE, det_
 
   }
 
- 
   return (list(occ_par_list = occ_par_list, det_par_list = det_par_list))
 }
 ########
-
 
 
 ########
@@ -480,8 +375,7 @@ predict_sdm_map <- function(occ_pars, region, intercept = TRUE){
     par_idx <- par_idx + 1
   }
 
-  region$occ_prob <- expit(weighted_sum)
-
+  region$occ_prob <- rje::expit(weighted_sum)
 
   return(region)
 }
@@ -508,6 +402,3 @@ get_occu_map_diff <- function(occu_map_gt, occu_map) {
   return(occu_map_diff)
 }
 ########
-
-
-
