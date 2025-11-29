@@ -51,38 +51,57 @@ calculate_weighted_sum <- function(pars, covs_df, intercept = TRUE){
 voronoi_clipped_buffers <- function(sites_sf, buffer_dist) {
   
   # 1. Add a temporary unique ID to track geometries
-  #    This makes the function independent of input column names (site, checklist_id, etc.)
   sites_sf$temp_uid_for_clip <- 1:nrow(sites_sf)
   
-  # 2. Get centroids (defines the "center" of the site for tessellation)
-  centroids <- sf::st_centroid(sites_sf)
+  # 2. Densify Geometries
+  #    Add extra vertices to long straight edges so the Voronoi diagram 
+  #    respects the shape of the polygon, not just its corners.
+  #    Heuristic: segments should be smaller than the buffer distance.
+  densified_sf <- sf::st_segmentize(sites_sf, dfMaxLength = buffer_dist / 2)
   
-  # 3. Create Voronoi Tessellation
-  #    Use an envelope buffer to ensure edge sites get closed polygons
-  bbox_polygon <- sf::st_as_sfc(sf::st_bbox(centroids) + buffer_dist * 2)
-  voronoi_tiles <- sf::st_voronoi(sf::st_union(centroids), envelope = bbox_polygon) %>%
+  # 3. Extract All Vertices
+  #    Convert polygons/lines into a cloud of points. 
+  #    Single-point sites remain as single points.
+  #    st_cast preserves the 'temp_uid_for_clip' attribute for every vertex.
+  vertices_sf <- sf::st_cast(densified_sf, "POINT")
+  
+  # 4. Create Voronoi Tessellation from ALL vertices
+  #    This creates a tile for every single vertex in the dataset.
+  bbox_polygon <- sf::st_as_sfc(sf::st_bbox(sites_sf) + buffer_dist * 2)
+  
+  #    Using st_union on vertices makes a MULTIPOINT, required for st_voronoi
+  voronoi_tiles <- sf::st_voronoi(sf::st_union(vertices_sf), envelope = bbox_polygon) %>%
     sf::st_collection_extract(type = "POLYGON") %>%
     sf::st_sf()
   
-  # 4. Match Tiles to the Temp ID
-  #    Join centroids to tiles so each tile gets the temp_uid_for_clip of the point inside it
-  #    We select ONLY the temp ID column to avoid column name collisions with other attributes
-  voronoi_w_id <- sf::st_join(voronoi_tiles, centroids["temp_uid_for_clip"], join = sf::st_contains)
+  # 5. Map Tiles back to Site IDs
+  #    Each tile contains exactly one vertex. We join to find out which 
+  #    Site ID that vertex belongs to.
+  voronoi_w_id <- sf::st_join(voronoi_tiles, vertices_sf, join = sf::st_contains)
   
-  # 5. Buffer the original sites
+  # 6. Dissolve Tiles by Site (Reassemble the Jigsaw)
+  #    Union all the small tiles belonging to the same Site ID into one "Territory"
+  site_territories <- voronoi_w_id %>%
+    dplyr::group_by(temp_uid_for_clip) %>%
+    dplyr::summarise(geometry = sf::st_union(geometry), .groups = "drop")
+  
+  # 7. Buffer Original Sites (The "Ideal" Extent)
   buffered_sites <- sf::st_buffer(sites_sf, dist = buffer_dist)
   
-  # 6. Intersect (All Overlaps)
-  #    This computes the intersection of every buffer with every tile it touches.
-  #    Because both inputs have 'temp_uid_for_clip', sf will rename the second one to 'temp_uid_for_clip.1'
-  intersections <- sf::st_intersection(buffered_sites, voronoi_w_id)
+  # 8. Intersect "Ideal Buffer" with "Voronoi Territory"
+  #    This allows the site to expand up to the buffer limit, OR stop at the 
+  #    Voronoi boundary (midpoint to neighbor), whichever comes first.
+  intersections <- sf::st_intersection(
+    buffered_sites,
+    site_territories
+  )
   
-  # 7. Filter for Self-Intersection
-  #    Keep only the part where the Buffer for ID X intersects the Tile for ID X
-  final_sf <- intersections[intersections$temp_uid_for_clip == intersections$temp_uid_for_clip.1, ]
+  # 9. Filter for Self-Intersection
+  #    Keep only the intersection where Buffer(Site A) overlaps Territory(Site A)
+  final_geoms <- intersections[intersections$temp_uid_for_clip == intersections$temp_uid_for_clip.1, ]
   
-  # 8. Clean up columns (remove the temp IDs)
-  final_sf <- final_sf %>% 
+  # 10. Clean up
+  final_sf <- final_geoms %>%
     dplyr::select(-temp_uid_for_clip, -temp_uid_for_clip.1)
     
   return(final_sf)
