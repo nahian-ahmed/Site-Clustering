@@ -48,6 +48,72 @@ calculate_weighted_sum <- function(pars, covs_df, intercept = TRUE){
 
 
 
+voronoi_clipped_buffers <- function(sites_sf, buffer_dist) {
+  
+  # 1. Get centroids (defines the "center" of the site for tessellation)
+  #    Works for both Points (returns itself) and Polygons (returns centroid)
+  centroids <- sf::st_centroid(sites_sf)
+  
+  # 2. Create Voronoi Tessellation
+  #    We create a union of centroids to generate the tiling
+  #    Use an envelope buffer to ensure edge sites get closed polygons
+  bbox_polygon <- sf::st_as_sfc(sf::st_bbox(centroids) + buffer_dist * 2)
+  voronoi_tiles <- sf::st_voronoi(sf::st_union(centroids), envelope = bbox_polygon) %>%
+    sf::st_collection_extract(type = "POLYGON") %>%
+    sf::st_sf()
+  
+  # 3. Match Voronoi tiles back to the original sites
+  #    We join spatially: which tile contains which centroid?
+  #    This preserves the attributes (like 'site' ID) from sites_sf
+  voronoi_joined <- sf::st_join(centroids, voronoi_tiles, join = sf::st_within)
+  
+  # The voronoi_joined object now has the Centroid geometry, but we want the TILE geometry.
+  # However, st_join(x, y) keeps x's geometry. 
+  # A safer way to get the specific tile geometry matched to the ID is intersection later.
+  
+  # Let's try the intersection approach directly between Buffered Sites and Voronoi Collection.
+  # But we need to know which tile belongs to which site to filter correctly.
+  
+  # robust approach:
+  # a. Buffer the original geometries (Overlapping)
+  buffered_sites <- sf::st_buffer(sites_sf, dist = buffer_dist)
+  
+  # b. Create a mapping of Centroid -> Voronoi Tile
+  #    Since st_voronoi output order isn't guaranteed, we join tiles to centroids.
+  voronoi_with_ids <- sf::st_join(voronoi_tiles, centroids, join = sf::st_contains)
+  
+  # c. Intersect Buffered Site i with Voronoi Tile i
+  #    st_intersection(A, B) computes all intersections. We only keep where ID_A == ID_B.
+  intersections <- sf::st_intersection(buffered_sites, voronoi_with_ids)
+  
+  # 4. Filter for self-intersection (Where Buffer ID matches Tile ID)
+  #    Assuming your sites have a unique column named 'site'. 
+  #    If not, we rely on row names or create a temp ID.
+  
+  # Create temp ID to ensure matching
+  buffered_sites$temp_match_id <- 1:nrow(buffered_sites)
+  voronoi_with_ids$temp_match_id <- 1:nrow(voronoi_with_ids)
+  
+  # Re-run intersection with explicit IDs
+  intersections <- sf::st_intersection(
+    buffered_sites[, "temp_match_id"], 
+    voronoi_with_ids[, "temp_match_id"]
+  )
+  
+  # Keep only where the buffer intersects ITS OWN Voronoi tile
+  final_geoms <- intersections[intersections$temp_match_id == intersections$temp_match_id.1, ]
+  
+  # 5. Clean up and restore original attributes
+  #    Join back the original data based on the ID
+  final_sf <- final_geoms %>%
+    dplyr::select(-temp_match_id, -temp_match_id.1) %>%
+    dplyr::bind_cols(sf::st_drop_geometry(sites_sf))
+    
+  return(final_sf)
+}
+
+
+
 create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15, method_name = NULL, area_unit = "m") {
   
   # --- 1. Project Points to Albers (meters) for Geometry Creation ---
@@ -108,16 +174,19 @@ create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15
     site_geoms_sf <- grid_sf[grid_sf$site %in% present_sites, ]
     
   } else {
-    # --- B. CONVEX HULL + BUFFER ---
-    site_geoms_sf <- points_albers %>%
+    # --- B. CONVEX HULL + VORONOI CLIP ---
+    
+    # 1. Create the base geometries (Convex Hulls)
+    #    Do NOT buffer here yet.
+    base_geoms <- points_albers %>%
       group_by(site) %>%
       summarise(
-        geometry = sf::st_buffer(
-            sf::st_convex_hull(sf::st_union(geometry)),
-            dist = buffer_m
-        ),
-        .groups = "drop" 
+        geometry = sf::st_convex_hull(sf::st_union(geometry)),
+        .groups = "drop"
       )
+    
+    # 2. Apply Voronoi Clipping + Buffering
+    site_geoms_sf <- voronoi_clipped_buffers(base_geoms, buffer_m)
   }
   
   # --- 3. Create the 'w' (overlap weight) matrix ---
