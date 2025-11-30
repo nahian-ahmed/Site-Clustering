@@ -81,59 +81,37 @@ plot_sites <- function(
             y = "Latitude"
         ) +
         theme_bw() +
-        # coord_sf(
-        #     xlim = c(bbox_full$xmin, bbox_full$xmax),
-        #     ylim = c(bbox_full$ymin, bbox_full$ymax),
-        #     crs = wgs84_crs,
-        #     expand = FALSE
-        # ) +
         coord_fixed(
             ratio = 1.0,
             xlim = c(bbox_full$xmin, bbox_full$xmax),
             ylim = c(bbox_full$ymin, bbox_full$ymax),
             expand = FALSE
         ) +
-        # theme(
-        #     plot.title = element_text(hjust = 0.5, face = "bold"),
-        #     legend.position = "bottom",
-        #     legend.direction = "horizontal",
-        #     legend.key.width = unit(1.5, "cm"),
-        #     axis.title = element_blank()
-        # )
-
         theme(
-            
             # --- 1. Pull Title Closer ---
-            # Negative bottom margin (b = -15) pulls the title down towards the map
-            # plot.title = element_text(hjust = 0.5, face = "bold", margin = margin(b = -100)),
             plot.title = element_text(
                 hjust = 0.5, 
                 face = "bold", 
-                vjust = -1.25,  # <--- ADD THIS (Tweak number until it lands right)
-                margin = margin(b = -10) # Keep a small margin adjustment if needed
+                vjust = -1.25,
+                margin = margin(b = -10)
             ),
 
             # --- 2. Legend Position & Margins ---
             legend.position = "bottom",
             legend.direction = "horizontal",
-            # Negative top margin (t = -15) pulls the legend up towards the map
             legend.margin = margin(t = -50),
-            # Remove extra box spacing
             legend.box.margin = margin(0, 0, 0, 0),
 
             # --- 3. Shrink Legend Keys & Text ---
-            # Make the color bar much shorter and thinner
             legend.key.width = unit(0.75, "cm"),  
             legend.key.height = unit(0.5, "cm"),
-            
-            # Reduce text sizes
             legend.title = element_text(size = 10, vjust = 1),
             legend.text = element_text(size = 8),
 
             axis.title = element_blank()
         )
+
     # --- 3. Create Right Plots (Zoomed Clusters) ---
-    
     zoom_plots <- list()
     
     for (method_name in methods_to_plot) {
@@ -187,14 +165,9 @@ plot_sites <- function(
             sf::st_intersection(geom_sf_wgs84, zoom_poly_sfc)
         )
         
-        # 4. Post-Intersection Extraction (CRITICAL CHANGE)
+        # 4. Post-Intersection Extraction & Label Generation
         if (nrow(geom_sf_zoom) > 0) {
             
-            # Ensure we extract POLYGONS from any GEOMETRYCOLLECTIONS created by the cut
-            # This replaces the previous "filter" which was dropping the collections
-            # geom_sf_zoom <- sf::st_collection_extract(geom_sf_zoom, "POLYGON")
-            
-
             if (inherits(sf::st_geometry(geom_sf_zoom), "sfc_GEOMETRYCOLLECTION") || any(sf::st_geometry_type(geom_sf_zoom) == "GEOMETRYCOLLECTION")) {
               geom_sf_zoom <- sf::st_collection_extract(geom_sf_zoom, "POLYGON")
             }
@@ -210,6 +183,20 @@ plot_sites <- function(
                 # 1e-6 m^2 is effectively 0, checking for non-empty polygons
                 geom_sf_zoom <- geom_sf_zoom[as.numeric(area_vals) > 1e-6, ]
             }
+
+            # >>>>> NEW STEP: Generate Simple Labels (1, 2, 3...) <<<<<
+            if (nrow(geom_sf_zoom) > 0) {
+                # Get unique site IDs visible in this specific zoom window
+                # Sort them so the numbering is deterministic (e.g. 10, 11, 20 -> 1, 2, 3)
+                visible_sites <- sort(unique(as.character(geom_sf_zoom$site)))
+                
+                # Create a lookup: Original ID -> "1", "2", "3"...
+                label_map <- setNames(as.character(seq_along(visible_sites)), visible_sites)
+                
+                # Assign the simplified label to a new column
+                geom_sf_zoom$simple_id <- label_map[as.character(geom_sf_zoom$site)]
+            }
+            # >>>>> END NEW STEP <<<<<
         }
         # +++ FIX END +++
 
@@ -259,14 +246,15 @@ plot_sites <- function(
                 color = "black",
                 show.legend = FALSE
             ) +
+            # --- Site Labels (Using Simple ID) ---
             {if (nrow(geom_sf_zoom) > 0)
                 geom_sf_label(
                     data = geom_sf_zoom,
-                    aes(label = site),
-                    size = 2.5,           # Small font size
-                    alpha = 0.6,          # Semi-transparent background
-                    label.padding = unit(0.1, "lines"),
-                    label.size = 0.0,     # No border around label
+                    aes(label = simple_id), # <--- Uses the simplified 1,2,3 label
+                    size = 3,               # Larger font size for numbers
+                    alpha = 0.7,            # Slightly more opaque for readability
+                    label.padding = unit(0.15, "lines"),
+                    label.size = 0.0,       
                     color = "black",
                     fontface = "bold",
                     inherit.aes = FALSE,
