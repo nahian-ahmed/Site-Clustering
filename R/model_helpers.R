@@ -36,14 +36,13 @@ calculate_weighted_sum <- function(pars, covs_df, intercept = TRUE){
   return(weighted_sum)
 }
 
-#' Generate Jigsaw-style Site Geometries (Convex Hull Method)
+#' Generate Jigsaw-style Site Geometries (Smoothed & Robust)
 voronoi_clipped_buffers <- function(points_sf, buffer_dist) {
   
   # 1. Prepare Envelope
   bbox_polygon <- sf::st_as_sfc(sf::st_bbox(points_sf) + buffer_dist * 3)
   
   # 2. Generate Voronoi Tiles for ALL points (Base Partition)
-  #    We still use individual points for Voronoi to determine the "midlines" between sites
   voronoi_tiles <- sf::st_voronoi(sf::st_union(points_sf), envelope = bbox_polygon, dTolerance = 0.1) %>%
     sf::st_collection_extract(type = "POLYGON") %>%
     sf::st_sf()
@@ -52,17 +51,13 @@ voronoi_clipped_buffers <- function(points_sf, buffer_dist) {
   voronoi_w_id <- sf::st_join(voronoi_tiles, points_sf, join = sf::st_contains)
   
   # 4. Define "Exclusive Domain" (Voronoi Territory)
-  #    Union tiles by site to get the maximum possible area for that site
   site_territories <- voronoi_w_id %>%
     dplyr::group_by(site) %>%
     dplyr::summarise(geometry = sf::st_union(geometry), .groups = "drop") %>%
     sf::st_make_valid()
   
-  # 5. Define "Ideal Domain" (Buffered Convex Hull) -- [UPDATED LOGIC]
-  #    Instead of buffering points, we buffer the Convex Hull of the site.
-  #    - 1 point -> Point -> Buffer = Circle
-  #    - 2 points -> Line -> Buffer = Sausage shape
-  #    - 3+ points -> Polygon -> Buffer = Rounded Polygon
+  # 5. Define "Ideal Domain" (Buffered Convex Hull)
+  #    Connects points in a site and adds body
   site_buffers <- points_sf %>%
     dplyr::group_by(site) %>%
     dplyr::summarise(geometry = sf::st_convex_hull(sf::st_union(geometry)), .groups = "drop") %>%
@@ -73,8 +68,7 @@ voronoi_clipped_buffers <- function(points_sf, buffer_dist) {
   site_territories <- dplyr::rename(site_territories, site_t = site)
   site_buffers <- dplyr::rename(site_buffers, site_b = site)
   
-  # Calculate intersection
-  # We only keep areas where the Site's Voronoi tile intersects the Site's Buffered Hull
+  # Calculate intersection (The Cookie Cutter)
   intersections <- sf::st_intersection(site_territories, site_buffers)
   
   final_geoms <- intersections %>%
@@ -83,14 +77,21 @@ voronoi_clipped_buffers <- function(points_sf, buffer_dist) {
     dplyr::select(site, geometry) %>%
     sf::st_make_valid() 
   
-  # Handle potential geometry collections from intersection
-  if (any(sf::st_geometry_type(final_geoms) == "GEOMETRYCOLLECTION")) {
+  # 7. [NEW] Smoothing Step
+  #    removes sharp Voronoi corners while keeping general shape
+  #    dTolerance = 10m provides a subtle smoothing effect
+  final_geoms <- sf::st_simplify(final_geoms, dTolerance = 10, preserveTopology = TRUE)
+
+  # 8. [FIXED] Robust Collection Extraction
+  #    Only run extraction if the geometry is actually a collection.
+  #    This prevents the "x is already of type POLYGON" warning.
+  geom_type <- sf::st_geometry_type(final_geoms, by_geometry = FALSE)
+  if (inherits(geom_type, "GEOMETRYCOLLECTION") || any(geom_type == "GEOMETRYCOLLECTION")) {
       final_geoms <- sf::st_collection_extract(final_geoms, "POLYGON")
   }
 
   return(final_geoms)
 }
-
 
 create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15, method_name = NULL, area_unit = "m") {
   
