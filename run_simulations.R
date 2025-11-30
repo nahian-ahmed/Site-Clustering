@@ -122,6 +122,48 @@ test_area_vals <- terra::extract(area_j_raster, test_geoms, fun = "sum", exact =
 base_test_df$area_j <- test_area_vals[, 1]
 
 
+
+# --- NEW: Create W Matrix for Test Data ---
+cat("--- Creating W matrix for test data... ---\n")
+
+# 1. Convert to SpatVector and ensure projection matches raster
+test_vect <- terra::vect(test_geoms)
+# (Assuming cov_tif_albers is your reference raster)
+test_vect_proj <- terra::project(test_vect, terra::crs(cov_tif_albers))
+
+# 2. Extract overlap (cells, exact fraction, and ID)
+#    ID=TRUE links the extraction back to the row number of test_geoms
+test_overlap_df <- terra::extract(
+  cov_tif_albers[[1]], 
+  test_vect_proj, 
+  cells = TRUE, 
+  exact = TRUE, 
+  ID = TRUE
+)
+
+# 3. Calculate Area Weights (km^2)
+#    We use the pre-calculated area_j_raster (which is in km^2)
+test_overlap_cell_areas <- terra::extract(area_j_raster, test_overlap_df$cell)
+test_overlap_df$w_area <- test_overlap_df$fraction * test_overlap_cell_areas[,1]
+
+# 4. Construct Sparse Matrix (Rows = Test Sites, Cols = Raster Cells)
+n_test_sites <- nrow(test_geoms)
+n_cells <- terra::ncell(cov_tif_albers)
+
+w_matrix_test <- Matrix::sparseMatrix(
+  i = test_overlap_df$ID,
+  j = test_overlap_df$cell,
+  x = test_overlap_df$w_area,
+  dims = c(n_test_sites, n_cells)
+)
+
+# 5. Clean up Heavy Objects
+rm(test_geoms, test_vect, test_vect_proj, test_overlap_df, test_overlap_cell_areas)
+gc()
+
+cat("--- Test W matrix created and geometries removed. ---\n")
+
+
 # Save clustering stats
 clustering_summary_df <- summarize_clusterings(all_clusterings, all_site_geometries, units = "km")
 output_dir <- file.path("simulation_experiments", "output")
@@ -177,7 +219,7 @@ all_method_names_plot_order <- c(
   "1to10", "2to10", "2to10-sameObs", "lat-long", "SVS", "1-per-UL",
   "0.125-kmSq", "1-kmSq", "clustGeo-50-60", "BayesOptClustGeo", "DBSC", "rounded-4"  
 )
-# Call plot function
+# 1. PLOT SITES (Do this while you still have the geometries!)
 site_plot <- plot_sites(
   base_train_df = base_train_df,
   all_clusterings = all_clusterings,
@@ -187,6 +229,20 @@ site_plot <- plot_sites(
   boundary_shp_path = boundary_shapefile_path,
   output_path = file.path(output_dir, "site_cluster_visualization.png")
 )
+
+# 2. EXTRACT W MATRICES & FREE RAM
+cat("--- Extracting W matrices and clearing geometry RAM ---\n")
+all_w_matrices <- list()
+for (m_name in names(all_site_geometries)) {
+  if (!is.null(all_site_geometries[[m_name]])) {
+    # Extract the sparse matrix stored in the attribute
+    all_w_matrices[[m_name]] <- attr(all_site_geometries[[m_name]], "w_matrix")
+  }
+}
+
+# DELETE THE HEAVY GEOMETRIES
+rm(all_site_geometries)
+gc() # Force garbage collection
 
 
 # --- 6. Main Simulation Loop ---
@@ -211,33 +267,52 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
   state_par_list <- as.list(current_parameter_set[, c("state_intercept", state_cov_names)])
   names(state_par_list)[1] <- "intercept"
   
+
+  # log_lambda_j <- cov_tif_albers[[1]] * 0 + state_par_list$intercept
+  # for (nm in state_cov_names) log_lambda_j <- log_lambda_j + (cov_tif_albers[[nm]] * state_par_list[[nm]])
+  
+  # N_j_raster <- exp(log_lambda_j) * area_j_raster
+  
+
+
+  # Calculate Lambda (Density) Vector
   log_lambda_j <- cov_tif_albers[[1]] * 0 + state_par_list$intercept
   for (nm in state_cov_names) log_lambda_j <- log_lambda_j + (cov_tif_albers[[nm]] * state_par_list[[nm]])
   
-  N_j_raster <- exp(log_lambda_j) * area_j_raster
+  # DENSITY VECTOR (for Matrix Mult)
+  # Note: Do not multiply by area here; W matrix has area.
+  cell_density_vector <- terra::values(exp(log_lambda_j))
+  cell_density_vector[is.na(cell_density_vector)] <- 0
   
+  # ABUNDANCE RASTER (for Test Data extraction)
+  # Test data is points, so we still need the raster to extract specific cell values
+  N_j_raster <- exp(log_lambda_j) * area_j_raster
+
   obs_par_list <- as.list(current_parameter_set[, c("obs_intercept", obs_cov_names)])
   names(obs_par_list)[1] <- "intercept"
 
   for (sim_num in 1:n_simulations) {
     cat(sprintf("  --- Sim %d / %d ---\n", sim_num, n_simulations))
 
-    # --- 6.2 Simulate Data ---
-    train_data <- simulate_train_data(
-    reference_clustering_df = current_reference_dataframe,
-    site_geoms_sf = current_site_geometries,
-    obs_cov_names = obs_cov_names,
-    obs_par_list = obs_par_list,
-    N_j_raster = N_j_raster
-    )
-      
+    # Retrieve the W matrix for the current reference method
+    current_w_matrix <- all_w_matrices[[current_clustering_method]]
 
+    # --- 6.2 Simulate Data (OPTIMIZED) ---
+    train_data <- simulate_train_data(
+      reference_clustering_df = current_reference_dataframe,
+      obs_cov_names = obs_cov_names,
+      obs_par_list = obs_par_list,
+      w_matrix = current_w_matrix,           # Pass Matrix
+      cell_density_vector = cell_density_vector # Pass Density
+    )
+    
+    # Test data simulation 
     test_data_full <- simulate_test_data(
       base_test_df = base_test_df,
       obs_cov_names = obs_cov_names,
       obs_par_list = obs_par_list,
-      N_j_raster = N_j_raster,
-      test_geoms_sf = test_geoms
+      w_matrix = w_matrix_test,
+      cell_density_vector = cell_density_vector
     )
 
     # Dataset Stats

@@ -88,191 +88,96 @@ prepare_test_data <- function (
 }
 
 
-# +++ MODIFIED FUNCTION +++
-simulate_train_data <-  function (
+
+
+
+# R/simulation_helpers.R
+
+simulate_train_data <- function (
     reference_clustering_df,
-    site_geoms_sf,
-    # parameter_set_row,  # Removed
-    # state_cov_names,    # Removed
     obs_cov_names,
-    obs_par_list,         # Added
-    N_j_raster            # Added
+    obs_par_list,
+    w_matrix,             # <-- NEW: Pass the sparse matrix (Sites x Cells)
+    cell_density_vector  # <-- NEW: Pass Density values (exp(log_lambda)), NOT Abundance (N_j)
 ) {
   
-  # === 1. EXTRACT PARAMETERS ===
-  message("  (sim_train) Extracting parameters...")
-  # state_par_list no longer needed
-  # obs_par_list is now passed directly
+  # === 1. CALCULATE SITE-LEVEL EXPECTED ABUNDANCE (lambda_tilde_i) ===
+  # Matrix Multiplication: [Sites x Cells] * [Cells x 1] = [Sites x 1]
+  # w_matrix contains 'Area overlap', so: Area * Density = Abundance
   
-  # === 2. PROJECT RASTER... (REMOVED) ===
+  # Ensure NAs in density are 0 to prevent propagation errors
+  cell_density_vector[is.na(cell_density_vector)] <- 0
   
-  # === 3. CALCULATE CELL-LEVEL INTENSITY... (REMOVED) ===
+  lambda_tilde_i <- as.numeric(w_matrix %*% cell_density_vector)
   
-  # === 4. CALCULATE CELL-LEVEL EXPECTED ABUNDANCE... (REMOVED) ===
-  # N_j_raster is now passed directly
-  
-  # === 5. CALCULATE SITE-LEVEL EXPECTED ABUNDANCE (lambda_tilde_i) ===
-  message("  (sim_train) Extracting site-level expected abundance (lambda_tilde_i)...")
-  
-  # Use exact=TRUE (implies weights=TRUE) and fun="sum"
-  # This sums the cell values (N_j) weighted by the polygon overlap fraction
-  lambda_tilde_i_df <- terra::extract(
-    N_j_raster,
-    site_geoms_sf,
-    fun = "sum",
-    exact = TRUE,
-    ID = FALSE # We already have site IDs in site_geoms_sf
+  # Create a lookup for site state
+  # We assume rownames(w_matrix) are the site IDs
+  site_state_df <- data.frame(
+    site = rownames(w_matrix),
+    lambda_tilde_i = lambda_tilde_i
   )
   
-  # Store this in the site_geoms_sf dataframe
-  site_geoms_sf$lambda_tilde_i <- lambda_tilde_i_df[,1]
-
-  site_geoms_sf$lambda_tilde_i[is.na(site_geoms_sf$lambda_tilde_i)] <- 0
+  # === 2. SIMULATE SITE-LEVEL ABUNDANCE (N_i) & OCCUPANCY (Z_i) ===
+  # psi_i = 1 - exp(-lambda)
+  site_state_df$occupied_prob <- 1 - exp(-site_state_df$lambda_tilde_i)
   
-  # === 6. SIMULATE SITE-LEVEL ABUNDANCE (N_i) & OCCUPANCY (Z_i) ===
-  message("  (sim_train) Simulating site-level abundance (N_i) and occupancy (Z_i)...")
+  # N_i ~ Poisson(lambda)
+  site_state_df$N <- rpois(n = nrow(site_state_df), lambda = site_state_df$lambda_tilde_i)
   
-  # \psi_i = 1 - e^{-\tilde{\lambda}_i} 
-  site_geoms_sf$psi_i <- 1 - exp(-site_geoms_sf$lambda_tilde_i)
-  
-  # N_i ~ Poisson(\tilde{\lambda}_i) 
-  site_geoms_sf$N_i <- rpois(
-    n = nrow(site_geoms_sf),
-    lambda = site_geoms_sf$lambda_tilde_i
-  )
-  
-  # Z_i = 1 if N_i > 0, 0 otherwise
-  site_geoms_sf$Z_i <- ifelse(site_geoms_sf$N_i > 0, 1, 0)
+  # Z_i = 1 if N > 0
+  site_state_df$occupied <- ifelse(site_state_df$N > 0, 1, 0)
   
   
-  # === 7. MERGE SITE-LEVEL STATE TO CHECKLISTS ===
-  message("  (sim_train) Merging site state to checklists...")
-  
-  # Create a lookup table from the sf object
-  # *** ADDED N_i TO THE LOOKUP ***
-  site_state_lookup <- sf::st_drop_geometry(
-    site_geoms_sf[, c("site", "psi_i", "Z_i", "N_i")]
-  )
-  names(site_state_lookup) <- c("site", "occupied_prob", "occupied", "N")
-
-  # Ensure site columns are characters to match site_geoms_sf
+  # === 3. MERGE TO CHECKLISTS ===
   reference_clustering_df$site <- as.character(reference_clustering_df$site)
-  site_state_lookup$site <- as.character(site_state_lookup$site)
+  site_state_df$site <- as.character(site_state_df$site)
   
-  # Join with the original checklist data
   res_df <- dplyr::left_join(
     reference_clustering_df, 
-    site_state_lookup, 
+    site_state_df, 
     by = "site"
   )
   
-  # === 8. SIMULATE CHECKLIST-LEVEL DETECTION (y_it) ===
-  # y_it | Z_i ~ Bernoulli(Z_i * p_it) 
-  message("  (sim_train) Simulating checklist-level detection...")
-  
-  # Calculate detection probability p_it for all checklists
+  # === 4. SIMULATE DETECTION (y_it) ===
+  # Calculate detection probability p_it
   det_logit <- calculate_weighted_sum(obs_par_list, res_df)
   res_df$det_prob <- rje::expit(det_logit)
   
-  # Simulate a detection attempt for every checklist
+  # Simulate detection
   res_df$detection <- rbinom(
     n = nrow(res_df), 
     size = 1, 
     prob = res_df$det_prob
   )
   
-  # === 9. FINALIZE OBSERVATION ===
-  # species_observed = Z_i * detection
+  # === 5. FINALIZE ===
   res_df$species_observed <- res_df$occupied * res_df$detection
   
-  message("  (sim_train) Simulation of training data complete.")
-  
-  # Keep columns consistent with old code and test data simulation
-  # (e.g., `occupied`, `det_prob`, `species_observed`, `N`)
   return (res_df)
 }
-
-
-
-# # +++ CORRECTED FUNCTION +++
-# simulate_test_data <- function (
-#     base_test_df,
-#     obs_cov_names,
-#     obs_par_list,
-#     N_j_raster,
-#     albers_crs_str,
-#     area_j_raster  # <--- ADD THIS ARGUMENT
-# ){
-  
-#   # === 1. START WITH PRE-PROCESSED DATA ===
-#   test_df <- base_test_df
-  
-#   # === 2. EXTRACT PARAMETERS (Observation only) ===
-#   # state_par_list is no longer needed
-  
-#   # === 3. PROJECT TEST POINTS ===
-#   test_sf <- sf::st_as_sf(
-#     test_df, 
-#     coords = c("longitude", "latitude"), 
-#     crs = "+proj=longlat +datum=WGS84"
-#   )
-#   test_sf_albers <- sf::st_transform(test_sf, crs = albers_crs_str)
-#   test_df$area_j <- terra::extract(area_j_raster, test_sf_albers, ID = FALSE)[,1]
-  
-#   # === 4. SIMULATE ABUNDANCE (N_j) & OCCUPANCY (Z_j) (CELL-LEVEL) ===
-  
-#   # +++ FIX: Extract expected abundance directly from N_j_raster +++
-#   # This is the expected abundance for the cell
-#   lambda_j_cell_df <- terra::extract(N_j_raster, test_sf_albers, ID = FALSE)
-#   test_df$lambda_j_cell <- lambda_j_cell_df[, 1]
-
-#   # Simulate N_j ~ Poisson(lambda_j_cell)
-#   test_df$N <- rpois(n = nrow(test_df), lambda = test_df$lambda_j_cell)
-  
-#   # Derive occupied state Z_j from N_j
-#   test_df$Z_i <- ifelse(test_df$N > 0, 1, 0)
-  
-#   # Store the true occupancy probability (P(N_j > 0))
-#   test_df$occupied_prob <- 1 - exp(-test_df$lambda_j_cell)
-
-#   # === 5. SIMULATE DETECTION (y_j) ===
-#   test_df$det_prob <- calculate_weighted_sum(obs_par_list, test_df)
-#   test_df$det_prob <- rje::expit(test_df$det_prob)
-#   test_df$detection <- rbinom(nrow(test_df), 1, test_df$det_prob)
-  
-#   # === 6. FINAL OBSERVATION ===
-#   test_df$species_observed <- test_df$Z_i * test_df$detection
-
-#   message("  (sim_test) Simulation of test data complete.")
-
-#   return (test_df)
-# }
 
 
 simulate_test_data <- function (
     base_test_df,
     obs_cov_names,
     obs_par_list,
-    N_j_raster,
-    test_geoms_sf # <--- NEW ARGUMENT: The pre-calculated polygons
+    w_matrix,             # <-- NEW: Sparse Matrix
+    cell_density_vector   # <-- NEW: Density (exp(log_lambda)), NOT N_j_raster
 ){
   
-  # Start with the base df (which now has 'area_j' pre-calculated)
   test_df <- base_test_df
   
-  # === 1. Calculate Expected Abundance (Lambda) ===
-  # We must do this here because N_j_raster changes in the loop.
-  # We use the pre-calculated 'test_geoms_sf' for speed.
+  # === 1. Calculate Site-Level Expected Abundance (Lambda) ===
+  # Matrix Mult: [TestSites x Cells] * [Cells x 1] = [TestSites x 1]
+  # W matrix contains Area (km^2). Density is per km^2. Result is Abundance.
   
-  lambda_extract <- terra::extract(N_j_raster, test_geoms_sf, fun = "sum", exact = TRUE, ID = FALSE)
-  test_df$lambda_j_site <- lambda_extract[, 1]
-  test_df$lambda_j_site[is.na(test_df$lambda_j_site)] <- 0
+  cell_density_vector[is.na(cell_density_vector)] <- 0
+  lambda_vals <- as.numeric(w_matrix %*% cell_density_vector)
+  
+  test_df$lambda_j_site <- lambda_vals
   
   # === 2. Simulate Biological State ===
-  # N ~ Poisson(Lambda)
   test_df$N <- rpois(n = nrow(test_df), lambda = test_df$lambda_j_site)
-  
-  # Z (Occupancy)
   test_df$Z_i <- ifelse(test_df$N > 0, 1, 0)
   test_df$occupied_prob <- 1 - exp(-test_df$lambda_j_site)
 
@@ -284,9 +189,7 @@ simulate_test_data <- function (
   # === 4. Finalize ===
   test_df$species_observed <- test_df$Z_i * test_df$detection
 
-  # === IMPORTANT: Ensure it is a plain dataframe ===
-  # If 'base_test_df' was a standard DF, 'test_df' is likely still standard.
-  # But if it somehow became an sf object, drop geometry here to be safe for subsampling.
+  # Ensure standard dataframe (should be already, but just in case)
   if (inherits(test_df, "sf")) {
     test_df <- sf::st_drop_geometry(test_df)
   }
