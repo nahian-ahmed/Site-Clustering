@@ -40,7 +40,8 @@ summarize_clusterings <- function(all_clusterings, all_site_geometries, units = 
     # (n_points per site)
     point_stats <- cluster_data %>%
       group_by(site) %>%
-      dplyr::summarise(n_points = n())
+      dplyr::summarise(n_points = n())%>%
+      dplyr::mutate(site = as.character(site))
       
  
     # --- 5. Calculate Area Stats (Metrics 10-13) ---
