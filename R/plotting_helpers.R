@@ -95,7 +95,7 @@ plot_sites <- function(
             plot.title = element_text(
                 hjust = 0.5, 
                 face = "bold", 
-                vjust = -2.25,  # (Tweak number until it lands right) # -2.25 for 3 row, -1.25 for 2 row
+                vjust = -5,  # (Tweak number until it lands right) # -5 for 3 row, -1.25 for 2 row
                 margin = margin(b = -10) # Keep a small margin adjustment if needed
             ),
 
@@ -103,7 +103,7 @@ plot_sites <- function(
             legend.position = "bottom",
             legend.direction = "horizontal",
             # Negative top margin (t = -15) pulls the legend up towards the map
-            legend.margin = margin(t = -300), # -50 for 2 row, -300 for 3 row
+            legend.margin = margin(t = -250), # -50 for 2 row, -250 for 3 row
             # Remove extra box spacing
             legend.box.margin = margin(0, 0, 0, 0),
 
