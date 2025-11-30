@@ -139,7 +139,7 @@ cat(sprintf("--- Clustering similarity stats saved to %s/clustering_similarity_s
 ###
 all_method_names_plot_order <- c(
   "1to10", "2to10", "2to10-sameObs", "lat-long", "SVS", "1-per-UL",
-  "0.125-kmSq", "1-kmSq", "clustGeo-50-60", "BayesOptClustGeo", "DBSC", "rounded-4"  
+  "0.5-kmSq", "1-kmSq", "clustGeo-50-60", "BayesOptClustGeo", "DBSC", "rounded-4"  
 )
 site_plot <- plot_sites(
   base_train_df = base_train_df,
