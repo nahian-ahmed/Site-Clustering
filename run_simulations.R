@@ -53,8 +53,8 @@ n_simulations <- 1 # Debug override
 n_fit_repeats <- 5 # Debug override
 n_test_repeats <- 1 # Debug override
 
-res_m <- 30 
-buffer_m <- 180
+res_m <- 100 
+buffer_m <- 200
 
 state_cov_names <- names(sim_params)[2:6]
 obs_cov_names <- names(sim_params)[8:12]
