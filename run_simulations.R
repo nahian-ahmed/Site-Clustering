@@ -54,7 +54,7 @@ n_fit_repeats <- 25 # Debug override
 n_test_repeats <- 1 # Debug override
 
 res_m <- 30 
-buffer_m <- 150
+buffer_m <- 210
 
 state_cov_names <- names(sim_params)[2:6]
 obs_cov_names <- names(sim_params)[8:12]
@@ -101,7 +101,7 @@ for (method_name in all_method_names) {
   if (is.list(cluster_data) && "result_df" %in% names(cluster_data)) cluster_data <- cluster_data$result_df
   
   if (!is.null(cluster_data)) {
-    all_site_geometries[[method_name]] <- create_site_geometries(cluster_data, state_cov_raster, buffer_m, method_name, "km")
+    all_site_geometries[[method_name]] <- create_site_geometries(cluster_data, cov_tif_albers, buffer_m, method_name, "km")
   }
 }
 

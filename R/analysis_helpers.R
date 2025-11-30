@@ -150,7 +150,7 @@ calculate_clustering_stats <- function(ref_df, comp_df) {
 
 compute_clustering_similarity <- function(all_clusterings, ref_methods, comp_methods) {
   
-  cat("--- Calculating pairwise clustering similarity metrics (ARI, AMI, NID) ---\n")
+  
   
   clustering_similarity_list <- list()
   
