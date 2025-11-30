@@ -128,7 +128,6 @@ comp_methods_to_check <- unique(c(sim_clusterings$method, comparison_method_list
 
 clustering_similarity_df <- compute_clustering_similarity( all_clusterings = all_clusterings, ref_methods = ref_methods_to_check, comp_methods = comp_methods_to_check)
 
-# Save Results
 write.csv(clustering_similarity_df, file.path(output_dir, "clustering_similarity_stats.csv"), row.names = FALSE)
 cat(sprintf("--- Clustering similarity stats saved to %s/clustering_similarity_stats.csv ---\n", output_dir))
 
