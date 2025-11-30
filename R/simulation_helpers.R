@@ -154,6 +154,10 @@ simulate_train_data <-  function (
     site_geoms_sf[, c("site", "psi_i", "Z_i", "N_i")]
   )
   names(site_state_lookup) <- c("site", "occupied_prob", "occupied", "N")
+
+  # Ensure site columns are characters to match site_geoms_sf
+  reference_clustering_df$site <- as.character(reference_clustering_df$site)
+  site_state_lookup$site <- as.character(site_state_lookup$site)
   
   # Join with the original checklist data
   res_df <- dplyr::left_join(
