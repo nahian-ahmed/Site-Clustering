@@ -192,8 +192,12 @@ plot_sites <- function(
             
             # Ensure we extract POLYGONS from any GEOMETRYCOLLECTIONS created by the cut
             # This replaces the previous "filter" which was dropping the collections
-            geom_sf_zoom <- sf::st_collection_extract(geom_sf_zoom, "POLYGON")
+            # geom_sf_zoom <- sf::st_collection_extract(geom_sf_zoom, "POLYGON")
             
+
+            if (inherits(sf::st_geometry(geom_sf_zoom), "sfc_GEOMETRYCOLLECTION") || any(sf::st_geometry_type(geom_sf_zoom) == "GEOMETRYCOLLECTION")) {
+              geom_sf_zoom <- sf::st_collection_extract(geom_sf_zoom, "POLYGON")
+            }
             # Make valid again after extraction
             geom_sf_zoom <- sf::st_make_valid(geom_sf_zoom)
             

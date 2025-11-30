@@ -36,66 +36,58 @@ calculate_weighted_sum <- function(pars, covs_df, intercept = TRUE){
   return(weighted_sum)
 }
 
-
-#' Generate Jigsaw-style Site Geometries
-#' 
-#' Creates site boundaries by:
-#' 1. Generating Voronoi tiles for ALL individual points (Partitioning space).
-#' 2. Aggregating tiles by Site ID (Defining exclusive territory).
-#' 3. Intersecting with a unioned buffer (Limiting territory to max range).
+#' Generate Jigsaw-style Site Geometries (Convex Hull Method)
 voronoi_clipped_buffers <- function(points_sf, buffer_dist) {
   
-  # 1. Prepare Envelope (BBox + Buffer) to ensure edge points get tiles
+  # 1. Prepare Envelope
   bbox_polygon <- sf::st_as_sfc(sf::st_bbox(points_sf) + buffer_dist * 3)
   
-  # 2. Generate Voronoi Tiles for EVERY point
-  #    We use st_union because st_voronoi requires a MULTIPOINT input
-  #    dTolerance fixes potential topology errors with very close points
+  # 2. Generate Voronoi Tiles for ALL points (Base Partition)
+  #    We still use individual points for Voronoi to determine the "midlines" between sites
   voronoi_tiles <- sf::st_voronoi(sf::st_union(points_sf), envelope = bbox_polygon, dTolerance = 0.1) %>%
     sf::st_collection_extract(type = "POLYGON") %>%
     sf::st_sf()
   
   # 3. Map Tiles back to Site IDs
-  #    st_voronoi strips attributes, so we join spatially to get the Site ID back.
-  #    Using st_contains ensures we match the tile to the point inside it.
   voronoi_w_id <- sf::st_join(voronoi_tiles, points_sf, join = sf::st_contains)
   
-  # 4. Define "Exclusive Domain" (The Jigsaw Piece)
-  #    Union all tiles belonging to the same site.
-  #    This creates a partition of the map where every inch belongs to exactly one site.
+  # 4. Define "Exclusive Domain" (Voronoi Territory)
+  #    Union tiles by site to get the maximum possible area for that site
   site_territories <- voronoi_w_id %>%
     dplyr::group_by(site) %>%
     dplyr::summarise(geometry = sf::st_union(geometry), .groups = "drop") %>%
     sf::st_make_valid()
   
-  # 5. Define "Ideal Domain" (The Buffer Blob)
-  #    Buffer every point, then union them by site. 
-  #    This creates the "melted" shape limited by distance.
+  # 5. Define "Ideal Domain" (Buffered Convex Hull) -- [UPDATED LOGIC]
+  #    Instead of buffering points, we buffer the Convex Hull of the site.
+  #    - 1 point -> Point -> Buffer = Circle
+  #    - 2 points -> Line -> Buffer = Sausage shape
+  #    - 3+ points -> Polygon -> Buffer = Rounded Polygon
   site_buffers <- points_sf %>%
     dplyr::group_by(site) %>%
-    dplyr::summarise(geometry = sf::st_union(sf::st_buffer(geometry, dist = buffer_dist)), .groups = "drop") %>%
+    dplyr::summarise(geometry = sf::st_convex_hull(sf::st_union(geometry)), .groups = "drop") %>%
+    sf::st_buffer(dist = buffer_dist) %>%
     sf::st_make_valid()
   
   # 6. Intersect to get Final Shapes
-  #    We want the area that is BOTH within the Exclusive Domain AND within the Buffer.
-  #    This forces sites to "melt" into each other at the midpoint (Voronoi edge)
-  #    but stay rounded on the outside (Buffer edge).
-  
-  # Use an inner join logic via intersection
-  # We rename columns to ensure we match the correct site to itself
   site_territories <- dplyr::rename(site_territories, site_t = site)
   site_buffers <- dplyr::rename(site_buffers, site_b = site)
   
+  # Calculate intersection
+  # We only keep areas where the Site's Voronoi tile intersects the Site's Buffered Hull
   intersections <- sf::st_intersection(site_territories, site_buffers)
   
-  # Filter for self-intersection (Site A's Territory with Site A's Buffer)
   final_geoms <- intersections %>%
     dplyr::filter(site_t == site_b) %>%
     dplyr::rename(site = site_t) %>%
     dplyr::select(site, geometry) %>%
-    sf::st_make_valid() %>%
-    sf::st_collection_extract("POLYGON") # Ensure no stray points/lines
+    sf::st_make_valid() 
   
+  # Handle potential geometry collections from intersection
+  if (any(sf::st_geometry_type(final_geoms) == "GEOMETRYCOLLECTION")) {
+      final_geoms <- sf::st_collection_extract(final_geoms, "POLYGON")
+  }
+
   return(final_geoms)
 }
 
