@@ -105,24 +105,9 @@ for (method_name in all_method_names) {
   }
 }
 
-###
-# 6. TEST SITE GEOMETRIES
-###
-test_structures <- prepare_test_spatial_structures(
-  test_df = base_test_df,
-  albers_crs = albers_crs_str,
-  buffer_m = buffer_m,
-  cov_raster_albers = cov_tif_albers,
-  area_raster = area_j_raster
-)
-
-base_test_df <- test_structures$test_df
-w_matrix_test <- test_structures$w_matrix
-
-rm(test_structures)
 
 ###
-# 7. CLUSTERING DESCRIPTIVE STATS
+# 6. CLUSTERING DESCRIPTIVE STATS
 ###
 clustering_summary_df <- summarize_clusterings(all_clusterings, all_site_geometries, units = "km")
 output_dir <- file.path("simulation_experiments", "output")
@@ -131,7 +116,7 @@ write.csv(clustering_summary_df, file.path(output_dir, "clustering_descriptive_s
 
 
 ###
-# 8. CLUSTERING SIMILARITY METRICS
+# 7. CLUSTERING SIMILARITY METRICS
 ###
 
 cat("--- Calculating pairwise clustering similarity metrics (ARI, AMI, NID) ---\n")
@@ -151,7 +136,7 @@ cat(sprintf("--- Clustering similarity stats saved to %s/clustering_similarity_s
 
 
 ###
-# 9. PLOT SITES
+# 8. PLOT SITES
 ###
 all_method_names_plot_order <- c(
   "1to10", "2to10", "2to10-sameObs", "lat-long", "SVS", "1-per-UL",
@@ -168,7 +153,7 @@ site_plot <- plot_sites(
 )
 
 ###
-# 10. EXTRACT W MATRICES AND REMOVE HEAVY GEOMETRIES
+# 9. EXTRACT W MATRICES AND REMOVE HEAVY GEOMETRIES
 ###
 cat("--- Extracting W matrices and clearing geometry RAM ---\n")
 all_w_matrices <- list()
@@ -181,6 +166,25 @@ for (m_name in names(all_site_geometries)) {
 
 rm(all_site_geometries)
 gc()
+
+
+###
+# 10. TEST SITE GEOMETRIES
+###
+test_structures <- prepare_test_spatial_structures(
+  test_df = base_test_df,
+  albers_crs = albers_crs_str,
+  buffer_m = buffer_m,
+  cov_raster_albers = cov_tif_albers,
+  area_raster = area_j_raster
+)
+
+base_test_df <- test_structures$test_df
+w_matrix_test <- test_structures$w_matrix
+
+rm(test_structures)
+
+
 
 ###
 # 11. MAIN SIMULATION LOOP
