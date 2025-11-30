@@ -50,7 +50,7 @@ n_fit_repeats <- 25
 n_test_repeats <- 25
 
 n_simulations <- 1 # Debug override
-n_fit_repeats <- 25 # Debug override
+n_fit_repeats <- 5 # Debug override
 n_test_repeats <- 1 # Debug override
 
 res_m <- 30 
@@ -141,15 +141,15 @@ all_method_names_plot_order <- c(
   "1to10", "2to10", "2to10-sameObs", "lat-long", "SVS", "1-per-UL",
   "0.125-kmSq", "1-kmSq", "clustGeo-50-60", "BayesOptClustGeo", "DBSC", "rounded-4"  
 )
-# site_plot <- plot_sites(
-#   base_train_df = base_train_df,
-#   all_clusterings = all_clusterings,
-#   all_site_geometries = all_site_geometries,
-#   elevation_raster = state_cov_raster_raw,
-#   methods_to_plot = all_method_names_plot_order,
-#   boundary_shp_path = boundary_shapefile_path,
-#   output_path = file.path(output_dir, "site_cluster_visualization.png")
-# )
+site_plot <- plot_sites(
+  base_train_df = base_train_df,
+  all_clusterings = all_clusterings,
+  all_site_geometries = all_site_geometries,
+  elevation_raster = state_cov_raster_raw,
+  methods_to_plot = all_method_names_plot_order,
+  boundary_shp_path = boundary_shapefile_path,
+  output_path = file.path(output_dir, "site_cluster_visualization.png")
+)
 
 ###
 # 9. EXTRACT W MATRICES AND REMOVE HEAVY GEOMETRIES
