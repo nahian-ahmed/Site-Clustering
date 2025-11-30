@@ -35,6 +35,12 @@ comparison_method_list <- c(
   "lat-long", "rounded-4", "SVS", "1-per-UL",
   "DBSC", "BayesOptClustGeo"
 )
+
+comparison_method_list <- c(
+  "1to10", "2to10", "2to10-sameObs", "1-kmSq",
+  "lat-long", "rounded-4", "SVS", "1-per-UL",
+  "DBSC"
+)
 # comparison_method_list <- c("1-kmSq") # Debug override
 
 selected_optimizer <- "nlminb"
@@ -84,6 +90,49 @@ cov_tif_albers <- terra::project(state_cov_raster, albers_crs_str, method="bilin
 area_j_raster <- terra::cellSize(cov_tif_albers, unit="km")
 full_raster_covs <- as.data.frame(terra::values(cov_tif_albers))[, state_cov_names, drop = FALSE]
 full_raster_covs[is.na(full_raster_covs)] <- 0
+
+
+
+###
+# 4. PREPROCESS RASTER DATA
+###
+
+# 1. Load Native Raster
+state_cov_raster_raw <- terra::rast(file.path("state_covariate_raster", "state_covariates.tif"))
+terra::crs(state_cov_raster_raw) <- "+proj=longlat +datum=WGS84"
+names(state_cov_raster_raw) <- state_cov_names
+
+# 2. Define Target CRS and Resolution (100m)
+albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
+res_m <- 100 
+
+# 3. Project RAW raster to 100m (Albers)
+#    This creates the "unscaled covariate raster" we need for plotting later
+cov_tif_albers_raw <- terra::project(state_cov_raster_raw, albers_crs_str, method="bilinear", res = res_m)
+
+# 4. Normalize the 100m Raster
+#    We use this for training/simulation so the model sees 0-1 scaled data
+cov_tif_albers <- norm_state_covs(cov_tif_albers_raw)
+
+# 5. Generate full_raster_covs for occuN
+#    Extract values for the entire landscape grid
+full_raster_covs <- as.data.frame(terra::values(cov_tif_albers))[, state_cov_names, drop = FALSE]
+
+#    Replace NAs (from projection edges) with 0. 
+#    Without this, matrix multiplication in occuN will produce NAs and crash.
+full_raster_covs[is.na(full_raster_covs)] <- 0
+
+# 6. Prepare Data (Sampling from the 100m Albers raster)
+base_train_data <- prepare_train_data(state_cov_names, obs_cov_names, cov_tif_albers)
+base_train_df <- base_train_data$train_df
+norm_list <- base_train_data$norm_list
+
+base_test_df <- prepare_test_data(state_cov_names, obs_cov_names, cov_tif_albers, norm_list)
+
+# 7. Calculate Area Raster
+area_j_raster <- terra::cellSize(cov_tif_albers, unit="km")
+
+boundary_shapefile_path <- file.path("state_covariate_raster", "boundary", "boundary.shp")
 
 ###
 # 5. TRAIN SITE GEOMETRIES
@@ -146,11 +195,13 @@ site_plot <- plot_sites(
   base_train_df = base_train_df,
   all_clusterings = all_clusterings,
   all_site_geometries = all_site_geometries,
-  elevation_raster = state_cov_raster_raw,
+  elevation_raster = cov_tif_albers_raw,
   methods_to_plot = all_method_names_plot_order,
   boundary_shp_path = boundary_shapefile_path,
   output_path = file.path(output_dir, "site_cluster_visualization.png")
 )
+rm(state_cov_raster_raw, cov_tif_albers_raw)
+gc()
 
 ###
 # 9. EXTRACT W MATRICES AND REMOVE HEAVY GEOMETRIES
