@@ -182,6 +182,9 @@ plot_sites <- function(
         sf::st_agr(geom_sf_wgs84) = "constant"
         geom_sf_wgs84 <- sf::st_make_valid(geom_sf_wgs84)
 
+        # Set agr to constant
+        sf::st_agr(geom_sf_wgs84) <- "constant"
+
         # 3. Intersect
         geom_sf_zoom <- suppressWarnings(
             sf::st_intersection(geom_sf_wgs84, zoom_poly_sfc)

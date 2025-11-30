@@ -68,6 +68,11 @@ voronoi_clipped_buffers <- function(points_sf, buffer_dist) {
   site_territories <- dplyr::rename(site_territories, site_t = site)
   site_buffers <- dplyr::rename(site_buffers, site_b = site)
   
+
+  # Define attributes as constant before intersection
+  sf::st_agr(site_territories) <- "constant"
+  sf::st_agr(site_buffers) <- "constant"
+
   # Calculate intersection (The Cookie Cutter)
   intersections <- sf::st_intersection(site_territories, site_buffers)
   
