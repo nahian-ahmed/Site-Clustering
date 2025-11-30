@@ -183,39 +183,84 @@ cat(sprintf("--- Clustering similarity stats saved to %s/clustering_similarity_s
 
 
 
+# ###
+# # 8. PLOT SITES
+# ###
+# all_method_names_plot_order <- c(
+#   "1to10", "2to10", "2to10-sameObs", "lat-long", "SVS", "1-per-UL",
+#   "0.125-kmSq", "0.25-kmSq", "0.5-kmSq", "1-kmSq", "2-kmSq", "rounded-4",
+#   "clustGeo-50-20", "clustGeo-50-40", "clustGeo-50-60", "clustGeo-50-80",  "BayesOptClustGeo", "DBSC"
+# )
+# site_plot <- plot_sites(
+#   base_train_df = base_train_df,
+#   all_clusterings = all_clusterings,
+#   all_site_geometries = all_site_geometries,
+#   elevation_raster = cov_tif_albers_raw,
+#   methods_to_plot = all_method_names_plot_order,
+#   boundary_shp_path = boundary_shapefile_path,
+#   output_path = file.path(output_dir, "site_cluster_visualization.png")
+# )
+# rm(state_cov_raster_raw, cov_tif_albers_raw)
+# gc()
+
+# ###
+# # 9. EXTRACT W MATRICES AND REMOVE HEAVY GEOMETRIES
+# ###
+# cat("--- Extracting W matrices and clearing geometry RAM ---\n")
+# all_w_matrices <- list()
+# for (m_name in names(all_site_geometries)) {
+#   if (!is.null(all_site_geometries[[m_name]])) {
+#     # Extract the sparse matrix stored in the attribute
+#     all_w_matrices[[m_name]] <- attr(all_site_geometries[[m_name]], "w_matrix")
+#   }
+# }
+
+# rm(all_site_geometries)
+# gc()
+
+
+
 ###
 # 8. PLOT SITES
 ###
 all_method_names_plot_order <- c(
   "1to10", "2to10", "2to10-sameObs", "lat-long", "SVS", "1-per-UL",
   "0.125-kmSq", "0.25-kmSq", "0.5-kmSq", "1-kmSq", "2-kmSq", "rounded-4",
-  "clustGeo-50-20", "clustGeo-50-40", "clustGeo-50-60", "clustGeo-50-80",  "BayesOptClustGeo", "DBSC"
+  "clustGeo-50-20", "clustGeo-50-40", "clustGeo-50-60", "clustGeo-50-80",  
+  "BayesOptClustGeo", "DBSC"
 )
+
+# Plot using the UNSCALED Albers raster (resolution = res_m)
+# The updated plot_sites function will handle projection automatically.
 site_plot <- plot_sites(
   base_train_df = base_train_df,
   all_clusterings = all_clusterings,
   all_site_geometries = all_site_geometries,
-  elevation_raster = cov_tif_albers_raw,
+  elevation_raster = cov_tif_albers_raw, # <--- Passing unscaled 100m raster
   methods_to_plot = all_method_names_plot_order,
   boundary_shp_path = boundary_shapefile_path,
   output_path = file.path(output_dir, "site_cluster_visualization.png")
 )
-rm(state_cov_raster_raw, cov_tif_albers_raw)
-gc()
 
 ###
-# 9. EXTRACT W MATRICES AND REMOVE HEAVY GEOMETRIES
+# 9. MEMORY CLEANUP
 ###
-cat("--- Extracting W matrices and clearing geometry RAM ---\n")
+cat("--- Cleaning up heavy raster objects ---\n")
+
+# Remove the raw unscaled raster to free memory
+rm(state_cov_raster_raw, cov_tif_albers_raw)
+
+# Remove the heavy geometry objects (we only need the W matrices now)
+# (Extract W matrices first if you haven't already done so in previous steps)
 all_w_matrices <- list()
 for (m_name in names(all_site_geometries)) {
   if (!is.null(all_site_geometries[[m_name]])) {
-    # Extract the sparse matrix stored in the attribute
     all_w_matrices[[m_name]] <- attr(all_site_geometries[[m_name]], "w_matrix")
   }
 }
-
 rm(all_site_geometries)
+
+# Force garbage collection
 gc()
 
 
