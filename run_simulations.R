@@ -182,7 +182,7 @@ base_test_df <- test_structures$test_df
 w_matrix_test <- test_structures$w_matrix
 
 rm(test_structures)
-
+gc()
 
 
 ###
