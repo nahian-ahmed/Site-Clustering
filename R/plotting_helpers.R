@@ -259,7 +259,20 @@ plot_sites <- function(
                 color = "black",
                 show.legend = FALSE
             ) +
-            
+            {if (nrow(geom_sf_zoom) > 0)
+                geom_sf_label(
+                    data = geom_sf_zoom,
+                    aes(label = site),
+                    size = 2.5,           # Small font size
+                    alpha = 0.6,          # Semi-transparent background
+                    label.padding = unit(0.1, "lines"),
+                    label.size = 0.0,     # No border around label
+                    color = "black",
+                    fontface = "bold",
+                    inherit.aes = FALSE,
+                    show.legend = FALSE
+                )
+            } +
             scale_fill_discrete() + 
             coord_sf(
                 xlim = c(zoom_box$longitude[1], zoom_box$longitude[2]),
