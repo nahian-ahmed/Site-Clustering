@@ -35,7 +35,7 @@ comparison_method_list <- c(
   "lat-long", "rounded-4", "SVS", "1-per-UL",
   "DBSC", "BayesOptClustGeo"
 )
-# comparison_method_list <- c("SVS") # Debug override
+comparison_method_list <- c("SVS") # Debug override
 
 selected_optimizer <- "nlminb"
 
@@ -82,7 +82,7 @@ base_test_df <- prepare_test_data(state_cov_names, obs_cov_names, state_cov_rast
 albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
 cov_tif_albers <- terra::project(state_cov_raster, albers_crs_str, method="bilinear", res = res_m)
 area_j_raster <- terra::cellSize(cov_tif_albers, unit="km")
-full_raster_covs <- as.data.frame(terra::values(state_cov_raster))[, state_cov_names, drop = FALSE]
+full_raster_covs <- as.data.frame(terra::values(cov_tif_albers))[, state_cov_names, drop = FALSE]
 full_raster_covs[is.na(full_raster_covs)] <- 0
 
 ###
@@ -141,15 +141,15 @@ all_method_names_plot_order <- c(
   "1to10", "2to10", "2to10-sameObs", "lat-long", "SVS", "1-per-UL",
   "0.125-kmSq", "1-kmSq", "clustGeo-50-60", "BayesOptClustGeo", "DBSC", "rounded-4"  
 )
-site_plot <- plot_sites(
-  base_train_df = base_train_df,
-  all_clusterings = all_clusterings,
-  all_site_geometries = all_site_geometries,
-  elevation_raster = state_cov_raster_raw,
-  methods_to_plot = all_method_names_plot_order,
-  boundary_shp_path = boundary_shapefile_path,
-  output_path = file.path(output_dir, "site_cluster_visualization.png")
-)
+# site_plot <- plot_sites(
+#   base_train_df = base_train_df,
+#   all_clusterings = all_clusterings,
+#   all_site_geometries = all_site_geometries,
+#   elevation_raster = state_cov_raster_raw,
+#   methods_to_plot = all_method_names_plot_order,
+#   boundary_shp_path = boundary_shapefile_path,
+#   output_path = file.path(output_dir, "site_cluster_visualization.png")
+# )
 
 ###
 # 9. EXTRACT W MATRICES AND REMOVE HEAVY GEOMETRIES
