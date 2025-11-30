@@ -2,8 +2,10 @@
 # Simulation for occuN model
 # -----------------------------------------------------------------
 
-# --- 1. Setup & Dependencies ---
-install_now = FALSE # Set to TRUE if first run
+###
+# 1. SETUP
+###
+install_now = FALSE
 if (install_now){
   options(repos = c(CRAN = "https://cloud.r-project.org/"))
   if (!requireNamespace("devtools", quietly = FALSE)) install.packages("devtools")
@@ -16,7 +18,6 @@ library(tidyr)
 library(PRROC)
 library(terra)
 
-# Load Helpers
 source(file.path("R", "utils.R"))
 source(file.path("R", "simulation_helpers.R"))
 source(file.path("R", "clustering_helpers.R"))
@@ -26,7 +27,9 @@ source(file.path("R", "plotting_helpers.R"))
 
 set.seed(123) 
 
-# --- 2. Comparison Methods Configuration ---
+###
+# 2. CONFIGS
+###
 comparison_method_list <- c(
   "1to10", "2to10", "2to10-sameObs", "1-kmSq",
   "lat-long", "rounded-4", "SVS", "1-per-UL",
@@ -36,11 +39,12 @@ comparison_method_list <- c(
 
 selected_optimizer <- "nlminb"
 
-# --- 3. Load Simulation Config ---
 sim_params <- read.delim(file.path("config", "simulation_parameters.csv"), sep = ",", header = T)
 sim_clusterings <- read.delim(file.path("config", "simulation_clusterings.csv"), sep = ",", header = T)
 
-# Simulation Settings
+###
+# 3. SIMULATION SETTINGS
+###
 n_simulations <- 25
 n_fit_repeats <- 25
 n_test_repeats <- 25
@@ -56,9 +60,10 @@ state_cov_names <- names(sim_params)[2:6]
 obs_cov_names <- names(sim_params)[8:12]
 
 
-# --- 4. Pre-processing (Static Data) ---
 
-# --- 4. Pre-processing (Static Data) ---
+###
+# 4. PREPROCESS RASTER DATA
+###
 state_cov_raster_raw <- terra::rast(file.path("state_covariate_raster", "state_covariates.tif"))
 terra::crs(state_cov_raster_raw) <- "+proj=longlat +datum=WGS84"
 names(state_cov_raster_raw) <- state_cov_names
@@ -80,7 +85,9 @@ area_j_raster <- terra::cellSize(cov_tif_albers, unit="km")
 full_raster_covs <- as.data.frame(terra::values(state_cov_raster))[, state_cov_names, drop = FALSE]
 full_raster_covs[is.na(full_raster_covs)] <- 0
 
-# --- 5. Pre-compute Clusterings & Geometries ---
+###
+# 5. TRAIN SITE GEOMETRIES
+###
 reference_method_list <- sim_clusterings$method
 all_method_names <- unique(c(reference_method_list, comparison_method_list))
 
@@ -98,9 +105,9 @@ for (method_name in all_method_names) {
   }
 }
 
-# --- 5b. Pre-compute Test Geometries (Static) ---
-
-# Call the new function
+###
+# 6. TEST SITE GEOMETRIES
+###
 test_structures <- prepare_test_spatial_structures(
   test_df = base_test_df,
   albers_crs = albers_crs_str,
@@ -109,49 +116,47 @@ test_structures <- prepare_test_spatial_structures(
   area_raster = area_j_raster
 )
 
-# Unpack results
 base_test_df <- test_structures$test_df
 w_matrix_test <- test_structures$w_matrix
 
-# Remove the list to keep environment clean
 rm(test_structures)
 
-
-# Save clustering stats
+###
+# 7. CLUSTERING DESCRIPTIVE STATS
+###
 clustering_summary_df <- summarize_clusterings(all_clusterings, all_site_geometries, units = "km")
 output_dir <- file.path("simulation_experiments", "output")
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 write.csv(clustering_summary_df, file.path(output_dir, "clustering_descriptive_stats.csv"), row.names = FALSE)
 
 
-# === CALCULATE CLUSTERING SIMILARITY STATISTICS ===
+###
+# 8. CLUSTERING SIMILARITY METRICS
+###
+
 cat("--- Calculating pairwise clustering similarity metrics (ARI, AMI, NID) ---\n")
 
 clustering_similarity_list <- list()
 
-
-
-# CLUSTERING SIMILARITY METRICS
-# Reference methods (Sim Truth) vs All other methods
 ref_methods_to_check <- sim_clusterings$method
 comp_methods_to_check <- unique(c(sim_clusterings$method, comparison_method_list))
 
-clustering_similarity_df <- compute_clustering_similarity(
-  all_clusterings = all_clusterings,
-  ref_methods = ref_methods_to_check,
-  comp_methods = comp_methods_to_check
-)
+clustering_similarity_df <- compute_clustering_similarity( all_clusterings = all_clusterings, ref_methods = ref_methods_to_check, comp_methods = comp_methods_to_check)
 
 # Save Results
 write.csv(clustering_similarity_df, file.path(output_dir, "clustering_similarity_stats.csv"), row.names = FALSE)
 cat(sprintf("--- Clustering similarity stats saved to %s/clustering_similarity_stats.csv ---\n", output_dir))
 
 
+
+
+###
+# 9. PLOT SITES
+###
 all_method_names_plot_order <- c(
   "1to10", "2to10", "2to10-sameObs", "lat-long", "SVS", "1-per-UL",
   "0.125-kmSq", "1-kmSq", "clustGeo-50-60", "BayesOptClustGeo", "DBSC", "rounded-4"  
 )
-# 1. PLOT SITES (Do this while you still have the geometries!)
 site_plot <- plot_sites(
   base_train_df = base_train_df,
   all_clusterings = all_clusterings,
@@ -162,7 +167,9 @@ site_plot <- plot_sites(
   output_path = file.path(output_dir, "site_cluster_visualization.png")
 )
 
-# 2. EXTRACT W MATRICES & FREE RAM
+###
+# 10. EXTRACT W MATRICES AND REMOVE HEAVY GEOMETRIES
+###
 cat("--- Extracting W matrices and clearing geometry RAM ---\n")
 all_w_matrices <- list()
 for (m_name in names(all_site_geometries)) {
@@ -172,15 +179,15 @@ for (m_name in names(all_site_geometries)) {
   }
 }
 
-# DELETE THE HEAVY GEOMETRIES
 rm(all_site_geometries)
-gc() # Force garbage collection
+gc()
 
-
-# --- 6. Main Simulation Loop ---
+###
+# 11. MAIN SIMULATION LOOP
+###
 all_dataset_stats <- list()
-all_param_results <- list() # NEW: Store parameters here
-all_pred_results <- list()  # NEW: Store prediction metrics here
+all_param_results <- list()
+all_pred_results <- list()
 
 
 
