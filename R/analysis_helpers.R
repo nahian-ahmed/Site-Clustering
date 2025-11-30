@@ -148,6 +148,44 @@ calculate_clustering_stats <- function(ref_df, comp_df) {
 }
 
 
+compute_clustering_similarity <- function(all_clusterings, ref_methods, comp_methods) {
+  
+  cat("--- Calculating pairwise clustering similarity metrics (ARI, AMI, NID) ---\n")
+  
+  clustering_similarity_list <- list()
+  
+  for (ref_name in ref_methods) {
+    for (comp_name in comp_methods) {
+      
+      # Extract Reference Dataframe
+      ref_dat <- all_clusterings[[ref_name]]
+      if (is.list(ref_dat) && "result_df" %in% names(ref_dat)) ref_dat <- ref_dat$result_df
+      
+      # Extract Comparison Dataframe
+      comp_dat <- all_clusterings[[comp_name]]
+      if (is.list(comp_dat) && "result_df" %in% names(comp_dat)) comp_dat <- comp_dat$result_df
+      
+      # Skip if missing
+      if (is.null(ref_dat) || is.null(comp_dat)) next
+      
+      # Calculate Stats (uses existing function in analysis_helpers.R)
+      stats <- calculate_clustering_stats(ref_dat, comp_dat)
+      
+      # Store
+      clustering_similarity_list[[length(clustering_similarity_list) + 1]] <- data.frame(
+        reference_method = ref_name,
+        comparison_method = comp_name,
+        ARI = stats$ARI,
+        AMI = stats$AMI,
+        NID = stats$NID
+      )
+    }
+  }
+  
+  # Combine into single dataframe
+  final_df <- dplyr::bind_rows(clustering_similarity_list)
+  return(final_df)
+}
 
 
 

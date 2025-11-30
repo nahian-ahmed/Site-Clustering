@@ -131,39 +131,18 @@ clustering_similarity_list <- list()
 
 
 
-# 1. Define the pairs to compare
-# Usually: Reference methods (Sim Truth) vs All other methods
+# CLUSTERING SIMILARITY METRICS
+# Reference methods (Sim Truth) vs All other methods
 ref_methods_to_check <- sim_clusterings$method
 comp_methods_to_check <- unique(c(sim_clusterings$method, comparison_method_list))
 
-for (ref_name in ref_methods_to_check) {
-  for (comp_name in comp_methods_to_check) {
-  
-  # Extract Dataframes
-  ref_dat <- all_clusterings[[ref_name]]
-  if (is.list(ref_dat) && "result_df" %in% names(ref_dat)) ref_dat <- ref_dat$result_df
-  
-  comp_dat <- all_clusterings[[comp_name]]
-  if (is.list(comp_dat) && "result_df" %in% names(comp_dat)) comp_dat <- comp_dat$result_df
-  
-  if (is.null(ref_dat) || is.null(comp_dat)) next
-  
-  # Calculate Stats
-  stats <- calculate_clustering_stats(ref_dat, comp_dat)
-  
-  # Store
-  clustering_similarity_list[[length(clustering_similarity_list) + 1]] <- data.frame(
-    reference_method = ref_name,
-    comparison_method = comp_name,
-    ARI = stats$ARI,
-    AMI = stats$AMI,
-    NID = stats$NID
-  )
-  }
-}
+clustering_similarity_df <- compute_clustering_similarity(
+  all_clusterings = all_clusterings,
+  ref_methods = ref_methods_to_check,
+  comp_methods = comp_methods_to_check
+)
 
-# Bind and Save
-clustering_similarity_df <- dplyr::bind_rows(clustering_similarity_list)
+# Save Results
 write.csv(clustering_similarity_df, file.path(output_dir, "clustering_similarity_stats.csv"), row.names = FALSE)
 cat(sprintf("--- Clustering similarity stats saved to %s/clustering_similarity_stats.csv ---\n", output_dir))
 
