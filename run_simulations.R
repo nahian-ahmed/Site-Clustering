@@ -35,7 +35,7 @@ comparison_method_list <- c(
   "lat-long", "rounded-4", "SVS", "1-per-UL",
   "DBSC", "BayesOptClustGeo"
 )
-comparison_method_list <- c("SVS") # Debug override
+comparison_method_list <- c("1-kmSq") # Debug override
 
 selected_optimizer <- "nlminb"
 
