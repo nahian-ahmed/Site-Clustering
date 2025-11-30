@@ -196,3 +196,89 @@ simulate_test_data <- function (
 
   return (test_df)
 }
+
+
+# R/simulation_helpers.R
+
+#' Generate Spatial Structures for Test Data
+#' 
+#' Creates Voronoi geometries, calculates site areas, and builds the sparse W matrix
+#' for the test dataset.
+#'
+#' @param test_df Dataframe containing test coordinates (must have 'longitude', 'latitude').
+#' @param albers_crs String. The projection CRS (e.g., Albers) to use for geometry generation.
+#' @param buffer_m Numeric. Buffer distance in meters.
+#' @param cov_raster_albers SpatRaster. The reference raster projected to albers_crs.
+#' @param area_raster SpatRaster. The cell size raster (usually in km^2 or m^2).
+#'
+#' @return A list containing:
+#'   \item{test_df}{The updated dataframe with 'site' IDs and 'area_j' columns.}
+#'   \item{w_matrix}{The sparse matrix (Sites x Cells) representing spatial overlap.}
+prepare_test_spatial_structures <- function(test_df, 
+                                            albers_crs, 
+                                            buffer_m, 
+                                            cov_raster_albers, 
+                                            area_raster) {
+  
+  cat("--- Generating test geometries and W matrix... ---\n")
+  
+  # 1. Assign Site IDs
+  test_df$site <- seq_len(nrow(test_df))
+  
+  # 2. Create SF object
+  test_sf <- sf::st_as_sf(
+    test_df, 
+    coords = c("longitude", "latitude"), 
+    crs = "+proj=longlat +datum=WGS84"
+  )
+  
+  # 3. Transform and Buffer
+  test_sf_albers <- sf::st_transform(test_sf, crs = albers_crs)
+  
+  # Note: Ensure voronoi_clipped_buffers is available (sourced from model_helpers.R)
+  test_geoms <- voronoi_clipped_buffers(test_sf_albers, buffer_dist = buffer_m)
+  
+  # 4. Calculate Site Area (Static)
+  # Sum of raster cell areas within the buffer
+  # exact=TRUE calculates fraction of cell covered
+  test_area_vals <- terra::extract(area_raster, test_geoms, fun = "sum", exact = TRUE, ID = FALSE)
+  test_df$area_j <- test_area_vals[, 1]
+  
+  # 5. Create W Matrix
+  
+  # Convert to SpatVector for extraction
+  test_vect <- terra::vect(test_geoms)
+  test_vect_proj <- terra::project(test_vect, terra::crs(cov_raster_albers))
+  
+  # Extract overlap (cells, exact fraction, and ID)
+  test_overlap_df <- terra::extract(
+    cov_raster_albers[[1]], 
+    test_vect_proj, 
+    cells = TRUE, 
+    exact = TRUE, 
+    ID = TRUE
+  )
+  
+  # Calculate Area Weights
+  test_overlap_cell_areas <- terra::extract(area_raster, test_overlap_df$cell)
+  test_overlap_df$w_area <- test_overlap_df$fraction * test_overlap_cell_areas[,1]
+  
+  # Construct Sparse Matrix (Rows = Test Sites, Cols = Raster Cells)
+  n_test_sites <- nrow(test_geoms)
+  n_cells <- terra::ncell(cov_raster_albers)
+  
+  w_matrix <- Matrix::sparseMatrix(
+    i = test_overlap_df$ID,
+    j = test_overlap_df$cell,
+    x = test_overlap_df$w_area,
+    dims = c(n_test_sites, n_cells)
+  )
+  
+  cat("--- Test spatial structures created. ---\n")
+  
+  # Return updated DF and Matrix
+  return(list(
+    test_df = test_df,
+    w_matrix = w_matrix
+  ))
+}

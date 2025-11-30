@@ -99,69 +99,22 @@ for (method_name in all_method_names) {
 }
 
 # --- 5b. Pre-compute Test Geometries (Static) ---
-cat("--- Pre-computing test site geometries... ---\n")
 
-base_test_df$site <- seq_len(nrow(base_test_df))
-
-# 1. Create SF object
-test_sf <- sf::st_as_sf(
-  base_test_df, 
-  coords = c("longitude", "latitude"), 
-  crs = "+proj=longlat +datum=WGS84"
+# Call the new function
+test_structures <- prepare_test_spatial_structures(
+  test_df = base_test_df,
+  albers_crs = albers_crs_str,
+  buffer_m = buffer_m,
+  cov_raster_albers = cov_tif_albers,
+  area_raster = area_j_raster
 )
 
-# 2. Transform and Buffer (150m)
-# Use the same 'buffer_m' variable you defined in config (150)
-test_sf_albers <- sf::st_transform(test_sf, crs = albers_crs_str)
-test_geoms <- voronoi_clipped_buffers(test_sf_albers, buffer_dist = buffer_m)
+# Unpack results
+base_test_df <- test_structures$test_df
+w_matrix_test <- test_structures$w_matrix
 
-
-# 3. Pre-calculate Site Area (Static)
-# Sum of raster cell areas within the buffer
-test_area_vals <- terra::extract(area_j_raster, test_geoms, fun = "sum", exact = TRUE, ID = FALSE)
-base_test_df$area_j <- test_area_vals[, 1]
-
-
-
-# --- NEW: Create W Matrix for Test Data ---
-cat("--- Creating W matrix for test data... ---\n")
-
-# 1. Convert to SpatVector and ensure projection matches raster
-test_vect <- terra::vect(test_geoms)
-# (Assuming cov_tif_albers is your reference raster)
-test_vect_proj <- terra::project(test_vect, terra::crs(cov_tif_albers))
-
-# 2. Extract overlap (cells, exact fraction, and ID)
-#    ID=TRUE links the extraction back to the row number of test_geoms
-test_overlap_df <- terra::extract(
-  cov_tif_albers[[1]], 
-  test_vect_proj, 
-  cells = TRUE, 
-  exact = TRUE, 
-  ID = TRUE
-)
-
-# 3. Calculate Area Weights (km^2)
-#    We use the pre-calculated area_j_raster (which is in km^2)
-test_overlap_cell_areas <- terra::extract(area_j_raster, test_overlap_df$cell)
-test_overlap_df$w_area <- test_overlap_df$fraction * test_overlap_cell_areas[,1]
-
-# 4. Construct Sparse Matrix (Rows = Test Sites, Cols = Raster Cells)
-n_test_sites <- nrow(test_geoms)
-n_cells <- terra::ncell(cov_tif_albers)
-
-w_matrix_test <- Matrix::sparseMatrix(
-  i = test_overlap_df$ID,
-  j = test_overlap_df$cell,
-  x = test_overlap_df$w_area,
-  dims = c(n_test_sites, n_cells)
-)
-
-# 5. Clean up Heavy Objects
-rm(test_geoms, test_vect, test_vect_proj, test_overlap_df, test_overlap_cell_areas)
-gc()
-
-cat("--- Test W matrix created and geometries removed. ---\n")
+# Remove the list to keep environment clean
+rm(test_structures)
 
 
 # Save clustering stats
