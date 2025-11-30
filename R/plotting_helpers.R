@@ -81,26 +81,12 @@ plot_sites <- function(
             y = "Latitude"
         ) +
         theme_bw() +
-        # coord_sf(
-        #     xlim = c(bbox_full$xmin, bbox_full$xmax),
-        #     ylim = c(bbox_full$ymin, bbox_full$ymax),
-        #     crs = wgs84_crs,
-        #     expand = FALSE
-        # ) +
         coord_fixed(
             ratio = 1.0,
             xlim = c(bbox_full$xmin, bbox_full$xmax),
             ylim = c(bbox_full$ymin, bbox_full$ymax),
             expand = FALSE
         ) +
-        # theme(
-        #     plot.title = element_text(hjust = 0.5, face = "bold"),
-        #     legend.position = "bottom",
-        #     legend.direction = "horizontal",
-        #     legend.key.width = unit(1.5, "cm"),
-        #     axis.title = element_blank()
-        # )
-
         theme(
             
             # --- 1. Pull Title Closer ---
@@ -109,7 +95,7 @@ plot_sites <- function(
             plot.title = element_text(
                 hjust = 0.5, 
                 face = "bold", 
-                vjust = -1.25,  # <--- ADD THIS (Tweak number until it lands right)
+                vjust = -2.25,  # (Tweak number until it lands right) # -2.25 for 3 row, -1.25 for 2 row
                 margin = margin(b = -10) # Keep a small margin adjustment if needed
             ),
 
@@ -117,7 +103,7 @@ plot_sites <- function(
             legend.position = "bottom",
             legend.direction = "horizontal",
             # Negative top margin (t = -15) pulls the legend up towards the map
-            legend.margin = margin(t = -50),
+            legend.margin = margin(t = -300), # -50 for 2 row, -300 for 3 row
             # Remove extra box spacing
             legend.box.margin = margin(0, 0, 0, 0),
 
@@ -292,7 +278,7 @@ plot_sites <- function(
         output_path,
         plot = final_plot,
         width = 14,
-        height = 6,
+        height = 8, # 8 for 3 row, 6 for 2 row
         dpi = 300
     )
     

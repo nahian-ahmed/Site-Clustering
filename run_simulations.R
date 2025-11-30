@@ -53,7 +53,7 @@ n_simulations <- 1 # Debug override
 n_fit_repeats <- 25 # Debug override
 n_test_repeats <- 1 # Debug override
 
-res_m <- 100 
+res_m <- 300 
 buffer_m <- 200
 
 state_cov_names <- names(sim_params)[2:6]
