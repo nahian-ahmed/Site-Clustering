@@ -46,9 +46,16 @@ norm_state_covs <- function (state_cov_raster_raw){
 # extract environmental features
 # at checklist locations
 #######
-extract_state_covs <- function(df, cov_tif, x = "longitude", y = "latitude", crs = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs") {
-  # Convert the dataframe to a SpatVector
-  df_pts <- vect(df, geom = c(x, y), crs = crs)
+extract_state_covs <- function(df, cov_tif, x = "longitude", y = "latitude", crs_in = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs") {
+  
+  # Create Vector from DF
+  df_pts <- vect(df, geom = c(x, y), crs = crs_in)
+  
+  # Explicitly project to raster CRS if they don't match
+  # This suppresses the warning and ensures accuracy
+  if (!same.crs(df_pts, cov_tif)) {
+    df_pts <- project(df_pts, crs(cov_tif))
+  }
   
   # Extract environmental features
   env_vars_df <- data.frame(

@@ -102,12 +102,12 @@ state_cov_raster_raw <- terra::rast(file.path("state_covariate_raster", "state_c
 terra::crs(state_cov_raster_raw) <- "+proj=longlat +datum=WGS84"
 names(state_cov_raster_raw) <- state_cov_names
 
-# 2. Define Target CRS and Resolution (100m)
+# 2. Define Target CRS and Resolution
 albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
-res_m <- 100 
+res_m <- 100 # Set to 100m explicitly
 
 # 3. Project RAW raster to 100m (Albers)
-#    This creates the "unscaled covariate raster" we need for plotting later
+#    This creates the "unscaled" raster for plotting
 cov_tif_albers_raw <- terra::project(state_cov_raster_raw, albers_crs_str, method="bilinear", res = res_m)
 
 # 4. Normalize the 100m Raster
@@ -117,9 +117,7 @@ cov_tif_albers <- norm_state_covs(cov_tif_albers_raw)
 # 5. Generate full_raster_covs for occuN
 #    Extract values for the entire landscape grid
 full_raster_covs <- as.data.frame(terra::values(cov_tif_albers))[, state_cov_names, drop = FALSE]
-
-#    Replace NAs (from projection edges) with 0. 
-#    Without this, matrix multiplication in occuN will produce NAs and crash.
+#    Impute NAs to 0 for matrix multiplication
 full_raster_covs[is.na(full_raster_covs)] <- 0
 
 # 6. Prepare Data (Sampling from the 100m Albers raster)
@@ -141,6 +139,8 @@ reference_method_list <- sim_clusterings$method
 all_method_names <- unique(c(reference_method_list, comparison_method_list))
 
 cat("--- Pre-computing ALL clusterings... ---\n")
+# Pass 'cov_tif_albers' values/names depending on what clustGeo needs (it needs names + df values)
+# The get_clusterings function uses the DF, so this is fine.
 all_clusterings <- get_clusterings(all_method_names, base_train_df, state_cov_names, NULL)
 
 cat("--- Pre-computing site geometries... ---\n")
@@ -150,6 +150,7 @@ for (method_name in all_method_names) {
   if (is.list(cluster_data) && "result_df" %in% names(cluster_data)) cluster_data <- cluster_data$result_df
   
   if (!is.null(cluster_data)) {
+    # --- CRITICAL FIX: Pass the ALBERS raster to ensure grid alignment ---
     all_site_geometries[[method_name]] <- create_site_geometries(cluster_data, cov_tif_albers, buffer_m, method_name, "km")
   }
 }
@@ -183,43 +184,6 @@ cat(sprintf("--- Clustering similarity stats saved to %s/clustering_similarity_s
 
 
 
-# ###
-# # 8. PLOT SITES
-# ###
-# all_method_names_plot_order <- c(
-#   "1to10", "2to10", "2to10-sameObs", "lat-long", "SVS", "1-per-UL",
-#   "0.125-kmSq", "0.25-kmSq", "0.5-kmSq", "1-kmSq", "2-kmSq", "rounded-4",
-#   "clustGeo-50-20", "clustGeo-50-40", "clustGeo-50-60", "clustGeo-50-80",  "BayesOptClustGeo", "DBSC"
-# )
-# site_plot <- plot_sites(
-#   base_train_df = base_train_df,
-#   all_clusterings = all_clusterings,
-#   all_site_geometries = all_site_geometries,
-#   elevation_raster = cov_tif_albers_raw,
-#   methods_to_plot = all_method_names_plot_order,
-#   boundary_shp_path = boundary_shapefile_path,
-#   output_path = file.path(output_dir, "site_cluster_visualization.png")
-# )
-# rm(state_cov_raster_raw, cov_tif_albers_raw)
-# gc()
-
-# ###
-# # 9. EXTRACT W MATRICES AND REMOVE HEAVY GEOMETRIES
-# ###
-# cat("--- Extracting W matrices and clearing geometry RAM ---\n")
-# all_w_matrices <- list()
-# for (m_name in names(all_site_geometries)) {
-#   if (!is.null(all_site_geometries[[m_name]])) {
-#     # Extract the sparse matrix stored in the attribute
-#     all_w_matrices[[m_name]] <- attr(all_site_geometries[[m_name]], "w_matrix")
-#   }
-# }
-
-# rm(all_site_geometries)
-# gc()
-
-
-
 ###
 # 8. PLOT SITES
 ###
@@ -230,17 +194,17 @@ all_method_names_plot_order <- c(
   "BayesOptClustGeo", "DBSC"
 )
 
-# Plot using the UNSCALED Albers raster (resolution = res_m)
-# The updated plot_sites function will handle projection automatically.
+# Plot using the UNSCALED 100m raster
 site_plot <- plot_sites(
   base_train_df = base_train_df,
   all_clusterings = all_clusterings,
   all_site_geometries = all_site_geometries,
-  elevation_raster = cov_tif_albers_raw, # <--- Passing unscaled 100m raster
+  elevation_raster = cov_tif_albers_raw, 
   methods_to_plot = all_method_names_plot_order,
   boundary_shp_path = boundary_shapefile_path,
   output_path = file.path(output_dir, "site_cluster_visualization.png")
 )
+
 
 ###
 # 9. MEMORY CLEANUP
