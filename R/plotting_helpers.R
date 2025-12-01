@@ -289,15 +289,15 @@ library(ggplot2)
 library(terra)
 library(sf)
 library(dplyr)
-library(ggforce) 
-library(patchwork) 
-library(ggnewscale) 
+library(ggforce)
+library(patchwork)
+library(ggnewscale)
 
 plot_sites <- function(
     base_train_df,
     all_clusterings,
-    all_site_geometries, 
-    elevation_raster, # Assumed to be the Albers Raster
+    all_site_geometries,
+    elevation_raster, # INPUT IS NOW ALBERS (res_m)
     methods_to_plot,
     boundary_shp_path,
     output_path,
@@ -307,127 +307,202 @@ plot_sites <- function(
     )
 ) {
 
-    cat("--- Generating Site Plots (Projecting to Raster CRS) ---\n")
+    # --- 0. Setup Coordinate Systems ---
+    albers_crs <- terra::crs(elevation_raster) # Get Albers CRS from input
+    wgs84_crs <- sf::st_crs(4326)
 
-    # 1. Detect Raster CRS (Albers)
-    target_crs <- terra::crs(elevation_raster)
+    # --- 1. Prepare Rasters ---
     
-    # 2. Prepare Base Raster DataFrame
+    # A. Prepare ALBERS Raster (For Right/Zoom Plots - Keeps res_m)
     valid_boundary <- terra::vect(boundary_shp_path)
-    valid_boundary <- terra::project(valid_boundary, target_crs)
+    valid_boundary_albers <- terra::project(valid_boundary, albers_crs)
     
-    # Crop to boundary to reduce plot size
-    region <- terra::crop(elevation_raster[[1]], valid_boundary, mask = TRUE)
-    base_rast_df <- as.data.frame(region, xy = TRUE)
-    elev_col_name <- names(base_rast_df)[3] 
+    region_albers <- terra::crop(elevation_raster[[1]], valid_boundary_albers, mask = TRUE)
+    base_rast_df_albers <- as.data.frame(region_albers, xy = TRUE)
+    elev_col_name <- names(base_rast_df_albers)[3]
     
-    # 3. Project Training Points to Match Raster
-    points_sf <- sf::st_as_sf(
-        base_train_df, 
-        coords = c("longitude", "latitude"), 
-        crs = 4326 # WGS84
-    )
-    points_proj <- sf::st_transform(points_sf, target_crs)
-    
-    # --- FIX: Safely add coordinates without duplicate column names ---
-    points_df_proj <- sf::st_drop_geometry(points_proj)
-    coords <- sf::st_coordinates(points_proj)
-    points_df_proj$x <- coords[, 1]
-    points_df_proj$y <- coords[, 2]
-    # ----------------------------------------------------------------
+    # Get min/max from Albers raster to ensure consistent coloring across both plots
+    base_rast_min <- min(base_rast_df_albers[[elev_col_name]], na.rm = TRUE)
+    base_rast_max <- max(base_rast_df_albers[[elev_col_name]], na.rm = TRUE)
 
-    # 4. Project Zoom Box
-    zoom_poly_wgs84 <- sf::st_polygon(list(rbind(
-        c(zoom_box$longitude[1], zoom_box$latitude[1]),
-        c(zoom_box$longitude[2], zoom_box$latitude[1]),
-        c(zoom_box$longitude[2], zoom_box$latitude[2]),
-        c(zoom_box$longitude[1], zoom_box$latitude[2]),
-        c(zoom_box$longitude[1], zoom_box$latitude[1])
-    )))
-    zoom_sfc_wgs84 <- sf::st_sfc(zoom_poly_wgs84, crs = 4326)
-    zoom_sfc_proj <- sf::st_transform(zoom_sfc_wgs84, target_crs)
-    zoom_bbox <- sf::st_bbox(zoom_sfc_proj) 
+    # B. Prepare WGS84 Raster (For Left/Overview Plot)
+    # Project the Albers region back to WGS84 to align with base_train_df (lat/long)
+    region_wgs84 <- terra::project(region_albers, wgs84_crs)
+    base_rast_df_wgs84 <- as.data.frame(region_wgs84, xy = TRUE)
+    bbox_full <- terra::ext(region_wgs84) # Extent for the left plot
 
-    # --- LEFT PLOT: OBSERVATIONS ---
+    
+    # --- 2. Create Left Plot (Observations in WGS84) ---
+    # This matches the "old" style using the WGS84 projected raster
     obs_plot <- ggplot() +
         geom_raster(
-            data = base_rast_df, 
-            aes(x = x, y = y, fill = .data[[elev_col_name]])
+            data = base_rast_df_wgs84,
+            aes(x = x, y = y, fill = .data[[elev_col_name]]),
+            show.legend = TRUE
         ) +
         scale_fill_viridis_c(
-            option = "H", 
+            option = "H",
+            limits = c(base_rast_min, base_rast_max),
             name = "Elevation (m)"
         ) +
         geom_point(
-            data = points_df_proj, 
-            aes(x = x, y = y), 
-            color = "black", size = 0.8, shape = 21, fill = "#FBFAF5"
+            data = base_train_df,
+            aes(x = longitude, y = latitude),
+            color = "black", size = 1, shape = 21, fill = "#FBFAF5",
+            show.legend = FALSE
         ) +
-        geom_sf(data = zoom_sfc_proj, fill = NA, color = "red", linewidth = 0.8) +
+        # Annotations (Coordinates are approx WGS84)
+        annotate(
+            "segment",
+            x = -123.85, xend = zoom_box$longitude[1],
+            y = 44.425, yend = (zoom_box$latitude[1] + zoom_box$latitude[2]) / 2,
+            colour = "yellow"
+        ) +
         annotate(
             "label",
-            x = zoom_bbox["xmin"], y = zoom_bbox["ymax"] + 200, 
-            label = "Zoomed Region",
-            size = 3, fontface = "bold"
+            x = -124.05, y = 44.425,
+            label = "Zoomed-in region",
+            size = 3.25,
         ) +
-        coord_sf(expand = FALSE) + 
+        geom_rect(
+            aes(
+                xmin = zoom_box$longitude[1], xmax = zoom_box$longitude[2],
+                ymin = zoom_box$latitude[1], ymax = zoom_box$latitude[2]
+            ),
+            fill = "red", color = "red", alpha = 0.1, show.legend = FALSE
+        ) +
+        labs(
+            title = "Species Observations",
+            x = "Longitude",
+            y = "Latitude"
+        ) +
         theme_bw() +
-        labs(title = "Species Observations (Albers Projection)", x = "x (m)", y = "y (m)") +
+        coord_fixed(
+            ratio = 1.0,
+            xlim = c(bbox_full$xmin, bbox_full$xmax),
+            ylim = c(bbox_full$ymin, bbox_full$ymax),
+            expand = FALSE
+        ) +
         theme(
+            plot.title = element_text(
+                hjust = 0.5,
+                face = "bold",
+                vjust = -5,
+                margin = margin(b = -10)
+            ),
             legend.position = "bottom",
-            legend.key.width = unit(1.5, "cm")
+            legend.direction = "horizontal",
+            legend.margin = margin(t = -250),
+            legend.box.margin = margin(0, 0, 0, 0),
+            legend.key.width = unit(0.75, "cm"),
+            legend.key.height = unit(0.5, "cm"),
+            legend.title = element_text(size = 10, vjust = 1),
+            legend.text = element_text(size = 8),
+            axis.title = element_blank()
         )
 
-    # --- RIGHT PLOTS: ZOOMED CLUSTERS ---
-    zoom_plots <- list()
+    # --- 3. Create Right Plots (Zoomed Clusters in ALBERS) ---
     
+    # Transform Zoom Box to Albers Polygon for cropping
+    zoom_poly_wgs84 <- sf::st_as_sfc(sf::st_bbox(c(
+        xmin = zoom_box$longitude[1], xmax = zoom_box$longitude[2],
+        ymin = zoom_box$latitude[1], ymax = zoom_box$latitude[2]
+    ), crs = wgs84_crs))
+    
+    zoom_poly_albers <- sf::st_transform(zoom_poly_wgs84, albers_crs)
+    zoom_bbox_albers <- sf::st_bbox(zoom_poly_albers) # For coord_sf limits
+
+    zoom_plots <- list()
+
     for (method_name in methods_to_plot) {
-        
+
+        # --- Get Point Data & Transform to Albers ---
         if (!method_name %in% names(all_clusterings)) next
         pts_df <- all_clusterings[[method_name]]
         if (is.list(pts_df) && "result_df" %in% names(pts_df)) pts_df <- pts_df$result_df
         
+        # Project points to Albers
+        pts_sf <- sf::st_as_sf(pts_df, coords = c("longitude", "latitude"), crs = wgs84_crs)
+        pts_sf_albers <- sf::st_transform(pts_sf, albers_crs)
+        
+        # Extract coordinates for plotting
+        pts_coords <- sf::st_coordinates(pts_sf_albers)
+        pts_df_albers <- pts_df
+        pts_df_albers$x <- pts_coords[,1]
+        pts_df_albers$y <- pts_coords[,2]
+        pts_df_albers$site <- as.factor(pts_df_albers$site)
+
+        # Filter points to zoom box (using Albers coords)
+        pts_df_zoom <- pts_df_albers[
+            (pts_df_albers$x > zoom_bbox_albers["xmin"]) &
+            (pts_df_albers$x < zoom_bbox_albers["xmax"]) &
+            (pts_df_albers$y > zoom_bbox_albers["ymin"]) &
+            (pts_df_albers$y < zoom_bbox_albers["ymax"]), 
+        ]
+        
+        # --- Get Geometry Data (Already Albers) ---
         if (!method_name %in% names(all_site_geometries)) next
         geom_sf <- all_site_geometries[[method_name]]
         if (is.null(geom_sf)) next
         
-        if (sf::st_crs(geom_sf) != sf::st_crs(target_crs)) {
-            geom_sf <- sf::st_transform(geom_sf, target_crs)
-        }
+        # Ensure geom_sf has CRS set
+        if (is.na(sf::st_crs(geom_sf))) sf::st_crs(geom_sf) <- albers_crs
+        geom_sf$site <- as.factor(geom_sf$site)
+
+        # Crop geometries to Albers Zoom Box
+        # Use st_crop or intersection. st_crop is faster for bboxes.
+        geom_sf_zoom <- suppressWarnings(sf::st_crop(geom_sf, zoom_bbox_albers))
         
-        pts_sf_method <- sf::st_as_sf(pts_df, coords = c("longitude", "latitude"), crs = 4326)
-        pts_sf_method <- sf::st_transform(pts_sf_method, target_crs)
-        
-        geom_sf_zoom <- suppressWarnings(sf::st_crop(geom_sf, zoom_bbox))
-        pts_sf_zoom  <- suppressWarnings(sf::st_crop(pts_sf_method, zoom_bbox))
-        
+        # Clean up collections if generated
         if (nrow(geom_sf_zoom) > 0) {
              if (any(grepl("COLLECTION", sf::st_geometry_type(geom_sf_zoom)))) {
                  geom_sf_zoom <- sf::st_collection_extract(geom_sf_zoom, "POLYGON")
              }
         }
 
+        # --- Plotting (Albers) ---
         p_zoom <- ggplot() +
+            # Use Albers raster dataframe
             geom_raster(
-                data = base_rast_df, 
+                data = base_rast_df_albers,
                 aes(x = x, y = y, fill = .data[[elev_col_name]]),
                 show.legend = FALSE
             ) +
-            scale_fill_viridis_c(option = "H") +
-            new_scale_fill() + 
-            geom_sf(
-                data = geom_sf_zoom, 
-                aes(fill = as.factor(site)), 
-                alpha = 0.4, color = "black", linewidth = 0.2, show.legend = FALSE
+            scale_fill_viridis_c(
+                option = "H",
+                limits = c(base_rast_min, base_rast_max),
+                aesthetics = "fill"
             ) +
-            geom_sf(
-                data = pts_sf_zoom,
-                aes(fill = as.factor(site)),
-                shape = 21, size = 2.0, color = "black", show.legend = FALSE
+            new_scale_fill() +
+
+            # Site Geometries (Albers)
+            {if (nrow(geom_sf_zoom) > 0)
+                geom_sf(
+                    data = geom_sf_zoom,
+                    aes(fill = site),
+                    alpha = 0.4,
+                    color = "black",
+                    linewidth = 0.25,
+                    show.legend = FALSE,
+                    inherit.aes = FALSE
+                )
+            } +
+
+            # Clustered points (Albers)
+            geom_point(
+                data = pts_df_zoom,
+                aes(x = x, y = y, fill = site),
+                shape = 21, size = 2.0,
+                color = "black",
+                show.legend = FALSE
             ) +
+            scale_fill_discrete() +
+            
+            # Enforce Albers Coordinates
             coord_sf(
-                xlim = c(zoom_bbox["xmin"], zoom_bbox["xmax"]),
-                ylim = c(zoom_bbox["ymin"], zoom_bbox["ymax"]),
+                xlim = c(zoom_bbox_albers["xmin"], zoom_bbox_albers["xmax"]),
+                ylim = c(zoom_bbox_albers["ymin"], zoom_bbox_albers["ymax"]),
+                crs = albers_crs,
                 expand = FALSE
             ) +
             theme_bw() +
@@ -436,18 +511,26 @@ plot_sites <- function(
                 axis.title = element_blank(),
                 axis.text = element_blank(),
                 axis.ticks = element_blank(),
-                plot.title = element_text(size = 9, hjust = 0.5)
+                plot.title = element_text(size = 10, hjust = 0.5),
+                panel.grid.major = element_blank(),
+                panel.grid.minor = element_blank()
             )
-            
+
         zoom_plots[[method_name]] <- p_zoom
     }
-    
-    cat("--- Assembling final plot... ---\n")
-    plot_clust <- patchwork::wrap_plots(zoom_plots, ncol = 6)
-    
-    final_plot <- obs_plot + plot_clust +
-        plot_layout(nrow = 1, widths = c(1, 4)) 
 
-    ggsave(output_path, plot = final_plot, width = 16, height = 8, dpi = 300)
-    cat(sprintf("--- Saved to %s ---\n", output_path))
+    # --- 4. Assemble the Final Plot ---
+    plot_clust <- patchwork::wrap_plots(zoom_plots, ncol = 6)
+    final_plot <- obs_plot + plot_clust +
+        plot_layout(nrow = 1, widths = c(1, 4))
+
+    ggsave(
+        output_path,
+        plot = final_plot,
+        width = 14,
+        height = 8,
+        dpi = 300
+    )
+
+    cat(sprintf("--- Site cluster plot saved to %s ---\n", output_path))
 }
