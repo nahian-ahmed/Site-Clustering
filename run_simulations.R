@@ -36,11 +36,6 @@ comparison_method_list <- c(
   "DBSC", "BayesOptClustGeo"
 )
 
-comparison_method_list <- c(
-  "1to10", "2to10", "2to10-sameObs",
-  "lat-long"
-)
-
 
 selected_optimizer <- "nlminb"
 

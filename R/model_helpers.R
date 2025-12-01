@@ -271,7 +271,7 @@ prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_name
 
 
 #' Fit occuN Model with Random Starts and Early Stopping
-fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30, stable_reps = 5, optimizer = "nlminb") {
+fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30, stable_reps = 10, optimizer = "nlminb") {
   
   occuN_formula <- as.formula(paste(
     paste(deparse(obs_formula), collapse = ""), 
@@ -285,11 +285,12 @@ fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30, stable
   best_fm <- NULL
   min_nll <- Inf
   fit_successful <- FALSE
+  
   stable_count <- 0
   tolerance <- 0.01 
   
   for (rep in 1:n_reps) {
-    rand_starts <- runif(n_params, -2, 2)
+    rand_starts <- runif(n_params, -5, 5)
     
     fm_rep <- try(unmarked::occuN(
       formula = occuN_formula,
