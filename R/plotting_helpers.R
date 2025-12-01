@@ -100,6 +100,7 @@ plot_sites <- function(
         ) +
         theme(
             plot.title = element_text(
+                size = 12,
                 hjust = 0.5,
                 face = "bold",
                 vjust = -1.5, # Make this -1.5 for 2 row, -6 for 3 row

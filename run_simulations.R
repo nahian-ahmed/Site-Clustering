@@ -322,7 +322,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
         state_formula <- as.formula(paste("~", paste(state_cov_names, collapse = " + ")))
         
         # Use modular function
-        fm <- fit_occuN_model(umf, state_formula, obs_formula, n_reps = n_fit_repeats, optimizer = selected_optimizer)
+        fm <- fit_occuN_model(umf, state_formula, obs_formula, n_reps = n_fit_repeats, stable_reps = n_fit_repeats, optimizer = selected_optimizer)
         
         # Define desired column names for coefficients
         state_col_names <- c("state_intercept", state_cov_names)
