@@ -102,12 +102,12 @@ plot_sites <- function(
             plot.title = element_text(
                 hjust = 0.5,
                 face = "bold",
-                vjust = -6,
+                vjust = -2.25, # Make this -2.25 for 2 row, -6 for 3 row
                 margin = margin(b = -10)
             ),
             legend.position = "bottom",
             legend.direction = "horizontal",
-            legend.margin = margin(t = -200),
+            legend.margin = margin(t = -50), # Make this -50 for 2 row, -200 for 3 row
             legend.box.margin = margin(0, 0, 0, 0),
             legend.key.width = unit(0.75, "cm"),
             legend.key.height = unit(0.5, "cm"),
@@ -242,7 +242,7 @@ plot_sites <- function(
         output_path,
         plot = final_plot,
         width = 14,
-        height = 8,
+        height = 6, # make this 8 for 3 rows and 6 for 2 rows
         dpi = 300
     )
 

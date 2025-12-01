@@ -5,7 +5,7 @@
 ###
 # 1. SETUP
 ###
-install_now = FALSE
+install_now = TRUE
 if (install_now){
   options(repos = c(CRAN = "https://cloud.r-project.org/"))
   if (!requireNamespace("devtools", quietly = FALSE)) install.packages("devtools")
@@ -36,12 +36,6 @@ comparison_method_list <- c(
   "DBSC", "BayesOptClustGeo"
 )
 
-# comparison_method_list <- c(
-#   "1to10", "2to10", "2to10-sameObs", "1-kmSq",
-#   "lat-long", "rounded-4", "SVS", "1-per-UL",
-#   "DBSC"
-# )
-# comparison_method_list <- c("1-kmSq") # Debug override
 
 selected_optimizer <- "nlminb"
 
@@ -61,7 +55,7 @@ n_test_repeats <- 25
 
 
 res_m <- 100 
-buffer_m <- 250
+buffer_m <- 200
 
 state_cov_names <- names(sim_params)[2:6]
 obs_cov_names <- names(sim_params)[8:12]
@@ -159,11 +153,16 @@ cat(sprintf("--- Clustering similarity stats saved to %s/clustering_similarity_s
 ###
 # 8. PLOT SITES
 ###
+# all_method_names_plot_order <- c(
+#   "1to10", "2to10", "2to10-sameObs", "lat-long", "SVS", "1-per-UL",
+#   "0.125-kmSq", "0.25-kmSq", "0.5-kmSq", "1-kmSq", "2-kmSq", "rounded-4",
+#   "clustGeo-50-20", "clustGeo-50-40", "clustGeo-50-60", "clustGeo-50-80",  
+#   "BayesOptClustGeo", "DBSC"
+# )
+
 all_method_names_plot_order <- c(
   "1to10", "2to10", "2to10-sameObs", "lat-long", "SVS", "1-per-UL",
-  "0.125-kmSq", "0.25-kmSq", "0.5-kmSq", "1-kmSq", "2-kmSq", "rounded-4",
-  "clustGeo-50-20", "clustGeo-50-40", "clustGeo-50-60", "clustGeo-50-80",  
-  "BayesOptClustGeo", "DBSC"
+  "0.125-kmSq", "1-kmSq", "clustGeo-50-60", "BayesOptClustGeo", "DBSC", "rounded-4"
 )
 
 # Plot using the UNSCALED 100m raster
