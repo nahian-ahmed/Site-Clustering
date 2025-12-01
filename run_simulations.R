@@ -36,11 +36,11 @@ comparison_method_list <- c(
   "DBSC", "BayesOptClustGeo"
 )
 
-comparison_method_list <- c(
-  "1to10", "2to10", "2to10-sameObs", "1-kmSq",
-  "lat-long", "rounded-4", "SVS", "1-per-UL",
-  "DBSC"
-)
+# comparison_method_list <- c(
+#   "1to10", "2to10", "2to10-sameObs", "1-kmSq",
+#   "lat-long", "rounded-4", "SVS", "1-per-UL",
+#   "DBSC"
+# )
 # comparison_method_list <- c("1-kmSq") # Debug override
 
 selected_optimizer <- "nlminb"
@@ -51,16 +51,17 @@ sim_clusterings <- read.delim(file.path("config", "simulation_clusterings.csv"),
 ###
 # 3. SIMULATION SETTINGS
 ###
-n_simulations <- 100
+n_simulations <- 25
 n_fit_repeats <- 25
 n_test_repeats <- 25
 
-n_simulations <- 1 # Debug override
-n_fit_repeats <- 25 # Debug override
-n_test_repeats <- 1 # Debug override
+# n_simulations <- 1 # Debug override
+# n_fit_repeats <- 25 # Debug override
+# n_test_repeats <- 1 # Debug override
+
 
 res_m <- 100 
-buffer_m <- 300
+buffer_m <- 250
 
 state_cov_names <- names(sim_params)[2:6]
 obs_cov_names <- names(sim_params)[8:12]
