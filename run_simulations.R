@@ -37,9 +37,8 @@ comparison_method_list <- c(
 )
 
 comparison_method_list <- c(
-  "1to10", "2to10", "2to10-sameObs", "1-kmSq",
-  "lat-long", "rounded-4", "SVS", "1-per-UL",
-  "DBSC"
+  "1to10", "2to10", "2to10-sameObs",
+  "lat-long"
 )
 
 
