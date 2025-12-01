@@ -5,7 +5,7 @@
 ###
 # 1. SETUP
 ###
-install_now = TRUE
+install_now = FALSE
 if (install_now){
   options(repos = c(CRAN = "https://cloud.r-project.org/"))
   if (!requireNamespace("devtools", quietly = FALSE)) install.packages("devtools")
