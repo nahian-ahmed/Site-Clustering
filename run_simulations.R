@@ -67,31 +67,6 @@ obs_cov_names <- names(sim_params)[8:12]
 
 
 
-###
-# 4. PREPROCESS RASTER DATA
-###
-state_cov_raster_raw <- terra::rast(file.path("state_covariate_raster", "state_covariates.tif"))
-terra::crs(state_cov_raster_raw) <- "+proj=longlat +datum=WGS84"
-names(state_cov_raster_raw) <- state_cov_names
-
-state_cov_raster <- norm_state_covs(state_cov_raster_raw)
-
-boundary_shapefile_path <- file.path("state_covariate_raster", "boundary", "boundary.shp")
-
-base_train_data <- prepare_train_data(state_cov_names, obs_cov_names, state_cov_raster)
-base_train_df <- base_train_data$train_df
-norm_list <- base_train_data$norm_list
-
-base_test_df <- prepare_test_data(state_cov_names, obs_cov_names, state_cov_raster, norm_list)
-
-# Pre-calculate Albers info
-albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
-cov_tif_albers <- terra::project(state_cov_raster, albers_crs_str, method="bilinear", res = res_m)
-area_j_raster <- terra::cellSize(cov_tif_albers, unit="km")
-full_raster_covs <- as.data.frame(terra::values(cov_tif_albers))[, state_cov_names, drop = FALSE]
-full_raster_covs[is.na(full_raster_covs)] <- 0
-
-
 
 ###
 # 4. PREPROCESS RASTER DATA
@@ -104,23 +79,18 @@ names(state_cov_raster_raw) <- state_cov_names
 
 # 2. Define Target CRS and Resolution
 albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
-res_m <- 100 # Set to 100m explicitly
 
 # 3. Project RAW raster to 100m (Albers)
-#    This creates the "unscaled" raster for plotting
 cov_tif_albers_raw <- terra::project(state_cov_raster_raw, albers_crs_str, method="bilinear", res = res_m)
 
 # 4. Normalize the 100m Raster
-#    We use this for training/simulation so the model sees 0-1 scaled data
 cov_tif_albers <- norm_state_covs(cov_tif_albers_raw)
 
 # 5. Generate full_raster_covs for occuN
-#    Extract values for the entire landscape grid
 full_raster_covs <- as.data.frame(terra::values(cov_tif_albers))[, state_cov_names, drop = FALSE]
-#    Impute NAs to 0 for matrix multiplication
 full_raster_covs[is.na(full_raster_covs)] <- 0
 
-# 6. Prepare Data (Sampling from the 100m Albers raster)
+# 6. Prepare Data
 base_train_data <- prepare_train_data(state_cov_names, obs_cov_names, cov_tif_albers)
 base_train_df <- base_train_data$train_df
 norm_list <- base_train_data$norm_list
@@ -131,6 +101,7 @@ base_test_df <- prepare_test_data(state_cov_names, obs_cov_names, cov_tif_albers
 area_j_raster <- terra::cellSize(cov_tif_albers, unit="km")
 
 boundary_shapefile_path <- file.path("state_covariate_raster", "boundary", "boundary.shp")
+
 
 ###
 # 5. TRAIN SITE GEOMETRIES

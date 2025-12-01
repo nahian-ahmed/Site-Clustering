@@ -100,25 +100,26 @@ voronoi_clipped_buffers <- function(points_sf, buffer_dist) {
 
 create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15, method_name = NULL, area_unit = "m") {
   
-  # --- 1. Project Points to Albers (meters) for Geometry Creation ---
-  albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
+  # --- 1. Get CRS from the Reference Raster ---
+  # This ensures we are working in the exact same projection (Albers 100m)
+  # as the simulation grid.
+  target_crs <- sf::st_crs(terra::crs(reference_raster))
   
+  # Project Points to Target CRS (Albers)
   points_sf <- sf::st_as_sf(
     site_data_sf,
     coords = c("longitude", "latitude"),
-    crs = "+proj=longlat +datum=WGS84",
+    crs = 4326, # WGS84
     remove = FALSE 
   )
   
-  points_albers <- sf::st_transform(points_sf, crs = albers_crs_str)
+  points_proj <- sf::st_transform(points_sf, crs = target_crs)
   
-  
-  # --- 2. Create Site Geometries (in Albers) ---
+  # --- 2. Create Site Geometries ---
   is_kmsq <- !is.null(method_name) && grepl("kmSq", method_name, ignore.case = TRUE)
   
   if (is_kmsq) {
     # --- A. SQUARE GRID GEOMETRIES (kmSq) ---
-    # (Grid logic remains unchanged as it works correctly)
     parts <- unlist(strsplit(method_name, "-"))
     rad_m <- NA
     
@@ -129,13 +130,16 @@ create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15
       rad_m <- as.integer(sqrt(area_km) * 1000)
     }
     
-    bbox <- sf::st_bbox(points_albers)
+    bbox <- sf::st_bbox(points_proj)
     
+    # Create grid covering the extent
     x_seq <- seq(from = bbox["xmin"] - (rad_m * 5), to = bbox["xmax"] + (rad_m * 5), by = rad_m)
     y_seq <- seq(from = bbox["ymin"] - (rad_m * 5), to = bbox["ymax"] + (rad_m * 5), by = rad_m)
     
     grid_points <- expand.grid(x = x_seq, y = y_seq)
-    grid_points_sf <- sf::st_as_sf(grid_points, coords = c("x", "y"), crs = albers_crs_str)
+    
+    # Use target_crs here
+    grid_points_sf <- sf::st_as_sf(grid_points, coords = c("x", "y"), crs = target_crs)
     
     grid_geom <- sf::st_make_grid(grid_points_sf, cellsize = rad_m, square = TRUE)
     grid_sf <- sf::st_sf(geometry = grid_geom)
@@ -146,16 +150,16 @@ create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15
     
   } else {
     # --- B. POINT-BASED VORONOI CLIP ---
-    # Pass the raw points directly. Do not aggregate to hulls yet.
-    # This prevents overlapping hulls from breaking the Voronoi generation.
-    site_geoms_sf <- voronoi_clipped_buffers(points_albers, buffer_m)
+    # Pass the projected points (meters) to the Voronoi function
+    site_geoms_sf <- voronoi_clipped_buffers(points_proj, buffer_m)
   }
   
   # --- 3. Create the 'w' (overlap weight) matrix ---
-  # Standardize site IDs to character
   site_geoms_sf$site <- as.character(site_geoms_sf$site)
   
   site_vect <- terra::vect(site_geoms_sf)
+  # No need to project site_vect again if we built it using target_crs, 
+  # but keeping it is a safe double-check.
   site_vect_proj <- terra::project(site_vect, terra::crs(reference_raster))
   
   overlap_df <- terra::extract(
@@ -178,8 +182,6 @@ create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15
   n_sites <- nrow(site_geoms_sf)
   n_cells <- terra::ncell(reference_raster)
   
-  # Note: Use site_geoms_sf$site[overlap_df$ID] if IDs are not 1:N sequential
-  # But here we assume we construct the sparse matrix row-by-row based on the geom DF order
   w <- Matrix::sparseMatrix(
     i = overlap_df$ID,
     j = overlap_df$cell,
