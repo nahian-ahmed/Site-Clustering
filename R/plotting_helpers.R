@@ -398,7 +398,7 @@ plot_sites <- function(
             legend.key.height = unit(0.5, "cm"),
             legend.title = element_text(size = 10, vjust = 1),
             legend.text = element_text(size = 8),
-            axis.title = element_blank()
+            axis.title = element_text(size = 10)
         )
 
     # --- 3. Create Right Plots (Zoomed Clusters in ALBERS) ---
