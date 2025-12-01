@@ -102,7 +102,7 @@ plot_sites <- function(
             plot.title = element_text(
                 hjust = 0.5,
                 face = "bold",
-                vjust = -2.0, # Make this -2.25 for 2 row, -6 for 3 row
+                vjust = -1.5, # Make this -1.5 for 2 row, -6 for 3 row
                 margin = margin(b = -10)
             ),
             legend.position = "bottom",
