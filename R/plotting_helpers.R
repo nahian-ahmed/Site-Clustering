@@ -297,7 +297,7 @@ plot_sites <- function(
     base_train_df,
     all_clusterings,
     all_site_geometries,
-    elevation_raster, # INPUT IS NOW ALBERS (res_m)
+    elevation_raster, # INPUT IS ALBERS (res_m)
     methods_to_plot,
     boundary_shp_path,
     output_path,
@@ -308,32 +308,35 @@ plot_sites <- function(
 ) {
 
     # --- 0. Setup Coordinate Systems ---
-    albers_crs <- terra::crs(elevation_raster) # Get Albers CRS from input
-    wgs84_crs <- sf::st_crs(4326)
+    albers_crs_str <- terra::crs(elevation_raster) # Get Albers CRS string from raster
+    wgs84_crs_sf <- sf::st_crs(4326)               # SF CRS object for SF operations
+    wgs84_crs_str <- "EPSG:4326"                   # String for Terra operations
 
     # --- 1. Prepare Rasters ---
     
     # A. Prepare ALBERS Raster (For Right/Zoom Plots - Keeps res_m)
     valid_boundary <- terra::vect(boundary_shp_path)
-    valid_boundary_albers <- terra::project(valid_boundary, albers_crs)
     
+    # Project boundary to Albers (terra accepts string)
+    valid_boundary_albers <- terra::project(valid_boundary, albers_crs_str)
+    
+    # Crop Albers raster
     region_albers <- terra::crop(elevation_raster[[1]], valid_boundary_albers, mask = TRUE)
     base_rast_df_albers <- as.data.frame(region_albers, xy = TRUE)
     elev_col_name <- names(base_rast_df_albers)[3]
     
-    # Get min/max from Albers raster to ensure consistent coloring across both plots
+    # Get min/max from Albers raster
     base_rast_min <- min(base_rast_df_albers[[elev_col_name]], na.rm = TRUE)
     base_rast_max <- max(base_rast_df_albers[[elev_col_name]], na.rm = TRUE)
 
     # B. Prepare WGS84 Raster (For Left/Overview Plot)
-    # Project the Albers region back to WGS84 to align with base_train_df (lat/long)
-    region_wgs84 <- terra::project(region_albers, wgs84_crs)
+    # Project the Albers region back to WGS84 using the STRING
+    region_wgs84 <- terra::project(region_albers, wgs84_crs_str)
     base_rast_df_wgs84 <- as.data.frame(region_wgs84, xy = TRUE)
-    bbox_full <- terra::ext(region_wgs84) # Extent for the left plot
+    bbox_full <- terra::ext(region_wgs84) 
 
     
     # --- 2. Create Left Plot (Observations in WGS84) ---
-    # This matches the "old" style using the WGS84 projected raster
     obs_plot <- ggplot() +
         geom_raster(
             data = base_rast_df_wgs84,
@@ -351,7 +354,6 @@ plot_sites <- function(
             color = "black", size = 1, shape = 21, fill = "#FBFAF5",
             show.legend = FALSE
         ) +
-        # Annotations (Coordinates are approx WGS84)
         annotate(
             "segment",
             x = -123.85, xend = zoom_box$longitude[1],
@@ -407,10 +409,10 @@ plot_sites <- function(
     zoom_poly_wgs84 <- sf::st_as_sfc(sf::st_bbox(c(
         xmin = zoom_box$longitude[1], xmax = zoom_box$longitude[2],
         ymin = zoom_box$latitude[1], ymax = zoom_box$latitude[2]
-    ), crs = wgs84_crs))
+    ), crs = wgs84_crs_sf)) # Use SF object here
     
-    zoom_poly_albers <- sf::st_transform(zoom_poly_wgs84, albers_crs)
-    zoom_bbox_albers <- sf::st_bbox(zoom_poly_albers) # For coord_sf limits
+    zoom_poly_albers <- sf::st_transform(zoom_poly_wgs84, albers_crs_str)
+    zoom_bbox_albers <- sf::st_bbox(zoom_poly_albers) 
 
     zoom_plots <- list()
 
@@ -422,8 +424,8 @@ plot_sites <- function(
         if (is.list(pts_df) && "result_df" %in% names(pts_df)) pts_df <- pts_df$result_df
         
         # Project points to Albers
-        pts_sf <- sf::st_as_sf(pts_df, coords = c("longitude", "latitude"), crs = wgs84_crs)
-        pts_sf_albers <- sf::st_transform(pts_sf, albers_crs)
+        pts_sf <- sf::st_as_sf(pts_df, coords = c("longitude", "latitude"), crs = wgs84_crs_sf)
+        pts_sf_albers <- sf::st_transform(pts_sf, albers_crs_str)
         
         # Extract coordinates for plotting
         pts_coords <- sf::st_coordinates(pts_sf_albers)
@@ -446,11 +448,10 @@ plot_sites <- function(
         if (is.null(geom_sf)) next
         
         # Ensure geom_sf has CRS set
-        if (is.na(sf::st_crs(geom_sf))) sf::st_crs(geom_sf) <- albers_crs
+        if (is.na(sf::st_crs(geom_sf))) sf::st_crs(geom_sf) <- albers_crs_str
         geom_sf$site <- as.factor(geom_sf$site)
 
         # Crop geometries to Albers Zoom Box
-        # Use st_crop or intersection. st_crop is faster for bboxes.
         geom_sf_zoom <- suppressWarnings(sf::st_crop(geom_sf, zoom_bbox_albers))
         
         # Clean up collections if generated
@@ -502,7 +503,7 @@ plot_sites <- function(
             coord_sf(
                 xlim = c(zoom_bbox_albers["xmin"], zoom_bbox_albers["xmax"]),
                 ylim = c(zoom_bbox_albers["ymin"], zoom_bbox_albers["ymax"]),
-                crs = albers_crs,
+                crs = albers_crs_str,
                 expand = FALSE
             ) +
             theme_bw() +
