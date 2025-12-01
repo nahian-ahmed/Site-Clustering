@@ -389,12 +389,12 @@ plot_sites <- function(
             plot.title = element_text(
                 hjust = 0.5,
                 face = "bold",
-                vjust = -5,
+                vjust = -6,
                 margin = margin(b = -10)
             ),
             legend.position = "bottom",
             legend.direction = "horizontal",
-            legend.margin = margin(t = -250),
+            legend.margin = margin(t = -200),
             legend.box.margin = margin(0, 0, 0, 0),
             legend.key.width = unit(0.75, "cm"),
             legend.key.height = unit(0.5, "cm"),
