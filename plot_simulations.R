@@ -21,7 +21,8 @@ pred_perf_df   <- read.delim(file.path(output_dir ,"predictive_performance.csv")
 output_plot_dir <- file.path(output_dir, "plots")
 if (!dir.exists(output_plot_dir)) dir.create(output_plot_dir, recursive = TRUE)
 
-
+# Methods to exclude for the filtered plots
+methods_to_exclude <- c("1-per-UL", "SVS")
 
 # Add a param_set index to true_params_df to merge easily
 true_params_df$param_set <- 1:nrow(true_params_df)
@@ -53,10 +54,7 @@ est_long <- est_params_df %>%
 # Merge true and estimated data
 plot_data <- est_long %>%
   left_join(true_long, by = c("param_set", "parameter")) %>%
-  mutate(error = est_value - true_value) # Note: User requested (True - Estimated) or (Estimated - True)?
-# User said: "plots the error (true parameter - estimated parameter)"
-# Let's correct that:
-plot_data$error <- plot_data$true_value - plot_data$est_value
+  mutate(error = true_value - est_value) # Error = True - Estimated
 
 # Define parameter groups for the two rows
 state_params <- c("state_intercept", "elevation", "TCB", "TCG", "TCW", "TCA")
@@ -130,15 +128,25 @@ for(i in 1:nrow(combinations)) {
   ref <- combinations$reference_method[i]
   par <- combinations$param_set[i]
   
-  cat(sprintf("Generating error plot for Ref=%s, ParamSet=%d...\n", ref, par))
+  cat(sprintf("Generating error plots for Ref=%s, ParamSet=%d...\n", ref, par))
   
+  # --- 1. FULL PLOT (Original) ---
   p <- make_error_plot(ref, par, plot_data)
   
   if(!is.null(p)) {
-    # Clean filename string
     filename <- sprintf("par_error_ref=%s_par=%d.png", ref, par)
-    
     ggsave(file.path(output_plot_dir, filename), plot = p, width = 14, height = 8, dpi = 300)
+  }
+
+  # --- 2. FILTERED PLOT (No 1-per-UL or SVS) ---
+  plot_data_filtered <- plot_data %>% 
+    filter(!comparison_method %in% methods_to_exclude)
+    
+  p_filtered <- make_error_plot(ref, par, plot_data_filtered)
+  
+  if(!is.null(p_filtered)) {
+    filename_filtered <- sprintf("par_error_ref=%s_par=%d_no_SVS_UL.png", ref, par)
+    ggsave(file.path(output_plot_dir, filename_filtered), plot = p_filtered, width = 14, height = 8, dpi = 300)
   }
 }
 
@@ -178,23 +186,40 @@ for(i in 1:nrow(pred_combinations)) {
   ref <- pred_combinations$reference_method[i]
   par <- pred_combinations$param_set[i]
   
-  # --- AUC Plots ---
-  cat(sprintf("Generating AUC plot for Ref=%s, ParamSet=%d...\n", ref, par))
-  p_auc <- make_pred_plot(ref, par, pred_perf_df, "auc")
+  cat(sprintf("Generating pred plots for Ref=%s, ParamSet=%d...\n", ref, par))
   
+  # Create filtered dataframe
+  pred_perf_df_filtered <- pred_perf_df %>% 
+    filter(!comparison_method %in% methods_to_exclude)
+
+  # --- AUC Plots ---
+  # 1. Full
+  p_auc <- make_pred_plot(ref, par, pred_perf_df, "auc")
   if(!is.null(p_auc)) {
-    # User requested filename pattern: auc_ref=0.125kmSq_par=1_.csv
     filename_auc <- sprintf("auc_ref=%s_par=%d.png", ref, par)
     ggsave(file.path(output_plot_dir, filename_auc), plot = p_auc, width = 8, height = 6, dpi = 300)
   }
   
-  # --- AUPRC Plots ---
-  cat(sprintf("Generating AUPRC plot for Ref=%s, ParamSet=%d...\n", ref, par))
-  p_auprc <- make_pred_plot(ref, par, pred_perf_df, "auprc")
+  # 2. Filtered
+  p_auc_filtered <- make_pred_plot(ref, par, pred_perf_df_filtered, "auc")
+  if(!is.null(p_auc_filtered)) {
+    filename_auc_filtered <- sprintf("auc_ref=%s_par=%d_no_SVS_UL.png", ref, par)
+    ggsave(file.path(output_plot_dir, filename_auc_filtered), plot = p_auc_filtered, width = 8, height = 6, dpi = 300)
+  }
   
+  # --- AUPRC Plots ---
+  # 1. Full
+  p_auprc <- make_pred_plot(ref, par, pred_perf_df, "auprc")
   if(!is.null(p_auprc)) {
     filename_auprc <- sprintf("auprc_ref=%s_par=%d.png", ref, par)
     ggsave(file.path(output_plot_dir, filename_auprc), plot = p_auprc, width = 8, height = 6, dpi = 300)
+  }
+  
+  # 2. Filtered
+  p_auprc_filtered <- make_pred_plot(ref, par, pred_perf_df_filtered, "auprc")
+  if(!is.null(p_auprc_filtered)) {
+    filename_auprc_filtered <- sprintf("auprc_ref=%s_par=%d_no_SVS_UL.png", ref, par)
+    ggsave(file.path(output_plot_dir, filename_auprc_filtered), plot = p_auprc_filtered, width = 8, height = 6, dpi = 300)
   }
 }
 
