@@ -43,29 +43,6 @@ norm_state_covs <- function (state_cov_raster_raw){
 }
 
 #######
-# extract environmental features
-# at checklist locations
-#######
-extract_state_covs <- function(df, cov_tif, x = "longitude", y = "latitude", crs_in = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs") {
-  
-  # Create Vector from DF
-  df_pts <- vect(df, geom = c(x, y), crs = crs_in)
-  
-  # Explicitly project to raster CRS if they don't match
-  # This suppresses the warning and ensures accuracy
-  if (!same.crs(df_pts, cov_tif)) {
-    df_pts <- project(df_pts, crs(cov_tif))
-  }
-  
-  # Extract environmental features
-  env_vars_df <- data.frame(
-    checklist_id = df$checklist_id,
-    terra::extract(cov_tif, df_pts)
-  )
-  return(env_vars_df)
-}
-
-#######
 # normalize dataset
 #######
 norm_ds <- function(df, obs_covs, state_covs, norm_list = list()){
@@ -92,6 +69,92 @@ norm_ds <- function(df, obs_covs, state_covs, norm_list = list()){
   return(list(df=df, n_l=norm_list))
   
 }
+
+
+
+#######
+# Scale state covs (Z-score standardization)
+# Matches signature of norm_state_covs
+#######
+scale_state_covs <- function (state_cov_raster_raw){
+
+  # Use terra's built-in scale function
+  # centers (subtract mean) and scales (divide by sd)
+  # center=TRUE, scale=TRUE are defaults
+  state_cov_raster <- terra::scale(state_cov_raster_raw, center = TRUE, scale = TRUE)
+
+  return(state_cov_raster)
+}
+
+
+#######
+# Scale dataset (Z-score standardization)
+# Matches signature of norm_ds
+#######
+scale_ds <- function(df, obs_covs, state_covs, norm_list = list()){
+  
+  # Identify columns to process
+  cols_to_scale <- intersect(c(obs_covs, state_covs), names(df))
+  
+  # CASE A: Training Mode (norm_list is empty)
+  # Calculate mean/sd and store them
+  if(length(norm_list) == 0){
+    for(cov in cols_to_scale){
+      
+      mu <- mean(df[[cov]])
+      sigma <- sd(df[[cov]])
+      
+      norm_list[[cov]] <- c(mean = mu, sd = sigma)
+      
+      # Apply Standardization: (x - mean) / sd
+      df[[cov]] <- (df[[cov]] - mu) / sigma
+    }
+  } 
+  
+  # CASE B: Testing/Production Mode (norm_list provided)
+  # Use stored mean/sd from training
+  else {
+    for(cov in cols_to_scale){
+      # Only scale if we have stats for this column
+      if(cov %in% names(norm_list)){
+        stats <- norm_list[[cov]]
+        mu <- stats['mean']
+        sigma <- stats['sd']
+        
+        # Apply logic
+        df[[cov]] <- (df[[cov]] - mu) / sigma
+      }
+    }
+  }
+    
+  return(list(df = df, n_l = norm_list))
+}
+
+
+#######
+# extract environmental features
+# at checklist locations
+#######
+extract_state_covs <- function(df, cov_tif, x = "longitude", y = "latitude", crs_in = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs") {
+  
+  # Create Vector from DF
+  df_pts <- vect(df, geom = c(x, y), crs = crs_in)
+  
+  # Explicitly project to raster CRS if they don't match
+  # This suppresses the warning and ensures accuracy
+  if (!same.crs(df_pts, cov_tif)) {
+    df_pts <- project(df_pts, crs(cov_tif))
+  }
+  
+  # Extract environmental features
+  env_vars_df <- data.frame(
+    checklist_id = df$checklist_id,
+    terra::extract(cov_tif, df_pts)
+  )
+  return(env_vars_df)
+}
+
+
 
 #######
 # spatial subsampling as defined by: 

@@ -170,14 +170,7 @@ create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15
     ID = TRUE
   )
   
-  cell_areas <- terra::cellSize(reference_raster, unit = "m")
-  overlap_cell_areas <- terra::extract(cell_areas, overlap_df$cell)
-  
-  overlap_df$w_area <- overlap_df$fraction * overlap_cell_areas[,1]
-  
-  if (area_unit == "km") {
-    overlap_df$w_area <- overlap_df$w_area / 1e6 
-  }
+  overlap_df$w_area <- overlap_df$fraction
   
   n_sites <- nrow(site_geoms_sf)
   n_cells <- terra::ncell(reference_raster)
