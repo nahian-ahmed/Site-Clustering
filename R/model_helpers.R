@@ -283,7 +283,7 @@ fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30, stable
   tolerance <- 0.01 
   
   for (rep in 1:n_reps) {
-    rand_starts <- runif(n_params, -10, 10)
+    rand_starts <- runif(n_params, -5, 5)
     
     fm_rep <- try(unmarked::occuN(
       formula = occuN_formula,
