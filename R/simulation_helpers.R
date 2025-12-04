@@ -261,7 +261,8 @@ prepare_test_spatial_structures <- function(test_df,
   
   # Calculate Area Weights
   test_overlap_cell_areas <- terra::extract(area_raster, test_overlap_df$cell)
-  test_overlap_df$w_area <- test_overlap_df$fraction * test_overlap_cell_areas[,1]
+  # test_overlap_df$w_area <- test_overlap_df$fraction * test_overlap_cell_areas[,1]
+  test_overlap_df$w_area <- test_overlap_df$fraction
   
   # Construct Sparse Matrix (Rows = Test Sites, Cols = Raster Cells)
   n_test_sites <- nrow(test_geoms)
