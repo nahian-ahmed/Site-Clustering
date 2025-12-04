@@ -247,8 +247,11 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
     
     # DENSITY VECTOR (for Matrix Mult)
     # Note: Do not multiply by area here; W matrix has area.
-    cell_density_vector <- terra::values(exp(log_lambda_j))
-    cell_density_vector[is.na(cell_density_vector)] <- 0
+    # cell_density_vector <- terra::values(exp(log_lambda_j))
+    # cell_density_vector[is.na(cell_density_vector)] <- 0
+
+    cell_abundance_val <- terra::values(N_j_raster, mat = FALSE)
+    cell_abundance_val[is.na(cell_abundance_val)] <- 0
     
 
     obs_par_list <- as.list(current_parameter_set[, c("obs_intercept", obs_cov_names)])
@@ -259,14 +262,14 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
 
       # Retrieve the W matrix for the current reference method
       current_w_matrix <- all_w_matrices[[current_clustering_method]]
-
+      
       # --- 6.2 Simulate Data (OPTIMIZED) ---
       train_data <- simulate_train_data(
         reference_clustering_df = current_reference_dataframe,
         obs_cov_names = obs_cov_names,
         obs_par_list = obs_par_list,
         w_matrix = current_w_matrix,           # Pass Matrix
-        cell_density_vector = cell_density_vector # Pass Density
+        cell_density_vector = cell_abundance_val # Pass Density
       )
       
       # Test data simulation 
@@ -275,7 +278,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
         obs_cov_names = obs_cov_names,
         obs_par_list = obs_par_list,
         w_matrix = w_matrix_test,
-        cell_density_vector = cell_density_vector
+        cell_density_vector = cell_abundance_val
       )
 
       # Dataset Stats
