@@ -245,6 +245,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
     log_lambda_j <- cov_tif_albers[[1]] * 0 + state_par_list$intercept
     for (nm in state_cov_names) log_lambda_j <- log_lambda_j + (cov_tif_albers[[nm]] * state_par_list[[nm]])
     
+    N_j_raster <- exp(log_lambda_j) * area_j_raster
     # DENSITY VECTOR (for Matrix Mult)
     # Note: Do not multiply by area here; W matrix has area.
     # cell_density_vector <- terra::values(exp(log_lambda_j))
