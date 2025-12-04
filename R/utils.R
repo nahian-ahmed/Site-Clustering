@@ -73,63 +73,51 @@ norm_ds <- function(df, obs_covs, state_covs, norm_list = list()){
 
 
 #######
-# Scale state covs (Z-score standardization)
-# Matches signature of norm_state_covs
+# Standardize state covs (Z-score standardization)
 #######
-scale_state_covs <- function (state_cov_raster_raw){
-
-  # Use terra's built-in scale function
-  # centers (subtract mean) and scales (divide by sd)
-  # center=TRUE, scale=TRUE are defaults
+standardize_state_covs <- function (state_cov_raster_raw){
+  # "scale" is the correct underlying R function, but your wrapper 
+  # is now descriptively named.
   state_cov_raster <- terra::scale(state_cov_raster_raw, center = TRUE, scale = TRUE)
-
   return(state_cov_raster)
 }
 
-
 #######
-# Scale dataset (Z-score standardization)
-# Matches signature of norm_ds
+# Standardize dataset (Z-score standardization)
 #######
-scale_ds <- function(df, obs_covs, state_covs, norm_list = list()){
+standardize_ds <- function(df, obs_covs, state_covs, standardization_params = list()){
   
-  # Identify columns to process
   cols_to_scale <- intersect(c(obs_covs, state_covs), names(df))
   
-  # CASE A: Training Mode (norm_list is empty)
-  # Calculate mean/sd and store them
-  if(length(norm_list) == 0){
+  # CASE A: Training Mode
+  if(length(standardization_params) == 0){
     for(cov in cols_to_scale){
       
-      mu <- mean(df[[cov]])
-      sigma <- sd(df[[cov]])
+      mu <- mean(df[[cov]], na.rm = TRUE) # Added na.rm for safety
+      sigma <- sd(df[[cov]], na.rm = TRUE)
       
-      norm_list[[cov]] <- c(mean = mu, sd = sigma)
+      # Store parameters with clear keys
+      standardization_params[[cov]] <- c(mean = mu, sd = sigma)
       
-      # Apply Standardization: (x - mean) / sd
       df[[cov]] <- (df[[cov]] - mu) / sigma
     }
   } 
   
-  # CASE B: Testing/Production Mode (norm_list provided)
-  # Use stored mean/sd from training
+  # CASE B: Testing Mode
   else {
     for(cov in cols_to_scale){
-      # Only scale if we have stats for this column
-      if(cov %in% names(norm_list)){
-        stats <- norm_list[[cov]]
+      if(cov %in% names(standardization_params)){
+        stats <- standardization_params[[cov]]
         mu <- stats['mean']
         sigma <- stats['sd']
         
-        # Apply logic
         df[[cov]] <- (df[[cov]] - mu) / sigma
       }
     }
   }
     
-  return(list(df = df, n_l = norm_list))
+  return(list(df = df, standardization_params = standardization_params))
 }
-
 
 #######
 # extract environmental features

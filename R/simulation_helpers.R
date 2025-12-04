@@ -37,10 +37,10 @@ prepare_train_data <- function (
   train_df <- inner_join(train_df, train_env_df, by = "checklist_id")
   
   # Use standardized var names
-  norm_res <- norm_ds(train_df, obs_covs, state_covs = NULL) 
+  scale_res <- standardize_ds(train_df, obs_covs, state_covs = NULL) 
 
-  train_df <- norm_res$df
-  norm_list <- norm_res$n_l
+  train_df <- scale_res$df
+  standardization_params <- scale_res$standardization_params
 
   train_df$species_observed <- -1
   train_df$occupied_prob <- -1
@@ -48,7 +48,7 @@ prepare_train_data <- function (
    
   train_df$formatted_date <- train_df$observation_date
 
-  return (list(train_df = train_df, norm_list = norm_list))
+  return (list(train_df = train_df, standardization_params = standardization_params))
 }
 
 
@@ -57,7 +57,7 @@ prepare_test_data <- function (
     state_covs, 
     obs_covs,
     cov_tif,
-    norm_list, # Pass in the norm_list from the training data
+    standardization_params, # Pass in the norm_list from the training data
     placeholder_spec_name = "AMCR"
 ){
   
@@ -80,9 +80,9 @@ prepare_test_data <- function (
   test_df <- inner_join(test_df, test_env_df, by = "checklist_id")
   
   # Use standardized var names AND the norm_list from training
-  norm_res <- norm_ds(test_df, obs_covs, state_covs = NULL, norm_list = norm_list) 
+  scale_res <- standardize_ds(test_df, obs_covs, state_covs = NULL, standardization_params =  standardization_params) 
   
-  test_df <- norm_res$df
+  test_df <- scale_res$df
   
   return (test_df) # Just return the processed dataframe
 }

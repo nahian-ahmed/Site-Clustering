@@ -79,7 +79,7 @@ albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellp
 cov_tif_albers_raw <- terra::project(state_cov_raster_raw, albers_crs_str, method="bilinear", res = res_m)
 
 # 4. Scale the 100m Raster
-cov_tif_albers <- scale_state_covs(cov_tif_albers_raw)
+cov_tif_albers <- standardize_state_covs(cov_tif_albers_raw)
 
 # 5. Generate full_raster_covs for occuN
 full_raster_covs <- as.data.frame(terra::values(cov_tif_albers))[, state_cov_names, drop = FALSE]
@@ -88,9 +88,9 @@ full_raster_covs[is.na(full_raster_covs)] <- 0
 # 6. Prepare Data
 base_train_data <- prepare_train_data(state_cov_names, obs_cov_names, cov_tif_albers)
 base_train_df <- base_train_data$train_df
-norm_list <- base_train_data$norm_list
+standardization_params <- base_train_data$standardization_params
 
-base_test_df <- prepare_test_data(state_cov_names, obs_cov_names, cov_tif_albers, norm_list)
+base_test_df <- prepare_test_data(state_cov_names, obs_cov_names, cov_tif_albers, standardization_params)
 
 # 7. Calculate Area Raster
 area_j_raster <- cov_tif_albers[[1]] * 0 + 1
