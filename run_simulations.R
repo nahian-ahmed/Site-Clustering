@@ -36,6 +36,11 @@ comparison_method_list <- c(
   "DBSC", "BayesOptClustGeo"
 )
 
+comparison_method_list <- c(
+  
+  "lat-long"
+)
+
 
 selected_optimizer <- "nlminb"
 
@@ -49,9 +54,9 @@ n_simulations <- 25
 n_fit_repeats <- 25
 n_test_repeats <- 25
 
-# n_simulations <- 3 # Debug override
-# n_fit_repeats <- 25 # Debug override
-# n_test_repeats <- 1 # Debug override
+n_simulations <- 1 # Debug override
+n_fit_repeats <- 25 # Debug override
+n_test_repeats <- 1 # Debug override
 
 
 res_m <- 100 
