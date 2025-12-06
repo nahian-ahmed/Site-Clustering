@@ -67,58 +67,47 @@ obs_cov_names <- names(sim_params)[8:12]
 # 4. PREPROCESS RASTER DATA
 ###
 
-# 1. Load Native Raster
+
+# 1. Define CRS
+albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
+
+# 2. Load Native Raster
 state_cov_raster_raw <- terra::rast(file.path("state_covariate_raster", "state_covariates.tif"))
 terra::crs(state_cov_raster_raw) <- "+proj=longlat +datum=WGS84"
 names(state_cov_raster_raw) <- state_cov_names
 
-# 2. Define Target CRS and Resolution
-albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
-
-# 3. Project RAW raster to 100m (Albers)
+# 3. SPATIAL SCALE: Project to simulation grid (30m) BEFORE extracting points
+# This prevents "measurement error" between what the points see and what the sim generates
 cov_tif_albers_raw <- terra::project(state_cov_raster_raw, albers_crs_str, method="bilinear", res = res_m)
 
-# 4. Prepare Training Data using RAW raster first
-# (We pass the RAW unscaled raster here so we can get the true distribution of points)
-base_train_raw <- prepare_train_data(state_cov_names, obs_cov_names, cov_tif_albers_raw)
-base_train_df_raw <- base_train_raw$train_df
+# 4. Prepare Training Data using the ALBERS 30m raster
+# This ensures training points have the exact same values as the simulation grid cells
+base_train_data <- prepare_train_data(state_cov_names, obs_cov_names, cov_tif_albers_raw)
+base_train_df <- base_train_data$train_df
 
-# 5. Calculate Scaling Parameters based on TRAINING POINTS
-# We force standardize_ds to calculate stats for BOTH obs and state covs
-scale_res <- standardize_ds(
-  base_train_df_raw, 
-  obs_covs = obs_cov_names, 
-  state_covs = state_cov_names, # Crucial: Scale state covs here!
-  standardization_params = list() 
-)
+# Check your prepare_train_data return names. It is likely 'standardization_params', not 'norm_list'
+# norm_list <- base_train_data$norm_list 
+standardization_params <- base_train_data$standardization_params 
 
-base_train_df <- scale_res$df
-standardization_params <- scale_res$standardization_params
+# 5. VALUE SCALE: Standardize the Raster using the Training Stats
+# This forces the global landscape to match the scale expected by the fitted model
+cov_tif_albers <- standardize_raster_with_params(cov_tif_albers_raw, standardization_params)
 
-# 6. Apply Training Scaling to the Raster
-# We manually scale the raster using the params from the points
-cov_tif_albers <- cov_tif_albers_raw
-for(cov in state_cov_names){
-  mu <- standardization_params[[cov]]['mean']
-  sigma <- standardization_params[[cov]]['sd']
-  
-  # Manual Z-score: (Raster - Mean) / SD
-  cov_tif_albers[[cov]] <- (cov_tif_albers_raw[[cov]] - mu) / sigma
-}
+# 6. Prepare Test Data
+# Pass the Albers raster and the training params so test data is consistent
+base_test_df <- prepare_test_data(state_cov_names, obs_cov_names, cov_tif_albers_raw, standardization_params)
 
-# 7. Generate full_raster_covs from this NEW scaled raster
-# Now the raster assumes the same "0" and "1" as the training data
+area_j_raster <- cov_tif_albers[[1]] * 0 + 1
+names(area_j_raster) <- "area"
+
+# 8. Generate full_raster_covs from the FINAL STANDARDIZED raster
 full_raster_covs <- as.data.frame(terra::values(cov_tif_albers))[, state_cov_names, drop = FALSE]
 full_raster_covs[is.na(full_raster_covs)] <- 0
 
 
-
-base_test_df <- prepare_test_data(state_cov_names, obs_cov_names, cov_tif_albers_raw, standardization_params)
-# 7. Calculate Area Raster
-area_j_raster <- cov_tif_albers[[1]] * 0 + 1
-names(area_j_raster) <- "area"
-
 boundary_shapefile_path <- file.path("state_covariate_raster", "boundary", "boundary.shp")
+
+
 
 
 ###

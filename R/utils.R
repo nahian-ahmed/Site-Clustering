@@ -71,16 +71,28 @@ norm_ds <- function(df, obs_covs, state_covs, norm_list = list()){
 }
 
 
-
-#######
-# Standardize state covs (Z-score standardization)
-#######
-standardize_state_covs <- function (state_cov_raster_raw){
-  # "scale" is the correct underlying R function, but your wrapper 
-  # is now descriptively named.
-  state_cov_raster <- terra::scale(state_cov_raster_raw, center = TRUE, scale = TRUE)
-  return(state_cov_raster)
+standardize_raster_with_params <- function(raster_stack, params){
+  
+  # Create a copy to modify
+  out_raster <- raster_stack
+  
+  # Loop through layers that exist in the parameters list
+  for(layer_name in names(raster_stack)){
+    if(layer_name %in% names(params)){
+      
+      # Extract stats
+      stats <- params[[layer_name]]
+      mu <- stats['mean']
+      sigma <- stats['sd']
+      
+      # Apply Z-score: (Raster - Mean) / SD
+      # Note: We do this layer-by-layer to ensure names match
+      out_raster[[layer_name]] <- (raster_stack[[layer_name]] - mu) / sigma
+    }
+  }
+  return(out_raster)
 }
+
 
 #######
 # Standardize dataset (Z-score standardization)
