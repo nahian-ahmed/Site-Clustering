@@ -78,20 +78,42 @@ albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellp
 # 3. Project RAW raster to 100m (Albers)
 cov_tif_albers_raw <- terra::project(state_cov_raster_raw, albers_crs_str, method="bilinear", res = res_m)
 
-# 4. Scale the 100m Raster
-cov_tif_albers <- standardize_state_covs(cov_tif_albers_raw)
+# 4. Prepare Training Data using RAW raster first
+# (We pass the RAW unscaled raster here so we can get the true distribution of points)
+base_train_raw <- prepare_train_data(state_cov_names, obs_cov_names, cov_tif_albers_raw)
+base_train_df_raw <- base_train_raw$train_df
 
-# 5. Generate full_raster_covs for occuN
+# 5. Calculate Scaling Parameters based on TRAINING POINTS
+# We force standardize_ds to calculate stats for BOTH obs and state covs
+scale_res <- standardize_ds(
+  base_train_df_raw, 
+  obs_covs = obs_cov_names, 
+  state_covs = state_cov_names, # Crucial: Scale state covs here!
+  standardization_params = list() 
+)
+
+base_train_df <- scale_res$df
+standardization_params <- scale_res$standardization_params
+
+# 6. Apply Training Scaling to the Raster
+# We manually scale the raster using the params from the points
+cov_tif_albers <- cov_tif_albers_raw
+for(cov in state_cov_names){
+  mu <- standardization_params[[cov]]['mean']
+  sigma <- standardization_params[[cov]]['sd']
+  
+  # Manual Z-score: (Raster - Mean) / SD
+  cov_tif_albers[[cov]] <- (cov_tif_albers_raw[[cov]] - mu) / sigma
+}
+
+# 7. Generate full_raster_covs from this NEW scaled raster
+# Now the raster assumes the same "0" and "1" as the training data
 full_raster_covs <- as.data.frame(terra::values(cov_tif_albers))[, state_cov_names, drop = FALSE]
 full_raster_covs[is.na(full_raster_covs)] <- 0
 
-# 6. Prepare Data
-base_train_data <- prepare_train_data(state_cov_names, obs_cov_names, cov_tif_albers)
-base_train_df <- base_train_data$train_df
-standardization_params <- base_train_data$standardization_params
 
-base_test_df <- prepare_test_data(state_cov_names, obs_cov_names, cov_tif_albers, standardization_params)
 
+base_test_df <- prepare_test_data(state_cov_names, obs_cov_names, cov_tif_albers_raw, standardization_params)
 # 7. Calculate Area Raster
 area_j_raster <- cov_tif_albers[[1]] * 0 + 1
 names(area_j_raster) <- "area"
