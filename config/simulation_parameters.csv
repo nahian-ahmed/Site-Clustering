@@ -1,4 +1,4 @@
 state_intercept,elevation,TCB,TCG,TCW,TCA,obs_intercept,day_of_year,time_observations_started,duration_minutes,effort_distance_km,number_observers
 0.5,-0.25,0,0,0,0,0.5,0,0,1,0,0
 0.5,-0.1,0,0,0,0,0.5,0,0,1,0,0
-0.5,0.1,0,0,0,0,0.5,0,0,1,0,0
+0.5,-0.05,0,0,0,0,0.5,0,0,1,0,0
