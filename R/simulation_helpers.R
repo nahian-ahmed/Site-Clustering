@@ -41,7 +41,7 @@ prepare_train_data <- function (
   scale_res <- standardize_ds(
       train_df, 
       obs_covs, 
-      state_covs = NULL, # Passed via columns logic inside standardize_ds
+      state_covs = state_covs, # Passed via columns logic inside standardize_ds
       standardization_params = state_standardization_params
   ) 
 
@@ -87,8 +87,13 @@ prepare_test_data <- function (
   test_df <- inner_join(test_df, test_env_df, by = "checklist_id")
   
   # Use standardized var names AND the norm_list from training
-  scale_res <- standardize_ds(test_df, obs_covs, state_covs = NULL, standardization_params =  standardization_params) 
-  
+  scale_res <- standardize_ds(
+      test_df, 
+      obs_covs, 
+      state_covs = state_covs,
+      standardization_params = standardization_params
+  )
+
   test_df <- scale_res$df
   
   return (test_df) # Just return the processed dataframe
