@@ -149,6 +149,9 @@ for (method_name in all_method_names) {
 }
 
 
+
+mean(base_train_df$state_cov1)
+
 ###
 # 6. CLUSTERING DESCRIPTIVE STATS
 ###
