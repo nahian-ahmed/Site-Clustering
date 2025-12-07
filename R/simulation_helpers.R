@@ -12,13 +12,14 @@ source(file.path("R","model_helpers.R"))
 prepare_train_data <- function (
     state_covs, 
     obs_covs,
-    cov_tif,  
+    cov_tif, 
+    state_standardization_params = list(), # NEW ARGUMENT
     placeholder_spec_name = "AMCR"
 ){
 
   train_filename <- paste0(placeholder_spec_name, "_zf_filtered_region_2017.csv")
   train_df_og <- read.delim(
-    file.path("checklist_data","species", placeholder_spec_name, train_filename), 
+    file.path("checklist_data", "species", placeholder_spec_name, train_filename), 
     sep = ",", header = T
   )
 
@@ -30,17 +31,23 @@ prepare_train_data <- function (
    
   train_df <- train_df_og
 
-  # Use the standardized function name from utils.R
+  # 1. Extract Raw Values (assuming cov_tif is the raw raster)
   train_env_df <- extract_state_covs(train_df, cov_tif) 
 
-  # Now, join the original data with the new, numeric covariate data
+  # 2. Join
   train_df <- inner_join(train_df, train_env_df, by = "checklist_id")
   
-  # Use standardized var names
-  scale_res <- standardize_ds(train_df, obs_covs, state_covs = NULL) 
+
+  scale_res <- standardize_ds(
+      train_df, 
+      obs_covs, 
+      state_covs = NULL, # Passed via columns logic inside standardize_ds
+      standardization_params = state_standardization_params
+  ) 
 
   train_df <- scale_res$df
-  standardization_params <- scale_res$standardization_params
+  # This now contains Raster Params (State) + Training Params (Obs)
+  final_params <- scale_res$standardization_params
 
   train_df$species_observed <- -1
   train_df$occupied_prob <- -1
@@ -48,7 +55,7 @@ prepare_train_data <- function (
    
   train_df$formatted_date <- train_df$observation_date
 
-  return (list(train_df = train_df, standardization_params = standardization_params))
+  return (list(train_df = train_df, standardization_params = final_params))
 }
 
 

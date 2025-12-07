@@ -71,26 +71,28 @@ norm_ds <- function(df, obs_covs, state_covs, norm_list = list()){
 }
 
 
-standardize_raster_with_params <- function(raster_stack, params){
+standardize_state_covs <- function(state_cov_raster){
   
-  # Create a copy to modify
-  out_raster <- raster_stack
+  # 1. Calculate Global Mean and SD for all layers
+  #    returns a dataframe with rows=layers, cols=mean,sd
+  r_stats <- terra::global(state_cov_raster, c("mean", "sd"), na.rm = TRUE)
   
-  # Loop through layers that exist in the parameters list
-  for(layer_name in names(raster_stack)){
-    if(layer_name %in% names(params)){
-      
-      # Extract stats
-      stats <- params[[layer_name]]
-      mu <- stats['mean']
-      sigma <- stats['sd']
-      
-      # Apply Z-score: (Raster - Mean) / SD
-      # Note: We do this layer-by-layer to ensure names match
-      out_raster[[layer_name]] <- (raster_stack[[layer_name]] - mu) / sigma
-    }
+  # 2. Initialize params list
+  params <- list()
+  
+  # 3. Store parameters in the format expected by standardize_ds
+  #    Structure: list(cov_name = c(mean = x, sd = y))
+  for(i in 1:nrow(r_stats)){
+    layer_name <- rownames(r_stats)[i]
+    params[[layer_name]] <- c(mean = r_stats[i, "mean"], sd = r_stats[i, "sd"])
   }
-  return(out_raster)
+  
+  # 4. Standardize the Raster
+  #    (x - mean) / sd
+  #    terra handles recycling of the stats vector automatically if dimensions match
+  std_raster <- (state_cov_raster - t(r_stats$mean)) / t(r_stats$sd)
+  
+  return(list(raster = std_raster, params = params))
 }
 
 
@@ -99,35 +101,32 @@ standardize_raster_with_params <- function(raster_stack, params){
 #######
 standardize_ds <- function(df, obs_covs, state_covs, standardization_params = list()){
   
+  # Combine all columns we intend to scale
   cols_to_scale <- intersect(c(obs_covs, state_covs), names(df))
   
-  # CASE A: Training Mode
-  if(length(standardization_params) == 0){
-    for(cov in cols_to_scale){
+  for(cov in cols_to_scale){
+    
+    # CASE A: Parameter exists (e.g., from Raster or Training set) -> Apply it
+    if(cov %in% names(standardization_params)){
+      stats <- standardization_params[[cov]]
+      mu <- stats['mean']
+      sigma <- stats['sd']
       
-      mu <- mean(df[[cov]], na.rm = TRUE) # Added na.rm for safety
+      df[[cov]] <- (df[[cov]] - mu) / sigma
+      
+    } 
+    # CASE B: Parameter missing -> Calculate from Data & Store
+    else {
+      mu <- mean(df[[cov]], na.rm = TRUE)
       sigma <- sd(df[[cov]], na.rm = TRUE)
       
-      # Store parameters with clear keys
+      # Store for return
       standardization_params[[cov]] <- c(mean = mu, sd = sigma)
       
       df[[cov]] <- (df[[cov]] - mu) / sigma
     }
-  } 
-  
-  # CASE B: Testing Mode
-  else {
-    for(cov in cols_to_scale){
-      if(cov %in% names(standardization_params)){
-        stats <- standardization_params[[cov]]
-        mu <- stats['mean']
-        sigma <- stats['sd']
-        
-        df[[cov]] <- (df[[cov]] - mu) / sigma
-      }
-    }
   }
-    
+  
   return(list(df = df, standardization_params = standardization_params))
 }
 

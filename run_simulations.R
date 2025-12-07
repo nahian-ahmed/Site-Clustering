@@ -80,31 +80,42 @@ state_cov_raster_raw <- terra::rast(file.path("state_covariate_raster", "state_c
 terra::crs(state_cov_raster_raw) <- "+proj=longlat +datum=WGS84"
 names(state_cov_raster_raw) <- state_cov_names
 
-# 3. SPATIAL SCALE: Project to simulation grid (30m) BEFORE extracting points
-# This prevents "measurement error" between what the points see and what the sim generates
+# 3. Project to Albers (Raw Values)
 cov_tif_albers_raw <- terra::project(state_cov_raster_raw, albers_crs_str, method="bilinear", res = res_m)
 
-# 4. Prepare Training Data using the ALBERS 30m raster
-# This ensures training points have the exact same values as the simulation grid cells
-base_train_data <- prepare_train_data(state_cov_names, obs_cov_names, cov_tif_albers_raw)
+# 4. STANDARDIZE RASTER FIRST (New Step)
+#    Get the standardized raster AND the global parameters
+standardization_results <- standardize_state_covs(cov_tif_albers_raw)
+cov_tif_albers <- standardization_results$raster
+state_cov_params <- standardization_results$params
+
+# 5. Prepare Training Data
+#    Pass RAW raster for extraction (so values match the logic of applying params), 
+#    BUT pass the 'state_cov_params' so the DF is scaled using Global stats.
+base_train_data <- prepare_train_data(
+    state_covs = state_cov_names, 
+    obs_covs = obs_cov_names, 
+    cov_tif = cov_tif_albers_raw, # Extract raw values
+    state_standardization_params = state_cov_params # Apply global scaling
+)
+
 base_train_df <- base_train_data$train_df
-
-# Check your prepare_train_data return names. It is likely 'standardization_params', not 'norm_list'
-# norm_list <- base_train_data$norm_list 
-standardization_params <- base_train_data$standardization_params 
-
-# 5. VALUE SCALE: Standardize the Raster using the Training Stats
-# This forces the global landscape to match the scale expected by the fitted model
-cov_tif_albers <- standardize_raster_with_params(cov_tif_albers_raw, standardization_params)
+# This list now has Raster Stats (for State) and Training Stats (for Obs)
+full_standardization_params <- base_train_data$standardization_params 
 
 # 6. Prepare Test Data
-# Pass the Albers raster and the training params so test data is consistent
-base_test_df <- prepare_test_data(state_cov_names, obs_cov_names, cov_tif_albers_raw, standardization_params)
+#    Pass the full parameter list so Test data is scaled exactly like Train data
+base_test_df <- prepare_test_data(
+    state_covs = state_cov_names, 
+    obs_cov_names = obs_cov_names, 
+    cov_tif = cov_tif_albers_raw, 
+    standardization_params = full_standardization_params
+)
 
 area_j_raster <- cov_tif_albers[[1]] * 0 + 1
 names(area_j_raster) <- "area"
 
-# 8. Generate full_raster_covs from the FINAL STANDARDIZED raster
+# 7. Use the Standardized Raster for generating Simulation Truth
 full_raster_covs <- as.data.frame(terra::values(cov_tif_albers))[, state_cov_names, drop = FALSE]
 full_raster_covs[is.na(full_raster_covs)] <- 0
 
