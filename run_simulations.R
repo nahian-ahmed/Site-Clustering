@@ -151,6 +151,8 @@ for (method_name in all_method_names) {
 
 
 mean(base_train_df$elevation)
+mean(base_test_df$elevation)
+
 
 ###
 # 6. CLUSTERING DESCRIPTIVE STATS
