@@ -107,7 +107,7 @@ full_standardization_params <- base_train_data$standardization_params
 #    Pass the full parameter list so Test data is scaled exactly like Train data
 base_test_df <- prepare_test_data(
     state_covs = state_cov_names, 
-    obs_cov_names = obs_cov_names, 
+    obs_covs = obs_cov_names, 
     cov_tif = cov_tif_albers_raw, 
     standardization_params = full_standardization_params
 )
