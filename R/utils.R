@@ -71,32 +71,30 @@ norm_ds <- function(df, obs_covs, state_covs, norm_list = list()){
 }
 
 
-standardize_state_covs <- function(state_cov_raster, mask_poly = NULL){
+standardize_state_covs <- function(state_cov_raster){
   
-  # 1. If mask is provided, use it to calculate stats
-  if (!is.null(mask_poly)) {
-    # Crop first (speed), then Mask (shape)
-    masked_raster <- terra::mask(terra::crop(state_cov_raster, mask_poly), mask_poly)
-    r_stats <- terra::global(masked_raster, c("mean", "sd"), na.rm = TRUE)
-  } else {
-    # Otherwise use global stats
-    r_stats <- terra::global(state_cov_raster, c("mean", "sd"), na.rm = TRUE)
-  }
+  # 1. Calculate Global Mean and SD for all layers
+  #    returns a dataframe with rows=layers, cols=mean,sd
+  r_stats <- terra::global(state_cov_raster, c("mean", "sd"), na.rm = TRUE)
   
   # 2. Initialize params list
   params <- list()
+  
+  # 3. Store parameters in the format expected by standardize_ds
+  #    Structure: list(cov_name = c(mean = x, sd = y))
   for(i in 1:nrow(r_stats)){
     layer_name <- rownames(r_stats)[i]
     params[[layer_name]] <- c(mean = r_stats[i, "mean"], sd = r_stats[i, "sd"])
   }
   
-  # 3. Standardize the ORIGINAL full raster using the MASKED stats
-  #    This allows you to predict outside the hull if needed, but 
-  #    keeps 0 centered on your training data's reality.
+  # 4. Standardize the Raster
+  #    (x - mean) / sd
+  #    terra handles recycling of the stats vector automatically if dimensions match
   std_raster <- (state_cov_raster - t(r_stats$mean)) / t(r_stats$sd)
   
   return(list(raster = std_raster, params = params))
 }
+
 
 #######
 # Standardize dataset (Z-score standardization)
@@ -220,27 +218,4 @@ round_lat_long <- function(df, rounding_degree){
   df$rounded_long <- NULL
   
   return(df)
-}
-
-
-
-#' Create Study Area Mask
-#' Returns a SpatVector polygon of the Convex Hull + Buffer
-get_study_area_mask <- function(df, x_col="longitude", y_col="latitude", buffer_km=2, crs_in="+proj=longlat +datum=WGS84", target_crs){
-  
-  # 1. Create points
-  pts <- sf::st_as_sf(df, coords = c(x_col, y_col), crs = crs_in)
-  
-  # 2. Transform to target CRS (usually Albers) so buffer is in meters
-  pts_proj <- sf::st_transform(pts, crs = target_crs)
-  
-  # 3. Calculate Convex Hull
-  #    st_union treats all points as one geometry to get a single hull
-  hull <- sf::st_convex_hull(sf::st_union(pts_proj))
-  
-  # 4. Buffer (convert km to meters)
-  study_area <- sf::st_buffer(hull, dist = buffer_km * 1000)
-  
-  # 5. Convert to Terra SpatVector
-  return(terra::vect(study_area))
 }

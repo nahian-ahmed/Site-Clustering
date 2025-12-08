@@ -9,38 +9,27 @@ source(file.path("R","clustering_helpers.R"))
 source(file.path("R","model_helpers.R"))
 
 
-
-load_train_data <- function (
+prepare_train_data <- function (
+    state_covs, 
+    obs_covs,
+    cov_tif, 
+    state_standardization_params = list(), # NEW ARGUMENT
     placeholder_spec_name = "AMCR"
 ){
-  train_filename <- paste0(placeholder_spec_name, "_zf_filtered_region_2017.csv")
 
-  base_train_data_raw <- read.delim(
+  train_filename <- paste0(placeholder_spec_name, "_zf_filtered_region_2017.csv")
+  train_df_og <- read.delim(
     file.path("checklist_data", "species", placeholder_spec_name, train_filename), 
     sep = ",", header = T
   )
 
-  # Apply the same filters you had in the helper function
-  base_train_data_raw <- base_train_data_raw[!is.na(base_train_data_raw$duration_minutes),]
-  base_train_data_raw <- base_train_data_raw[
-    base_train_data_raw$observation_date >= "2017-05-15" & 
-    base_train_data_raw$observation_date <= "2017-07-09",
+  train_df_og <- train_df_og[!is.na(train_df_og$duration_minutes),]
+  train_df_og <- train_df_og[
+    train_df_og$observation_date >= "2017-05-15" & 
+    train_df_og$observation_date <= "2017-07-09",
   ]
-
-  return(base_train_data_raw)
-}
-
-prepare_train_data <- function (
-    train_df_raw, # <--- NEW ARGUMENT: Pass the loaded DF here
-    state_covs, 
-    obs_covs,
-    cov_tif, 
-    state_standardization_params = list()
-){
-  
-  # REMOVED: The read.delim and filtering logic is gone from here.
-  
-  train_df <- train_df_raw
+   
+  train_df <- train_df_og
 
   # 1. Extract Raw Values (assuming cov_tif is the raw raster)
   train_env_df <- extract_state_covs(train_df, cov_tif) 
