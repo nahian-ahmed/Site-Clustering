@@ -83,9 +83,16 @@ names(state_cov_raster_raw) <- state_cov_names
 # 3. Project to Albers (Raw Values)
 cov_tif_albers_raw <- terra::project(state_cov_raster_raw, albers_crs_str, method="bilinear", res = res_m)
 
-# 4. STANDARDIZE RASTER FIRST (New Step)
-#    Get the standardized raster AND the global parameters
-standardization_results <- standardize_state_covs(cov_tif_albers_raw)
+
+# Use the raw training data (before any processing) to define the hull
+study_area_mask <- get_study_area_mask(
+    df = base_train_data_raw, # You might need to load the raw csv briefly or extract from prepare_train_data
+    buffer_km = 2, 
+    target_crs = albers_crs_str
+)
+
+# 4. STANDARDIZE RASTER (using the Mask)
+standardization_results <- standardize_state_covs(cov_tif_albers_raw, mask_poly = study_area_mask)
 cov_tif_albers <- standardization_results$raster
 state_cov_params <- standardization_results$params
 
