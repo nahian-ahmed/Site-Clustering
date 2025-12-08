@@ -53,9 +53,9 @@ n_simulations <- 25
 n_fit_repeats <- 25
 n_test_repeats <- 25
 
-# n_simulations <- 1 # Debug override
-# n_fit_repeats <- 25 # Debug override
-# n_test_repeats <- 1 # Debug override
+n_simulations <- 1 # Debug override
+n_fit_repeats <- 25 # Debug override
+n_test_repeats <- 1 # Debug override
 
 
 res_m <- 100 
@@ -83,6 +83,7 @@ names(state_cov_raster_raw) <- state_cov_names
 # 3. Project to Albers (Raw Values)
 cov_tif_albers_raw <- terra::project(state_cov_raster_raw, albers_crs_str, method="bilinear", res = res_m)
 
+base_train_data_raw <- load_train_data()
 
 # Use the raw training data (before any processing) to define the hull
 study_area_mask <- get_study_area_mask(
@@ -100,6 +101,7 @@ state_cov_params <- standardization_results$params
 #    Pass RAW raster for extraction (so values match the logic of applying params), 
 #    BUT pass the 'state_cov_params' so the DF is scaled using Global stats.
 base_train_data <- prepare_train_data(
+    base_train_data_raw = base_train_data_raw,
     state_covs = state_cov_names, 
     obs_covs = obs_cov_names, 
     cov_tif = cov_tif_albers_raw, # Extract raw values
@@ -338,128 +340,128 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
       methods_to_test <- unique(c(current_clustering_method, comparison_method_list))
       
       # === 4. LOOP OVER METHODS (Fit Model ONCE per Sim) ===
-      for (method_name in methods_to_test) {
+      # for (method_name in methods_to_test) {
       
-        cat(sprintf("\n  [Sim %d, Param %d] Fitting Method: %s (Ref: %s)\n", 
-              sim_num, param_idx, method_name, current_clustering_method))
+      #   cat(sprintf("\n  [Sim %d, Param %d] Fitting Method: %s (Ref: %s)\n", 
+      #         sim_num, param_idx, method_name, current_clustering_method))
 
-        # === 4.1. PREPARE occuN DATA ===
-        current_clustering_df <- all_clusterings[[method_name]]
-        if (is.list(current_clustering_df) && "result_df" %in% names(current_clustering_df)) {
-           current_clustering_df <- current_clustering_df$result_df
-        }
+      #   # === 4.1. PREPARE occuN DATA ===
+      #   current_clustering_df <- all_clusterings[[method_name]]
+      #   if (is.list(current_clustering_df) && "result_df" %in% names(current_clustering_df)) {
+      #      current_clustering_df <- current_clustering_df$result_df
+      #   }
         
-        w_matrix <- all_w_matrices[[method_name]]
+      #   w_matrix <- all_w_matrices[[method_name]]
         
-        if (is.null(w_matrix)) {
-          cat(sprintf("    Skipping %s (No W matrix)\n", method_name)); next
-        }
+      #   if (is.null(w_matrix)) {
+      #     cat(sprintf("    Skipping %s (No W matrix)\n", method_name)); next
+      #   }
 
-        # Use modular function
-        umf <- prepare_occuN_data(train_data, current_clustering_df, w_matrix, obs_cov_names, full_raster_covs)
+      #   # Use modular function
+      #   umf <- prepare_occuN_data(train_data, current_clustering_df, w_matrix, obs_cov_names, full_raster_covs)
 
-        # === 4.2. FIT MODEL ===
-        cat(sprintf("    Fitting %s (M=%d)... ", method_name, nrow(umf@y)))
+      #   # === 4.2. FIT MODEL ===
+      #   cat(sprintf("    Fitting %s (M=%d)... ", method_name, nrow(umf@y)))
         
-        obs_formula <- as.formula(paste("~", paste(obs_cov_names, collapse = " + ")))
-        state_formula <- as.formula(paste("~", paste(state_cov_names, collapse = " + ")))
+      #   obs_formula <- as.formula(paste("~", paste(obs_cov_names, collapse = " + ")))
+      #   state_formula <- as.formula(paste("~", paste(state_cov_names, collapse = " + ")))
         
-        # Use modular function
-        fm <- fit_occuN_model(umf, state_formula, obs_formula, n_reps = n_fit_repeats, stable_reps = n_fit_repeats, optimizer = selected_optimizer)
+      #   # Use modular function
+      #   fm <- fit_occuN_model(umf, state_formula, obs_formula, n_reps = n_fit_repeats, stable_reps = n_fit_repeats, optimizer = selected_optimizer)
         
-        # Define desired column names for coefficients
-        state_col_names <- c("state_intercept", state_cov_names)
-        obs_col_names   <- c("obs_intercept", obs_cov_names)
+      #   # Define desired column names for coefficients
+      #   state_col_names <- c("state_intercept", state_cov_names)
+      #   obs_col_names   <- c("obs_intercept", obs_cov_names)
         
-        # === 4.3. HANDLE FAILURE ===
-        if (is.null(fm)) {
-          cat("FAILED.\n")
+      #   # === 4.3. HANDLE FAILURE ===
+      #   if (is.null(fm)) {
+      #     cat("FAILED.\n")
           
-          # Record FAILURE in Parameters
-          na_param_row <- data.frame(
-            reference_method = current_clustering_method, 
-            param_set = param_idx, 
-            sim_num = sim_num,
-            comparison_method = method_name, 
-            nll = NA, 
-            convergence = 1 # Mark as failed
-          )
-          # Fill coefs with NA
-          for(col in c(state_col_names, obs_col_names)) na_param_row[[col]] <- NA
-          all_param_results[[length(all_param_results) + 1]] <- na_param_row
+      #     # Record FAILURE in Parameters
+      #     na_param_row <- data.frame(
+      #       reference_method = current_clustering_method, 
+      #       param_set = param_idx, 
+      #       sim_num = sim_num,
+      #       comparison_method = method_name, 
+      #       nll = NA, 
+      #       convergence = 1 # Mark as failed
+      #     )
+      #     # Fill coefs with NA
+      #     for(col in c(state_col_names, obs_col_names)) na_param_row[[col]] <- NA
+      #     all_param_results[[length(all_param_results) + 1]] <- na_param_row
           
-          # Record FAILURE in Predictions (Optional: or just skip)
-          for(r in 1:n_test_repeats) {
-            na_pred_row <- data.frame(
-              reference_method = current_clustering_method,
-              param_set = param_idx,
-              sim_num = sim_num,
-              comparison_method = method_name,
-              test_repeat = r,
-              auc = NA,
-              auprc = NA
-            )
-            all_pred_results[[length(all_pred_results) + 1]] <- na_pred_row
-          }
-          next
-        }
-        cat("Done.\n")
+      #     # Record FAILURE in Predictions (Optional: or just skip)
+      #     for(r in 1:n_test_repeats) {
+      #       na_pred_row <- data.frame(
+      #         reference_method = current_clustering_method,
+      #         param_set = param_idx,
+      #         sim_num = sim_num,
+      #         comparison_method = method_name,
+      #         test_repeat = r,
+      #         auc = NA,
+      #         auprc = NA
+      #       )
+      #       all_pred_results[[length(all_pred_results) + 1]] <- na_pred_row
+      #     }
+      #     next
+      #   }
+      #   cat("Done.\n")
 
-        # === 4.4. SAVE PARAMETERS (Run ONCE per fit) ===
-        est_alphas <- coef(fm, 'det')   
-        est_betas <- coef(fm, 'state')  
+      #   # === 4.4. SAVE PARAMETERS (Run ONCE per fit) ===
+      #   est_alphas <- coef(fm, 'det')   
+      #   est_betas <- coef(fm, 'state')  
 
-        param_row <- data.frame(
-          reference_method = current_clustering_method,
-          param_set = param_idx,
-          sim_num = sim_num,
-          comparison_method = method_name,
-          nll = fm@negLogLike,
-          convergence = 0
-        )
+      #   param_row <- data.frame(
+      #     reference_method = current_clustering_method,
+      #     param_set = param_idx,
+      #     sim_num = sim_num,
+      #     comparison_method = method_name,
+      #     nll = fm@negLogLike,
+      #     convergence = 0
+      #   )
         
-        # Store State Coefficients
-        for(i in seq_along(state_col_names)) param_row[[state_col_names[i]]] <- est_betas[i]
-        # Store Obs Coefficients
-        for(i in seq_along(obs_col_names)) param_row[[obs_col_names[i]]] <- est_alphas[i]
+      #   # Store State Coefficients
+      #   for(i in seq_along(state_col_names)) param_row[[state_col_names[i]]] <- est_betas[i]
+      #   # Store Obs Coefficients
+      #   for(i in seq_along(obs_col_names)) param_row[[obs_col_names[i]]] <- est_alphas[i]
         
-        all_param_results[[length(all_param_results) + 1]] <- param_row
+      #   all_param_results[[length(all_param_results) + 1]] <- param_row
 
         
-        # === 4.5. PREDICT & TEST (Repeat N times) ===
-        for (repeat_num in 1:n_test_repeats) {
-          test_df <- test_splits_list[[repeat_num]]
+      #   # === 4.5. PREDICT & TEST (Repeat N times) ===
+      #   for (repeat_num in 1:n_test_repeats) {
+      #     test_df <- test_splits_list[[repeat_num]]
           
-          # Prediction Logic
-          X_state <- model.matrix(state_formula, data = test_df)
-          X_obs <- model.matrix(obs_formula, data = test_df)
+      #     # Prediction Logic
+      #     X_state <- model.matrix(state_formula, data = test_df)
+      #     X_obs <- model.matrix(obs_formula, data = test_df)
           
-          pred_psi <- 1 - exp(-(exp(X_state %*% est_betas) * test_df$area_j))
-          pred_det <- plogis(X_obs %*% est_alphas)
-          pred_obs_prob <- pred_psi * pred_det 
+      #     pred_psi <- 1 - exp(-(exp(X_state %*% est_betas) * test_df$area_j))
+      #     pred_det <- plogis(X_obs %*% est_alphas)
+      #     pred_obs_prob <- pred_psi * pred_det 
           
-          # Metrics
-          metrics <- calculate_classification_metrics(pred_obs_prob, test_df$species_observed)
+      #     # Metrics
+      #     metrics <- calculate_classification_metrics(pred_obs_prob, test_df$species_observed)
           
-          # Store Prediction Info Only
-          pred_row <- data.frame(
-            reference_method = current_clustering_method,
-            param_set = param_idx,
-            sim_num = sim_num,
-            comparison_method = method_name,
-            test_repeat = repeat_num, # Key differentiator
-            auc = metrics$auc,
-            auprc = metrics$auprc
-          )
+      #     # Store Prediction Info Only
+      #     pred_row <- data.frame(
+      #       reference_method = current_clustering_method,
+      #       param_set = param_idx,
+      #       sim_num = sim_num,
+      #       comparison_method = method_name,
+      #       test_repeat = repeat_num, # Key differentiator
+      #       auc = metrics$auc,
+      #       auprc = metrics$auprc
+      #     )
           
-          all_pred_results[[length(all_pred_results) + 1]] <- pred_row
-        }
+      #     all_pred_results[[length(all_pred_results) + 1]] <- pred_row
+      #   }
 
-        # 6. CRITICAL MEMORY CLEANUP
-        rm(umf, fm) # Remove heavy objects
-        gc() # Force garbage collection
+      #   # 6. CRITICAL MEMORY CLEANUP
+      #   rm(umf, fm) # Remove heavy objects
+      #   gc() # Force garbage collection
         
-      } # End Method Loop
+      # } # End Method Loop
 
       # Periodic cleanup after every simulation
       rm(train_data, test_data_full, test_splits_list)
