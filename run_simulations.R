@@ -101,7 +101,7 @@ state_cov_params <- standardization_results$params
 #    Pass RAW raster for extraction (so values match the logic of applying params), 
 #    BUT pass the 'state_cov_params' so the DF is scaled using Global stats.
 base_train_data <- prepare_train_data(
-    base_train_data_raw = base_train_data_raw,
+    train_df_raw = base_train_data_raw,
     state_covs = state_cov_names, 
     obs_covs = obs_cov_names, 
     cov_tif = cov_tif_albers_raw, # Extract raw values
