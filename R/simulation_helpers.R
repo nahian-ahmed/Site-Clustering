@@ -37,12 +37,12 @@ prepare_train_data <- function (
   # 2. Join
   train_df <- inner_join(train_df, train_env_df, by = "checklist_id")
   
-  if ("effort_distance_km" %in% names(train_df)) {
-    train_df$effort_distance_km <- log(train_df$effort_distance_km + 1)
-  }
-  if ("number_observers" %in% names(train_df)) {
-    train_df$number_observers <- log(train_df$number_observers + 1)
-  }
+  # if ("effort_distance_km" %in% names(train_df)) {
+  #   train_df$effort_distance_km <- log(train_df$effort_distance_km + 1)
+  # }
+  # if ("number_observers" %in% names(train_df)) {
+  #   train_df$number_observers <- log(train_df$number_observers + 1)
+  # }
 
   scale_res <- standardize_ds(
       train_df, 
@@ -92,12 +92,12 @@ prepare_test_data <- function (
   
   test_df <- inner_join(test_df, test_env_df, by = "checklist_id")
   
-  if ("effort_distance_km" %in% names(test_df)) {
-    test_df$effort_distance_km <- log(test_df$effort_distance_km + 1)
-  }
-  if ("number_observers" %in% names(test_df)) {
-    test_df$number_observers <- log(test_df$number_observers + 1)
-  }
+  # if ("effort_distance_km" %in% names(test_df)) {
+  #   test_df$effort_distance_km <- log(test_df$effort_distance_km + 1)
+  # }
+  # if ("number_observers" %in% names(test_df)) {
+  #   test_df$number_observers <- log(test_df$number_observers + 1)
+  # }
 
   # Use standardized var names AND the norm_list from training
   scale_res <- standardize_ds(
@@ -230,15 +230,6 @@ simulate_test_data <- function (
 #' Creates Voronoi geometries, calculates site areas, and builds the sparse W matrix
 #' for the test dataset.
 #'
-#' @param test_df Dataframe containing test coordinates (must have 'longitude', 'latitude').
-#' @param albers_crs String. The projection CRS (e.g., Albers) to use for geometry generation.
-#' @param buffer_m Numeric. Buffer distance in meters.
-#' @param cov_raster_albers SpatRaster. The reference raster projected to albers_crs.
-#' @param area_raster SpatRaster. The cell size raster (usually in km^2 or m^2).
-#'
-#' @return A list containing:
-#'   \item{test_df}{The updated dataframe with 'site' IDs and 'area_j' columns.}
-#'   \item{w_matrix}{The sparse matrix (Sites x Cells) representing spatial overlap.}
 prepare_test_spatial_structures <- function(test_df, 
                                             albers_crs, 
                                             buffer_m, 
