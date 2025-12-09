@@ -11,6 +11,9 @@ library(stringr)
 # 1. Setup and Data Loading
 # -----------------------------------------------------------------------------
 
+# --- CONFIGURATION ---
+KEEP_BEST_FRACTION <- 1.0 # Filter to keep the top 90% of simulations closest to truth
+
 output_dir <- file.path("simulation_experiments", "output")
 # Load data
 true_params_df <- read.delim(file.path("config", "simulation_parameters.csv"), sep = ",", header = T)
@@ -52,9 +55,55 @@ est_long <- est_params_df %>%
   )
 
 # Merge true and estimated data
-plot_data <- est_long %>%
+plot_data_full <- est_long %>%
   left_join(true_long, by = c("param_set", "parameter")) %>%
   mutate(error = true_value - est_value) # Error = True - Estimated
+
+# -----------------------------------------------------------------------------
+# 3. Filtering Top N% Simulations (Closest to Truth)
+# -----------------------------------------------------------------------------
+
+cat(sprintf("Filtering simulations: Keeping top %.0f%% based on parameter closeness (MSE)...\n", KEEP_BEST_FRACTION * 100))
+
+# A. Calculate Mean Squared Error (MSE) for each simulation run
+#    (Aggregating error across all parameters for that run)
+sim_performance <- plot_data_full %>%
+  group_by(reference_method, param_set, comparison_method, sim_num) %>%
+  summarise(
+    # Scalar metric for "closeness": Mean Squared Error across all params
+    sim_mse = mean(error^2, na.rm = TRUE),
+    # Count valid parameters to ensure we don't rank failed/NA runs as "good"
+    valid_params = sum(!is.na(error)),
+    total_params_count = n(),
+    .groups = "drop"
+  ) %>%
+  # Exclude runs that have NAs (failed convergence)
+  filter(valid_params == total_params_count)
+
+# B. Identify which simulations to keep
+valid_sims_to_keep <- sim_performance %>%
+  group_by(reference_method, param_set, comparison_method) %>%
+  arrange(sim_mse) %>%
+  mutate(
+    rank = row_number(),
+    total_runs = n(),
+    # Calculate cutoff rank (e.g., 90% of 10 runs = 9)
+    cutoff_rank = ceiling(total_runs * KEEP_BEST_FRACTION)
+  ) %>%
+  filter(rank <= cutoff_rank) %>%
+  select(reference_method, param_set, comparison_method, sim_num)
+
+# C. Filter the main dataset
+plot_data <- plot_data_full %>%
+  inner_join(valid_sims_to_keep, by = c("reference_method", "param_set", "comparison_method", "sim_num"))
+
+cat(sprintf("  - Original data points: %d\n", nrow(plot_data_full)))
+cat(sprintf("  - Filtered data points: %d\n", nrow(plot_data)))
+
+
+# -----------------------------------------------------------------------------
+# 4. Final Formatting for Plotting
+# -----------------------------------------------------------------------------
 
 # Define parameter groups for the two rows
 state_params <- c("state_intercept", "elevation", "TCB", "TCG", "TCW", "TCA")
@@ -79,7 +128,7 @@ plot_data$parameter_label <- factor(plot_data$parameter,
                                     labels = label_map[c(state_params, obs_params)])
 
 # -----------------------------------------------------------------------------
-# 3. Function to Generate Parameter Error Plots
+# 5. Function to Generate Parameter Error Plots
 # -----------------------------------------------------------------------------
 
 make_error_plot <- function(ref_meth, p_set, data) {
@@ -119,7 +168,7 @@ make_error_plot <- function(ref_meth, p_set, data) {
 }
 
 # -----------------------------------------------------------------------------
-# 4. Loop to Create and Save Parameter Error Plots
+# 6. Loop to Create and Save Parameter Error Plots
 # -----------------------------------------------------------------------------
 
 combinations <- unique(plot_data[, c("reference_method", "param_set")])
@@ -139,10 +188,10 @@ for(i in 1:nrow(combinations)) {
   }
 
   # --- 2. FILTERED PLOT (No 1-per-UL or SVS) ---
-  plot_data_filtered <- plot_data %>% 
+  plot_data_filtered_methods <- plot_data %>% 
     filter(!comparison_method %in% methods_to_exclude)
     
-  p_filtered <- make_error_plot(ref, par, plot_data_filtered)
+  p_filtered <- make_error_plot(ref, par, plot_data_filtered_methods)
   
   if(!is.null(p_filtered)) {
     filename_filtered <- sprintf("par_error_ref=%s_par=%d_no_SVS_UL.png", ref, par)
@@ -151,7 +200,7 @@ for(i in 1:nrow(combinations)) {
 }
 
 # -----------------------------------------------------------------------------
-# 5. Function to Generate Predictive Performance Plots
+# 7. Function to Generate Predictive Performance Plots
 # -----------------------------------------------------------------------------
 
 make_pred_plot <- function(ref_meth, p_set, data, metric) {
@@ -176,7 +225,7 @@ make_pred_plot <- function(ref_meth, p_set, data, metric) {
 }
 
 # -----------------------------------------------------------------------------
-# 6. Loop to Create and Save Predictive Performance Plots
+# 8. Loop to Create and Save Predictive Performance Plots
 # -----------------------------------------------------------------------------
 
 # Use the same combinations from the predictive performance dataframe
