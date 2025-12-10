@@ -12,7 +12,7 @@ library(stringr)
 # -----------------------------------------------------------------------------
 
 # --- CONFIGURATION ---
-KEEP_BEST_FRACTION <- 0.5 # Filter to keep the top 90% of simulations closest to truth
+KEEP_BEST_FRACTION <- 1.0 # Filter to keep the top 90% of simulations closest to truth
 
 output_dir <- file.path("simulation_experiments", "output")
 # Load data
