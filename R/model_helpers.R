@@ -264,13 +264,17 @@ prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_name
 
 
 #' Fit occuN Model with Random Starts and Early Stopping
-fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30, stable_reps = 10, optimizer = "nlminb") {
+fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30, 
+                            stable_reps = 10, optimizer = "nlminb", 
+                            lower = -Inf, upper = Inf) { # <--- 1. Add arguments here
   
   occuN_formula <- as.formula(paste(
     paste(deparse(obs_formula), collapse = ""), 
     paste(deparse(state_formula), collapse = "")
   ))
   
+  # Note: This parameter counting method assumes simple formulas (intercept + linear terms).
+  # If you use interactions (*) or factors, model.matrix would be safer to count columns.
   n_obs_pars <- length(all.vars(obs_formula)) + 1 
   n_state_pars <- length(all.vars(state_formula)) + 1
   n_params <- n_obs_pars + n_state_pars
@@ -283,14 +287,30 @@ fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30, stable
   tolerance <- 0.01 
   
   for (rep in 1:n_reps) {
+    # Generate random starts
+    # Note: If your bounds are tight (e.g., lower=0), 
+    # make sure your starts respect them!
     rand_starts <- runif(n_params, -2, 2)
     
+    # If bounds are provided, clamp the starts to be within bounds
+    # to avoid immediate rejection by the optimizer
+    if(any(is.finite(lower)) || any(is.finite(upper))) {
+       # Simple clamping logic
+       safe_lower <- ifelse(is.finite(lower), lower + 0.01, -2)
+       safe_upper <- ifelse(is.finite(upper), upper - 0.01, 2)
+       # Ensure we don't cross (if lower > -2, use lower, etc)
+       # This is a basic safety check, adjust logic if specific bounds are needed
+       rand_starts <- pmax(pmin(rand_starts, safe_upper), safe_lower)
+    }
+
     fm_rep <- try(unmarked::occuN(
       formula = occuN_formula,
       data = umf,
       starts = rand_starts,
       se = FALSE, 
-      method = optimizer
+      method = optimizer,
+      lower = lower,
+      upper = upper
     ), silent = TRUE)
     
     if (!inherits(fm_rep, "try-error")) {
@@ -321,32 +341,6 @@ fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30, stable
   if (!fit_successful) return(NULL)
   return(best_fm)
 }
-
-
-########
-get_parameters <- function(df, i, occ_covs, det_covs, occ_intercept = TRUE, det_intercept = TRUE){
-
-  occ_par_list <- list()
-  if (occ_intercept){
-    occ_par_list[["occ_intercept"]] <- df[i, "occ_intercept"] 
-  }
-  for (occ_cov in occ_covs){
-    occ_par_list[[occ_cov]] <- df[i, occ_cov]
-
-  }
-
-  det_par_list <- list()
-  if (det_intercept){
-    det_par_list[["det_intercept"]] <- df[i, "det_intercept"] 
-  }
-  for (det_cov in det_covs){
-    det_par_list[[det_cov]] <- df[i, det_cov]
-
-  }
-
-  return (list(occ_par_list = occ_par_list, det_par_list = det_par_list))
-}
-########
 
 
 ########
