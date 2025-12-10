@@ -469,10 +469,9 @@ for (sim in 1:n_sims) {
 
 cat("\n--- Simulation Study Complete ---\n")
 
-output_dir <- "output"
-if (!dir.exists(output_dir)) {
-        dir.create(output_dir)
-}
+
+output_dir <- file.path("simulation_experiments", "output", "demo")
+if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 
 # Save the full results data frame
