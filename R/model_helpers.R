@@ -188,6 +188,55 @@ create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15
   return(site_geoms_sf)
 }
 
+split_disjoint_sites <- function(site_geoms_sf, method_name, min_area_threshold = 100) {
+  
+  # 1. SKIP "SAFE" METHODS
+  # kmSq (grids), rounded (coords), lat-long/UL (points) are always contiguous.
+  if (grepl("kmSq", method_name, ignore.case = TRUE) ||
+      grepl("rounded", method_name, ignore.case = TRUE) ||
+      grepl("lat-long", method_name, ignore.case = TRUE) ||
+      grepl("UL", method_name, ignore.case = TRUE) ||
+      grepl("SVS", method_name, ignore.case = TRUE)) {
+    return(site_geoms_sf)
+  }
+  
+  cat(sprintf("    [Post-Process] Checking %s for disjoint geometries...\n", method_name))
+  
+  # 2. CAST MULTIPOLYGONS TO POLYGONS
+  # This explodes disjoint parts into separate rows
+  # Suppress warnings about attributes being constant
+  sites_split <- suppressWarnings(sf::st_cast(site_geoms_sf, "POLYGON", warn = FALSE))
+  
+  # If no splitting happened, return original (save computation)
+  if (nrow(sites_split) == nrow(site_geoms_sf)) {
+    return(site_geoms_sf)
+  }
+  
+  # 3. FILTER SLIVERS
+  # Remove tiny artifacts created by the Voronoi clipping process
+  sites_split$area_tmp <- as.numeric(sf::st_area(sites_split))
+  sites_clean <- sites_split[sites_split$area_tmp > min_area_threshold, ]
+  sites_clean$area_tmp <- NULL # Cleanup
+  
+  # 4. RE-GENERATE SITE IDs
+  # Append a suffix to the original site ID to create unique IDs for the new parts
+  # e.g., Site "10" splits into "10_1" and "10_2"
+  # We group by the OLD site ID to generate the sequence
+  sites_clean <- sites_clean %>%
+    dplyr::group_by(site) %>%
+    dplyr::mutate(
+      part_id = dplyr::row_number(),
+      new_site_id = paste0(site, "_", part_id)
+    ) %>%
+    dplyr::ungroup() %>%
+    dplyr::select(-site, -part_id) %>%
+    dplyr::rename(site = new_site_id)
+  
+  cat(sprintf("    [Post-Process] Split disjoint sites. Count changed from %d to %d.\n", 
+              nrow(site_geoms_sf), nrow(sites_clean)))
+  
+  return(sites_clean)
+}
 
 #' Prepare Data for occuN Model
 prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_names, cell_covs) {
