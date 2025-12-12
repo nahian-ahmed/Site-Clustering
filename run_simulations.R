@@ -246,14 +246,6 @@ cat("--- Cleaning up heavy raster objects ---\n")
 # Remove the raw unscaled raster to free memory
 rm(state_cov_raster_raw, cov_tif_albers_raw)
 
-# Remove the heavy geometry objects (we only need the W matrices now)
-# (Extract W matrices first if you haven't already done so in previous steps)
-all_w_matrices <- list()
-for (m_name in names(all_site_geometries)) {
-  if (!is.null(all_site_geometries[[m_name]])) {
-    all_w_matrices[[m_name]] <- attr(all_site_geometries[[m_name]], "w_matrix")
-  }
-}
 rm(all_site_geometries)
 
 # Force garbage collection
