@@ -123,6 +123,8 @@ full_raster_covs[is.na(full_raster_covs)] <- 0
 boundary_shapefile_path <- file.path("state_covariate_raster", "boundary", "boundary.shp")
 
 
+output_dir <- file.path("simulation_experiments", "output")
+if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 ###
 # 5. TRAIN SITE GEOMETRIES & POST-PROCESSING
@@ -206,6 +208,8 @@ for (m_name in names(all_site_geometries)) {
     all_w_matrices[[m_name]] <- generate_overlap_matrix(all_site_geometries[[m_name]], cov_tif_albers)
   }
 }
+
+
 
 ###
 # 8. PLOT SITES
