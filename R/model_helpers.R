@@ -98,31 +98,30 @@ voronoi_clipped_buffers <- function(points_sf, buffer_dist) {
   return(final_geoms)
 }
 
+
+#' Create Site Geometries (Updated)
+#' 
+#' Returns SF object of site boundaries. NO LONGER returns w_matrix.
+#'
 create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15, method_name = NULL, area_unit = "m") {
   
-  # --- 1. Get CRS from the Reference Raster ---
-  # This ensures we are working in the exact same projection (Albers 100m)
-  # as the simulation grid.
   target_crs <- sf::st_crs(terra::crs(reference_raster))
   
-  # Project Points to Target CRS (Albers)
+  # Project Points
   points_sf <- sf::st_as_sf(
     site_data_sf,
     coords = c("longitude", "latitude"),
-    crs = 4326, # WGS84
+    crs = 4326, 
     remove = FALSE 
   )
-  
   points_proj <- sf::st_transform(points_sf, crs = target_crs)
   
-  # --- 2. Create Site Geometries ---
+  # Check Method Type
   is_kmsq <- !is.null(method_name) && grepl("kmSq", method_name, ignore.case = TRUE)
   
   if (is_kmsq) {
-    # --- A. SQUARE GRID GEOMETRIES (kmSq) ---
+    # --- Grid Logic ---
     parts <- unlist(strsplit(method_name, "-"))
-    rad_m <- NA
-    
     if (parts[1] == "kmSq") {
       rad_m <- as.numeric(parts[2])
     } else {
@@ -131,17 +130,13 @@ create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15
     }
     
     bbox <- sf::st_bbox(points_proj)
-    
-    # Create grid covering the extent
     x_seq <- seq(from = bbox["xmin"] - (rad_m * 5), to = bbox["xmax"] + (rad_m * 5), by = rad_m)
     y_seq <- seq(from = bbox["ymin"] - (rad_m * 5), to = bbox["ymax"] + (rad_m * 5), by = rad_m)
     
     grid_points <- expand.grid(x = x_seq, y = y_seq)
-    
-    # Use target_crs here
     grid_points_sf <- sf::st_as_sf(grid_points, coords = c("x", "y"), crs = target_crs)
-    
     grid_geom <- sf::st_make_grid(grid_points_sf, cellsize = rad_m, square = TRUE)
+    
     grid_sf <- sf::st_sf(geometry = grid_geom)
     grid_sf$site <- as.character(seq_len(nrow(grid_sf)))
     
@@ -149,19 +144,92 @@ create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15
     site_geoms_sf <- grid_sf[grid_sf$site %in% present_sites, ]
     
   } else {
-    # --- B. POINT-BASED VORONOI CLIP ---
-    # Pass the projected points (meters) to the Voronoi function
+    # --- Voronoi Logic ---
     site_geoms_sf <- voronoi_clipped_buffers(points_proj, buffer_m)
   }
   
-  # --- 3. Create the 'w' (overlap weight) matrix ---
   site_geoms_sf$site <- as.character(site_geoms_sf$site)
   
+  return(site_geoms_sf)
+}
+
+
+disjoint_site_geometries <- function(site_geoms_sf, point_data_df, crs_points = 4326) {
+  
+  # 1. Cast Multipolygons to Polygons (Explode)
+  # This creates a new row for every distinct polygon
+  # Warning suppression is for attribute constancy assumptions
+  sites_split <- suppressWarnings(sf::st_cast(site_geoms_sf, "POLYGON", warn = FALSE))
+  
+  # If no splitting occurred, return originals
+  if (nrow(sites_split) == nrow(site_geoms_sf)) {
+    return(list(geoms = site_geoms_sf, data = point_data_df))
+  }
+  
+  # 2. Create Unique IDs for New Parts
+  # Group by original site to generate sequential suffixes (e.g., "1_1", "1_2")
+  sites_split <- sites_split %>%
+    dplyr::group_by(site) %>%
+    dplyr::mutate(
+      sub_id = dplyr::row_number(),
+      new_site_id = paste0(site, "_", sub_id)
+    ) %>%
+    dplyr::ungroup()
+  
+  # 3. Reassign Points to New Geometries
+  # Convert points to SF
+  points_sf <- sf::st_as_sf(
+    point_data_df, 
+    coords = c("longitude", "latitude"), 
+    crs = crs_points, 
+    remove = FALSE
+  )
+  
+  # Transform points to match geometries (usually Albers)
+  points_proj <- sf::st_transform(points_sf, sf::st_crs(sites_split))
+  
+  # Spatial Join: Find which new polygon each point falls into
+  # We select only the geometry ID columns to keep it light
+  join_res <- sf::st_join(
+    points_proj, 
+    sites_split[, c("new_site_id")], 
+    join = sf::st_intersects, 
+    left = TRUE
+  )
+  
+  # 4. Update Point Dataframe
+  # If a point falls outside (NA), keep original (though this shouldn't happen with Voronoi)
+  # Otherwise, take the new ID.
+  point_data_updated <- point_data_df
+  point_data_updated$site <- ifelse(!is.na(join_res$new_site_id), join_res$new_site_id, as.character(point_data_updated$site))
+  
+  # 5. Finalize Geometries
+  # Clean up columns and ensure 'site' matches the points
+  sites_final <- sites_split %>%
+    dplyr::select(-site, -sub_id) %>%
+    dplyr::rename(site = new_site_id) %>%
+    dplyr::select(site, geometry)
+  
+  return(list(geoms = sites_final, data = point_data_updated))
+}
+
+
+
+#' Generate Overlap Matrix (W)
+#' 
+#' Calculates the sparse weighting matrix based on finalized geometries.
+#'
+generate_overlap_matrix <- function(site_geoms_sf, reference_raster) {
+  
+  # Ensure IDs are character
+  site_geoms_sf$site <- as.character(site_geoms_sf$site)
+  
+  # Convert to SpatVector
   site_vect <- terra::vect(site_geoms_sf)
-  # No need to project site_vect again if we built it using target_crs, 
-  # but keeping it is a safe double-check.
+  # Project to verify match (though should already match)
   site_vect_proj <- terra::project(site_vect, terra::crs(reference_raster))
   
+  # Extract coverage
   overlap_df <- terra::extract(
     reference_raster[[1]], 
     site_vect_proj, 
@@ -175,6 +243,7 @@ create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15
   n_sites <- nrow(site_geoms_sf)
   n_cells <- terra::ncell(reference_raster)
   
+  # The ID returned by extract corresponds to the row index of the vector
   w <- Matrix::sparseMatrix(
     i = overlap_df$ID,
     j = overlap_df$cell,
@@ -183,60 +252,9 @@ create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15
     dimnames = list(site_geoms_sf$site, NULL) 
   )
   
-  attr(site_geoms_sf, "w_matrix") <- w
-  
-  return(site_geoms_sf)
+  return(w)
 }
 
-split_disjoint_sites <- function(site_geoms_sf, method_name, min_area_threshold = 100) {
-  
-  # 1. SKIP "SAFE" METHODS
-  # kmSq (grids), rounded (coords), lat-long/UL (points) are always contiguous.
-  if (grepl("kmSq", method_name, ignore.case = TRUE) ||
-      grepl("rounded", method_name, ignore.case = TRUE) ||
-      grepl("lat-long", method_name, ignore.case = TRUE) ||
-      grepl("UL", method_name, ignore.case = TRUE) ||
-      grepl("SVS", method_name, ignore.case = TRUE)) {
-    return(site_geoms_sf)
-  }
-  
-  cat(sprintf("    [Post-Process] Checking %s for disjoint geometries...\n", method_name))
-  
-  # 2. CAST MULTIPOLYGONS TO POLYGONS
-  # This explodes disjoint parts into separate rows
-  # Suppress warnings about attributes being constant
-  sites_split <- suppressWarnings(sf::st_cast(site_geoms_sf, "POLYGON", warn = FALSE))
-  
-  # If no splitting happened, return original (save computation)
-  if (nrow(sites_split) == nrow(site_geoms_sf)) {
-    return(site_geoms_sf)
-  }
-  
-  # 3. FILTER SLIVERS
-  # Remove tiny artifacts created by the Voronoi clipping process
-  sites_split$area_tmp <- as.numeric(sf::st_area(sites_split))
-  sites_clean <- sites_split[sites_split$area_tmp > min_area_threshold, ]
-  sites_clean$area_tmp <- NULL # Cleanup
-  
-  # 4. RE-GENERATE SITE IDs
-  # Append a suffix to the original site ID to create unique IDs for the new parts
-  # e.g., Site "10" splits into "10_1" and "10_2"
-  # We group by the OLD site ID to generate the sequence
-  sites_clean <- sites_clean %>%
-    dplyr::group_by(site) %>%
-    dplyr::mutate(
-      part_id = dplyr::row_number(),
-      new_site_id = paste0(site, "_", part_id)
-    ) %>%
-    dplyr::ungroup() %>%
-    dplyr::select(-site, -part_id) %>%
-    dplyr::rename(site = new_site_id)
-  
-  cat(sprintf("    [Post-Process] Split disjoint sites. Count changed from %d to %d.\n", 
-              nrow(site_geoms_sf), nrow(sites_clean)))
-  
-  return(sites_clean)
-}
 
 #' Prepare Data for occuN Model
 prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_names, cell_covs) {

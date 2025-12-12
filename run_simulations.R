@@ -124,63 +124,88 @@ boundary_shapefile_path <- file.path("state_covariate_raster", "boundary", "boun
 
 
 
-
 ###
-# 5. TRAIN SITE GEOMETRIES
+# 5. TRAIN SITE GEOMETRIES & POST-PROCESSING
 ###
 reference_method_list <- sim_clusterings$method
 all_method_names <- unique(c(reference_method_list, comparison_method_list))
 
 cat("--- Pre-computing ALL clusterings... ---\n")
-# Pass 'cov_tif_albers' values/names depending on what clustGeo needs (it needs names + df values)
-# The get_clusterings function uses the DF, so this is fine.
 all_clusterings <- get_clusterings(all_method_names, base_train_df, state_cov_names, NULL)
 
-cat("--- Pre-computing site geometries... ---\n")
+cat("--- Pre-computing initial site geometries... ---\n")
 all_site_geometries <- list() 
+
 for (method_name in all_method_names) {
   cluster_data <- all_clusterings[[method_name]]
   if (is.list(cluster_data) && "result_df" %in% names(cluster_data)) cluster_data <- cluster_data$result_df
   
   if (!is.null(cluster_data)) {
-    # --- CRITICAL FIX: Pass the ALBERS raster to ensure grid alignment ---
+    # Create Geoms (No W matrix yet)
     all_site_geometries[[method_name]] <- create_site_geometries(cluster_data, cov_tif_albers, buffer_m, method_name, "km")
   }
 }
 
+###
+# 6A. STATS BEFORE SPLITTING
+###
+cat("--- Calculating stats BEFORE spatial splitting... ---\n")
+clustering_summary_pre <- summarize_clusterings(all_clusterings, all_site_geometries, units = "km")
+write.csv(clustering_summary_pre, file.path(output_dir, "clustering_stats_PRE_split.csv"), row.names = FALSE)
 
-
-mean(base_train_df$elevation)
-mean(base_test_df$elevation)
+similarity_pre <- compute_clustering_similarity(all_clusterings, reference_method_list, all_method_names)
+write.csv(similarity_pre, file.path(output_dir, "similarity_stats_PRE_split.csv"), row.names = FALSE)
 
 
 ###
-# 6. CLUSTERING DESCRIPTIVE STATS
+# 6B. SPLIT DISJOINT SITES
 ###
-clustering_summary_df <- summarize_clusterings(all_clusterings, all_site_geometries, units = "km")
-output_dir <- file.path("simulation_experiments", "output")
-if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
-write.csv(clustering_summary_df, file.path(output_dir, "clustering_descriptive_stats.csv"), row.names = FALSE)
+cat("--- Post-processing: Splitting disjoint geometries... ---\n")
+
+for (method_name in names(all_site_geometries)) {
+  
+  # Get current data
+  curr_geoms <- all_site_geometries[[method_name]]
+  
+  # Handle list structure of cluster data
+  curr_data_obj <- all_clusterings[[method_name]]
+  is_list_obj <- is.list(curr_data_obj) && "result_df" %in% names(curr_data_obj)
+  curr_data <- if(is_list_obj) curr_data_obj$result_df else curr_data_obj
+  
+  # Run Splitting Logic
+  split_res <- disjoint_site_geometries(curr_geoms, curr_data)
+  
+  # Update Lists
+  all_site_geometries[[method_name]] <- split_res$geoms
+  
+  if (is_list_obj) {
+    all_clusterings[[method_name]]$result_df <- split_res$data
+  } else {
+    all_clusterings[[method_name]] <- split_res$data
+  }
+}
+
+###
+# 6C. STATS AFTER SPLITTING
+###
+cat("--- Calculating stats AFTER spatial splitting... ---\n")
+clustering_summary_post <- summarize_clusterings(all_clusterings, all_site_geometries, units = "km")
+write.csv(clustering_summary_post, file.path(output_dir, "clustering_stats_POST_split.csv"), row.names = FALSE)
+
+similarity_post <- compute_clustering_similarity(all_clusterings, reference_method_list, all_method_names)
+write.csv(similarity_post, file.path(output_dir, "similarity_stats_POST_split.csv"), row.names = FALSE)
 
 
 ###
-# 7. CLUSTERING SIMILARITY METRICS
+# 7. GENERATE W MATRICES
 ###
-
-cat("--- Calculating pairwise clustering similarity metrics (ARI, AMI, NID) ---\n")
-
-clustering_similarity_list <- list()
-
-ref_methods_to_check <- sim_clusterings$method
-comp_methods_to_check <- unique(c(sim_clusterings$method, comparison_method_list))
-
-clustering_similarity_df <- compute_clustering_similarity( all_clusterings = all_clusterings, ref_methods = ref_methods_to_check, comp_methods = comp_methods_to_check)
-
-write.csv(clustering_similarity_df, file.path(output_dir, "clustering_similarity_stats.csv"), row.names = FALSE)
-cat(sprintf("--- Clustering similarity stats saved to %s/clustering_similarity_stats.csv ---\n", output_dir))
-
-
-
+cat("--- Generating W matrices... ---\n")
+all_w_matrices <- list()
+for (m_name in names(all_site_geometries)) {
+  if (!is.null(all_site_geometries[[m_name]])) {
+    all_w_matrices[[m_name]] <- generate_overlap_matrix(all_site_geometries[[m_name]], cov_tif_albers)
+  }
+}
 
 ###
 # 8. PLOT SITES
