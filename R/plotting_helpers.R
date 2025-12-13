@@ -10,7 +10,7 @@ plot_sites <- function(
     base_train_df,
     all_clusterings,
     all_site_geometries,
-    elevation_raster, # INPUT IS ALBERS (res_m)
+    elevation_raster,
     methods_to_plot,
     boundary_shp_path,
     output_path,
@@ -18,7 +18,7 @@ plot_sites <- function(
         longitude = c(-123.025, -122.992),
         latitude = c(44.085, 44.118)
     ),
-    cluster_labels = FALSE # <--- NEW ARGUMENT
+    cluster_labels = FALSE
 ) {
 
     # --- 0. Setup Coordinate Systems ---

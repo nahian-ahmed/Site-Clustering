@@ -234,7 +234,8 @@ site_plot <- plot_sites(
   elevation_raster = cov_tif_albers_raw, 
   methods_to_plot = all_method_names_plot_order,
   boundary_shp_path = boundary_shapefile_path,
-  output_path = file.path(output_dir, "site_cluster_visualization.png")
+  output_path = file.path(output_dir, "site_cluster_visualization.png"),
+  cluster_labels = TRUE
 )
 
 
