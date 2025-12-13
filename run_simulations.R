@@ -149,7 +149,7 @@ for (method_name in all_method_names) {
 }
 
 ###
-# 6A. STATS BEFORE SPLITTING
+# 6. STATS BEFORE SPLITTING
 ###
 cat("--- Calculating stats BEFORE spatial splitting... ---\n")
 clustering_summary_pre <- summarize_clusterings(all_clusterings, all_site_geometries, units = "km")
@@ -159,60 +159,9 @@ similarity_pre <- compute_clustering_similarity(all_clusterings, reference_metho
 write.csv(similarity_pre, file.path(output_dir, "similarity_stats_PRE_split.csv"), row.names = FALSE)
 
 
-###
-# 6B. SPLIT DISJOINT SITES
-###
-# cat("--- Post-processing: Splitting disjoint geometries... ---\n")
-
-# for (method_name in names(all_site_geometries)) {
-  
-#   # Get current data
-#   curr_geoms <- all_site_geometries[[method_name]]
-  
-#   # Handle list structure of cluster data
-#   curr_data_obj <- all_clusterings[[method_name]]
-#   is_list_obj <- is.list(curr_data_obj) && "result_df" %in% names(curr_data_obj)
-#   curr_data <- if(is_list_obj) curr_data_obj$result_df else curr_data_obj
-  
-#   # Run Splitting Logic
-#   split_res <- disjoint_site_geometries(curr_geoms, curr_data)
-  
-#   # Update Lists
-#   all_site_geometries[[method_name]] <- split_res$geoms
-  
-#   if (is_list_obj) {
-#     all_clusterings[[method_name]]$result_df <- split_res$data
-#   } else {
-#     all_clusterings[[method_name]] <- split_res$data
-#   }
-# }
 
 ###
-# 6C. STATS AFTER SPLITTING
-###
-cat("--- Calculating stats AFTER spatial splitting... ---\n")
-clustering_summary_post <- summarize_clusterings(all_clusterings, all_site_geometries, units = "km")
-write.csv(clustering_summary_post, file.path(output_dir, "clustering_stats_POST_split.csv"), row.names = FALSE)
-
-similarity_post <- compute_clustering_similarity(all_clusterings, reference_method_list, all_method_names)
-write.csv(similarity_post, file.path(output_dir, "similarity_stats_POST_split.csv"), row.names = FALSE)
-
-
-###
-# 7. GENERATE W MATRICES
-###
-cat("--- Generating W matrices... ---\n")
-all_w_matrices <- list()
-for (m_name in names(all_site_geometries)) {
-  if (!is.null(all_site_geometries[[m_name]])) {
-    all_w_matrices[[m_name]] <- generate_overlap_matrix(all_site_geometries[[m_name]], cov_tif_albers)
-  }
-}
-
-
-
-###
-# 8. PLOT SITES
+# 7. PLOT SITES BEFORE SPLITTING
 ###
 # all_method_names_plot_order <- c(
 #   "1to10", "2to10", "2to10-sameObs", "lat-long", "SVS", "1-per-UL",
@@ -234,13 +183,84 @@ site_plot <- plot_sites(
   elevation_raster = cov_tif_albers_raw, 
   methods_to_plot = all_method_names_plot_order,
   boundary_shp_path = boundary_shapefile_path,
-  output_path = file.path(output_dir, "site_cluster_visualization.png"),
+  output_path = file.path(output_dir, "site_cluster_visualization_PRE.png"),
   cluster_labels = TRUE
 )
 
 
 ###
-# 9. MEMORY CLEANUP
+# 8. SPLIT DISJOINT SITES
+###
+cat("--- Post-processing: Splitting disjoint geometries... ---\n")
+
+for (method_name in names(all_site_geometries)) {
+  
+  # Get current data
+  curr_geoms <- all_site_geometries[[method_name]]
+  
+  # Handle list structure of cluster data
+  curr_data_obj <- all_clusterings[[method_name]]
+  is_list_obj <- is.list(curr_data_obj) && "result_df" %in% names(curr_data_obj)
+  curr_data <- if(is_list_obj) curr_data_obj$result_df else curr_data_obj
+  
+  # Run Splitting Logic
+  split_res <- disjoint_site_geometries(curr_geoms, curr_data)
+  
+  # Update Lists
+  all_site_geometries[[method_name]] <- split_res$geoms
+  
+  if (is_list_obj) {
+    all_clusterings[[method_name]]$result_df <- split_res$data
+  } else {
+    all_clusterings[[method_name]] <- split_res$data
+  }
+}
+
+###
+# 9. STATS AFTER SPLITTING
+###
+cat("--- Calculating stats AFTER spatial splitting... ---\n")
+clustering_summary_post <- summarize_clusterings(all_clusterings, all_site_geometries, units = "km")
+write.csv(clustering_summary_post, file.path(output_dir, "clustering_stats_POST_split.csv"), row.names = FALSE)
+
+similarity_post <- compute_clustering_similarity(all_clusterings, reference_method_list, all_method_names)
+write.csv(similarity_post, file.path(output_dir, "similarity_stats_POST_split.csv"), row.names = FALSE)
+
+
+###
+# 10. PLOT SITES AFTER SPLITTING
+###
+# Plot
+site_plot <- plot_sites(
+  base_train_df = base_train_df,
+  all_clusterings = all_clusterings,
+  all_site_geometries = all_site_geometries,
+  elevation_raster = cov_tif_albers_raw, 
+  methods_to_plot = all_method_names_plot_order,
+  boundary_shp_path = boundary_shapefile_path,
+  output_path = file.path(output_dir, "site_cluster_visualization_POST.png"),
+  cluster_labels = TRUE
+)
+
+
+
+###
+# 11. GENERATE W MATRICES
+###
+cat("--- Generating W matrices... ---\n")
+all_w_matrices <- list()
+for (m_name in names(all_site_geometries)) {
+  if (!is.null(all_site_geometries[[m_name]])) {
+    all_w_matrices[[m_name]] <- generate_overlap_matrix(all_site_geometries[[m_name]], cov_tif_albers)
+  }
+}
+
+
+
+
+
+###
+# 12. MEMORY CLEANUP
 ###
 cat("--- Cleaning up heavy raster objects ---\n")
 
@@ -254,7 +274,7 @@ gc()
 
 
 ###
-# 10. TEST SITE GEOMETRIES
+# 13. TEST SITE GEOMETRIES
 ###
 test_structures <- prepare_test_spatial_structures(
   test_df = base_test_df,
@@ -272,7 +292,7 @@ gc()
 
 
 ###
-# 11. MAIN SIMULATION LOOP
+# 14. MAIN SIMULATION LOOP
 ###
 all_dataset_stats <- list()
 all_param_results <- list()

@@ -10,7 +10,7 @@ plot_sites <- function(
     base_train_df,
     all_clusterings,
     all_site_geometries,
-    elevation_raster,
+    elevation_raster, # INPUT IS ALBERS (res_m)
     methods_to_plot,
     boundary_shp_path,
     output_path,
@@ -18,7 +18,7 @@ plot_sites <- function(
         longitude = c(-123.025, -122.992),
         latitude = c(44.085, 44.118)
     ),
-    cluster_labels = FALSE
+    cluster_labels = FALSE 
 ) {
 
     # --- 0. Setup Coordinate Systems ---
@@ -151,23 +151,15 @@ plot_sites <- function(
             (pts_df_albers$y < zoom_bbox_albers["ymax"]), 
         ]
         
-        # --- Pre-calculate Labels (1..N) and Position if requested ---
+        # --- Pre-calculate Labels (1..N) if requested ---
         if (cluster_labels && nrow(pts_df_zoom) > 0) {
-            # 1. Map Site IDs to sequential 1..N based on factor order
+            # Map Site IDs to sequential 1..N based on factor order
             # This ensures sites are labeled 1, 2, 3... within this specific subplot
             visible_sites <- levels(droplevels(pts_df_zoom$site))
             site_map <- seq_along(visible_sites)
             names(site_map) <- visible_sites
             
             pts_df_zoom$plot_label <- site_map[as.character(pts_df_zoom$site)]
-            
-            # 2. Determine HJUST based on proximity to right margin
-            # If x is in the top 15% of the range, flip label to left
-            x_range <- zoom_bbox_albers["xmax"] - zoom_bbox_albers["xmin"]
-            right_margin_thresh <- zoom_bbox_albers["xmax"] - (0.15 * x_range)
-            
-            # -0.4 places text to the right (default), 1.2 places text to the left (if near margin)
-            pts_df_zoom$lab_hjust <- ifelse(pts_df_zoom$x > right_margin_thresh, 1.4, -0.4)
         }
 
         # --- Get Geometry Data (Already Albers) ---
@@ -224,18 +216,18 @@ plot_sites <- function(
                 show.legend = FALSE
             ) +
             
-            # --- NEW: Conditional Labels ---
+            # --- NEW: Centered Labels ---
             {if (cluster_labels && nrow(pts_df_zoom) > 0)
                 geom_text(
                     data = pts_df_zoom,
                     aes(
                         x = x, 
                         y = y, 
-                        label = plot_label, 
-                        hjust = lab_hjust
+                        label = plot_label
                     ),
-                    vjust = -0.5, # Move up slightly (exponential style)
-                    size = 2.5,   # Small text
+                    hjust = 0.5,   # Center horizontally
+                    vjust = -0.8,  # Move up to sit on top of the point
+                    size = 2.5,    # Small text
                     fontface = "bold",
                     color = "black",
                     inherit.aes = FALSE
