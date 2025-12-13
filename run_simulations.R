@@ -51,7 +51,7 @@ sim_clusterings <- read.delim(file.path("config", "simulation_clusterings.csv"),
 ###
 n_simulations <- 50
 n_fit_repeats <- 25
-n_test_repeats <- 3
+n_test_repeats <- 25
 
 # n_simulations <- 1 # Debug override
 # n_fit_repeats <- 1 # Debug override
