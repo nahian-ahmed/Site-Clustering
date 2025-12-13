@@ -17,33 +17,29 @@ plot_sites <- function(
     zoom_box = list(
         longitude = c(-123.025, -122.992),
         latitude = c(44.085, 44.118)
-    )
+    ),
+    cluster_labels = FALSE # <--- NEW ARGUMENT
 ) {
 
     # --- 0. Setup Coordinate Systems ---
-    albers_crs_str <- terra::crs(elevation_raster) # Get Albers CRS string from raster
-    wgs84_crs_sf <- sf::st_crs(4326)               # SF CRS object for SF operations
-    wgs84_crs_str <- "EPSG:4326"                   # String for Terra operations
+    albers_crs_str <- terra::crs(elevation_raster) 
+    wgs84_crs_sf <- sf::st_crs(4326)               
+    wgs84_crs_str <- "EPSG:4326"                   
 
     # --- 1. Prepare Rasters ---
     
-    # A. Prepare ALBERS Raster (For Right/Zoom Plots - Keeps res_m)
+    # A. Prepare ALBERS Raster
     valid_boundary <- terra::vect(boundary_shp_path)
-    
-    # Project boundary to Albers (terra accepts string)
     valid_boundary_albers <- terra::project(valid_boundary, albers_crs_str)
     
-    # Crop Albers raster
     region_albers <- terra::crop(elevation_raster[[1]], valid_boundary_albers, mask = TRUE)
     base_rast_df_albers <- as.data.frame(region_albers, xy = TRUE)
     elev_col_name <- names(base_rast_df_albers)[3]
     
-    # Get min/max from Albers raster
     base_rast_min <- min(base_rast_df_albers[[elev_col_name]], na.rm = TRUE)
     base_rast_max <- max(base_rast_df_albers[[elev_col_name]], na.rm = TRUE)
 
-    # B. Prepare WGS84 Raster (For Left/Overview Plot)
-    # Project the Albers region back to WGS84 using the STRING
+    # B. Prepare WGS84 Raster
     region_wgs84 <- terra::project(region_albers, wgs84_crs_str)
     base_rast_df_wgs84 <- as.data.frame(region_wgs84, xy = TRUE)
     bbox_full <- terra::ext(region_wgs84) 
@@ -103,12 +99,12 @@ plot_sites <- function(
                 size = 12,
                 hjust = 0.5,
                 face = "bold",
-                vjust = -1.5, # Make this -1.5 for 2 row, -6 for 3 row
+                vjust = -1.5, 
                 margin = margin(b = -10)
             ),
             legend.position = "bottom",
             legend.direction = "horizontal",
-            legend.margin = margin(t = -50), # Make this -50 for 2 row, -200 for 3 row
+            legend.margin = margin(t = -50),
             legend.box.margin = margin(0, 0, 0, 0),
             legend.key.width = unit(0.75, "cm"),
             legend.key.height = unit(0.5, "cm"),
@@ -119,11 +115,10 @@ plot_sites <- function(
 
     # --- 3. Create Right Plots (Zoomed Clusters in ALBERS) ---
     
-    # Transform Zoom Box to Albers Polygon for cropping
     zoom_poly_wgs84 <- sf::st_as_sfc(sf::st_bbox(c(
         xmin = zoom_box$longitude[1], xmax = zoom_box$longitude[2],
         ymin = zoom_box$latitude[1], ymax = zoom_box$latitude[2]
-    ), crs = wgs84_crs_sf)) # Use SF object here
+    ), crs = wgs84_crs_sf)) 
     
     zoom_poly_albers <- sf::st_transform(zoom_poly_wgs84, albers_crs_str)
     zoom_bbox_albers <- sf::st_bbox(zoom_poly_albers) 
@@ -148,7 +143,7 @@ plot_sites <- function(
         pts_df_albers$y <- pts_coords[,2]
         pts_df_albers$site <- as.factor(pts_df_albers$site)
 
-        # Filter points to zoom box (using Albers coords)
+        # Filter points to zoom box
         pts_df_zoom <- pts_df_albers[
             (pts_df_albers$x > zoom_bbox_albers["xmin"]) &
             (pts_df_albers$x < zoom_bbox_albers["xmax"]) &
@@ -156,19 +151,36 @@ plot_sites <- function(
             (pts_df_albers$y < zoom_bbox_albers["ymax"]), 
         ]
         
+        # --- Pre-calculate Labels (1..N) and Position if requested ---
+        if (cluster_labels && nrow(pts_df_zoom) > 0) {
+            # 1. Map Site IDs to sequential 1..N based on factor order
+            # This ensures sites are labeled 1, 2, 3... within this specific subplot
+            visible_sites <- levels(droplevels(pts_df_zoom$site))
+            site_map <- seq_along(visible_sites)
+            names(site_map) <- visible_sites
+            
+            pts_df_zoom$plot_label <- site_map[as.character(pts_df_zoom$site)]
+            
+            # 2. Determine HJUST based on proximity to right margin
+            # If x is in the top 15% of the range, flip label to left
+            x_range <- zoom_bbox_albers["xmax"] - zoom_bbox_albers["xmin"]
+            right_margin_thresh <- zoom_bbox_albers["xmax"] - (0.15 * x_range)
+            
+            # -0.4 places text to the right (default), 1.2 places text to the left (if near margin)
+            pts_df_zoom$lab_hjust <- ifelse(pts_df_zoom$x > right_margin_thresh, 1.4, -0.4)
+        }
+
         # --- Get Geometry Data (Already Albers) ---
         if (!method_name %in% names(all_site_geometries)) next
         geom_sf <- all_site_geometries[[method_name]]
         if (is.null(geom_sf)) next
         
-        # Ensure geom_sf has CRS set
         if (is.na(sf::st_crs(geom_sf))) sf::st_crs(geom_sf) <- albers_crs_str
         geom_sf$site <- as.factor(geom_sf$site)
 
-        # Crop geometries to Albers Zoom Box
+        # Crop geometries
         geom_sf_zoom <- suppressWarnings(sf::st_crop(geom_sf, zoom_bbox_albers))
         
-        # Clean up collections if generated
         if (nrow(geom_sf_zoom) > 0) {
              if (any(grepl("COLLECTION", sf::st_geometry_type(geom_sf_zoom)))) {
                  geom_sf_zoom <- sf::st_collection_extract(geom_sf_zoom, "POLYGON")
@@ -211,6 +223,25 @@ plot_sites <- function(
                 color = "black",
                 show.legend = FALSE
             ) +
+            
+            # --- NEW: Conditional Labels ---
+            {if (cluster_labels && nrow(pts_df_zoom) > 0)
+                geom_text(
+                    data = pts_df_zoom,
+                    aes(
+                        x = x, 
+                        y = y, 
+                        label = plot_label, 
+                        hjust = lab_hjust
+                    ),
+                    vjust = -0.5, # Move up slightly (exponential style)
+                    size = 2.5,   # Small text
+                    fontface = "bold",
+                    color = "black",
+                    inherit.aes = FALSE
+                )
+            } +
+            
             scale_fill_discrete() +
             
             # Enforce Albers Coordinates
@@ -243,7 +274,7 @@ plot_sites <- function(
         output_path,
         plot = final_plot,
         width = 14,
-        height = 6, # make this 8 for 3 rows and 6 for 2 rows
+        height = 6, 
         dpi = 300
     )
 
