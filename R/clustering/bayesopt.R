@@ -62,7 +62,7 @@ bayesianOptimizedClustGeo <- function(
     state_covs, 
     fit_func,
     n_init = 50,
-    n_iter = 30,
+    n_iter = 10,
     env_weight = 3
 
 ){
