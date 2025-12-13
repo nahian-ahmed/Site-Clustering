@@ -37,8 +37,7 @@ comparison_method_list <- c(
 )
 
 comparison_method_list <- c(
-  "1-kmSq",
-  "BayesOptClustGeo"
+  "1-kmSq"
 )
 
 
@@ -163,30 +162,30 @@ write.csv(similarity_pre, file.path(output_dir, "similarity_stats_PRE_split.csv"
 ###
 # 6B. SPLIT DISJOINT SITES
 ###
-cat("--- Post-processing: Splitting disjoint geometries... ---\n")
+# cat("--- Post-processing: Splitting disjoint geometries... ---\n")
 
-for (method_name in names(all_site_geometries)) {
+# for (method_name in names(all_site_geometries)) {
   
-  # Get current data
-  curr_geoms <- all_site_geometries[[method_name]]
+#   # Get current data
+#   curr_geoms <- all_site_geometries[[method_name]]
   
-  # Handle list structure of cluster data
-  curr_data_obj <- all_clusterings[[method_name]]
-  is_list_obj <- is.list(curr_data_obj) && "result_df" %in% names(curr_data_obj)
-  curr_data <- if(is_list_obj) curr_data_obj$result_df else curr_data_obj
+#   # Handle list structure of cluster data
+#   curr_data_obj <- all_clusterings[[method_name]]
+#   is_list_obj <- is.list(curr_data_obj) && "result_df" %in% names(curr_data_obj)
+#   curr_data <- if(is_list_obj) curr_data_obj$result_df else curr_data_obj
   
-  # Run Splitting Logic
-  split_res <- disjoint_site_geometries(curr_geoms, curr_data)
+#   # Run Splitting Logic
+#   split_res <- disjoint_site_geometries(curr_geoms, curr_data)
   
-  # Update Lists
-  all_site_geometries[[method_name]] <- split_res$geoms
+#   # Update Lists
+#   all_site_geometries[[method_name]] <- split_res$geoms
   
-  if (is_list_obj) {
-    all_clusterings[[method_name]]$result_df <- split_res$data
-  } else {
-    all_clusterings[[method_name]] <- split_res$data
-  }
-}
+#   if (is_list_obj) {
+#     all_clusterings[[method_name]]$result_df <- split_res$data
+#   } else {
+#     all_clusterings[[method_name]] <- split_res$data
+#   }
+# }
 
 ###
 # 6C. STATS AFTER SPLITTING
