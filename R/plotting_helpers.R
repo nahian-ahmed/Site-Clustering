@@ -226,7 +226,7 @@ plot_sites <- function(
                         label = plot_label
                     ),
                     hjust = 0.5,   # Center horizontally
-                    vjust = -0.8,  # Move up to sit on top of the point
+                    vjust = -0.25,  # Move up to sit on top of the point
                     size = 2.5,    # Small text
                     fontface = "bold",
                     color = "black",
