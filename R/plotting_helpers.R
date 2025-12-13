@@ -211,7 +211,7 @@ plot_sites <- function(
             geom_point(
                 data = pts_df_zoom,
                 aes(x = x, y = y, fill = site),
-                shape = 21, size = 2.5,
+                shape = 21, size = 1.5,
                 color = "black",
                 show.legend = FALSE
             ) +
@@ -226,9 +226,9 @@ plot_sites <- function(
                         label = plot_label
                     ),
                     hjust = 0.5,   # Center horizontally
-                    vjust = 0,  # Move up to sit on top of the point
+                    vjust = -0.5,  # Move up to sit on top of the point
                     size = 2.5,    # Small text
-                    # fontface = "bold",
+                    fontface = "bold",
                     color = "black",
                     inherit.aes = FALSE
                 )
