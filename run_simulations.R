@@ -37,7 +37,8 @@ comparison_method_list <- c(
 )
 
 comparison_method_list <- c(
-  "1-kmSq"
+  "1-kmSq",
+  "BayesOptClustGeo"
 )
 
 
