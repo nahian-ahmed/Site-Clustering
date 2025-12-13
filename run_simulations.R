@@ -36,8 +36,9 @@ comparison_method_list <- c(
   "DBSC", "BayesOptClustGeo"
 )
 
-comparison_method_list <- c(
-  "1-kmSq")
+# comparison_method_list <- c(
+#   "1-kmSq"
+# )
 
 
 selected_optimizer <- "nlminb"
@@ -171,7 +172,7 @@ write.csv(similarity_pre, file.path(output_dir, "similarity_stats_PRE_split.csv"
 
 all_method_names_plot_order <- c(
   "1to10", "2to10", "2to10-sameObs", "lat-long", "SVS", "1-per-UL",
-  "0.125-kmSq", "1-kmSq", "clustGeo-50-60", "BayesOptClustGeo", "DBSC", "rounded-4"
+  "0.125-kmSq", "1-kmSq", "clustGeo-50-80", "BayesOptClustGeo", "DBSC", "rounded-4"
 )
 
 # Plot using the UNSCALED 100m raster
