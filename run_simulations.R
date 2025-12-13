@@ -37,9 +37,7 @@ comparison_method_list <- c(
 )
 
 comparison_method_list <- c(
-  "1-kmSq",
-  "BayesOptClustGeo"
-)
+  "1-kmSq")
 
 
 selected_optimizer <- "nlminb"
