@@ -412,8 +412,8 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
             n_reps = n_fit_repeats, 
             stable_reps = 10, 
             optimizer = selected_optimizer, 
-            lower = -2, 
-            upper = 2
+            lower = -3, 
+            upper = 3
           )
           
           # Define desired column names for coefficients
