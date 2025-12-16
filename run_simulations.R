@@ -51,7 +51,7 @@ sim_clusterings <- read.delim(file.path("config", "simulation_clusterings.csv"),
 ###
 simulate_only <- FALSE
 
-n_simulations <- 50
+n_simulations <- 25
 n_fit_repeats <- 25
 n_test_repeats <- 25
 
