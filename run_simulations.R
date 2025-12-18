@@ -30,15 +30,13 @@ set.seed(123)
 ###
 # 2. CONFIGS
 ###
-comparison_method_list <- c(
-  "1to10", "2to10", "2to10-sameObs", "1-kmSq",
-  "lat-long", "rounded-4", "SVS", "1-per-UL",
-  "DBSC", "BayesOptClustGeo"
-)
-
 # comparison_method_list <- c(
-#   "1-kmSq"
+#   "1to10", "2to10", "2to10-sameObs", "1-kmSq",
+#   "lat-long", "rounded-4", "SVS", "1-per-UL",
+#   "DBSC", "BayesOptClustGeo"
 # )
+
+comparison_method_list <- c()
 
 
 selected_optimizer <- "nlminb"
@@ -56,10 +54,10 @@ n_fit_repeats <- 25
 n_test_repeats <- 25
 
 
-# simulate_only <- TRUE # Debug override
-# n_simulations <- 1 # Debug override
-# n_fit_repeats <- 1 # Debug override
-# n_test_repeats <- 1 # Debug override
+simulate_only <- TRUE # Debug override
+n_simulations <- 1 # Debug override
+n_fit_repeats <- 1 # Debug override
+n_test_repeats <- 1 # Debug override
 
 
 res_m <- 100 
@@ -174,10 +172,23 @@ write.csv(similarity_pre, file.path(output_dir, "similarity_stats_PRE_split.csv"
 #   "BayesOptClustGeo", "DBSC"
 # )
 
+# all_method_names_plot_order <- c(
+#   "1to10", "2to10", "2to10-sameObs", "lat-long", "SVS", "1-per-UL",
+#   "0.125-kmSq", "1-kmSq", "clustGeo-50-80", "BayesOptClustGeo", "DBSC", "rounded-4"
+# )
+
 all_method_names_plot_order <- c(
-  "1to10", "2to10", "2to10-sameObs", "lat-long", "SVS", "1-per-UL",
-  "0.125-kmSq", "1-kmSq", "clustGeo-50-80", "BayesOptClustGeo", "DBSC", "rounded-4"
+  "2-kmSq",
+  "1-kmSq",
+  "0.5-kmSq",
+  "0.25-kmSq",
+  "clustGeo-50-20",
+  "clustGeo-50-40",
+  "clustGeo-50-60",
+  "clustGeo-50-80",
+  "DBSC"
 )
+
 
 # Plot using the UNSCALED 100m raster
 site_plot <- plot_sites(
