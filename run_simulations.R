@@ -54,10 +54,10 @@ n_fit_repeats <- 25
 n_test_repeats <- 25
 
 
-simulate_only <- TRUE # Debug override
-n_simulations <- 1 # Debug override
-n_fit_repeats <- 1 # Debug override
-n_test_repeats <- 1 # Debug override
+# simulate_only <- TRUE # Debug override
+# n_simulations <- 1 # Debug override
+# n_fit_repeats <- 1 # Debug override
+# n_test_repeats <- 1 # Debug override
 
 
 res_m <- 100 
@@ -421,10 +421,10 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
             state_formula, 
             obs_formula, 
             n_reps = n_fit_repeats, 
-            stable_reps = 10, 
+            stable_reps = n_fit_repeats, 
             optimizer = selected_optimizer, 
-            lower = -5, 
-            upper = 5
+            lower = -10, 
+            upper = 10
           )
           
           # Define desired column names for coefficients
