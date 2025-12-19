@@ -54,10 +54,10 @@ n_fit_repeats <- 50
 n_test_repeats <- 3
 
 
-simulate_only <- TRUE # Debug override
-n_simulations <- 1 # Debug override
-n_fit_repeats <- 1 # Debug override
-n_test_repeats <- 1 # Debug override
+# simulate_only <- TRUE # Debug override
+# n_simulations <- 1 # Debug override
+# n_fit_repeats <- 1 # Debug override
+# n_test_repeats <- 1 # Debug override
 
 
 res_m <- 100 
