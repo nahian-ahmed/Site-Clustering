@@ -67,7 +67,7 @@ state_cov_names <- names(sim_params)[2:6]
 obs_cov_names <- names(sim_params)[8:12]
 
 
-PARAM_BUFFER <- 1.0
+PARAM_BUFFER <- 5.0
 
 ###
 # 4. PREPROCESS RASTER DATA
