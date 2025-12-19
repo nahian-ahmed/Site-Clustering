@@ -375,7 +375,7 @@ fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30,
     # Generate random starts
     # Note: If your bounds are tight (e.g., lower=0), 
     # make sure your starts respect them!
-    rand_starts <- runif(n_params, -5, 5)
+    rand_starts <- runif(n_params, lower, upper)
     
     # If bounds are provided, clamp the starts to be within bounds
     # to avoid immediate rejection by the optimizer
