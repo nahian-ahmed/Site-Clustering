@@ -103,7 +103,7 @@ voronoi_clipped_buffers <- function(points_sf, buffer_dist) {
 #' 
 #' Returns SF object of site boundaries. NO LONGER returns w_matrix.
 #'
-create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15, method_name = NULL, area_unit = "m") {
+create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15, method_name = NULL) {
   
   target_crs <- sf::st_crs(terra::crs(reference_raster))
   
