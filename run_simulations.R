@@ -178,14 +178,14 @@ write.csv(similarity_pre, file.path(output_dir, "similarity_stats_PRE_split.csv"
 # )
 
 all_method_names_plot_order <- c(
-  "2-kmSq",
-  "1-kmSq",
-  "0.5-kmSq",
   "0.25-kmSq",
-  "clustGeo-50-20",
-  "clustGeo-50-40",
-  "clustGeo-50-60",
+  "0.5-kmSq",
+  "1-kmSq",
+  "2-kmSq",
   "clustGeo-50-80",
+  "clustGeo-50-40",
+  "clustGeo-50-20",
+  "clustGeo-50-10", 
   "DBSC"
 )
 
