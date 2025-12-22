@@ -276,10 +276,17 @@ prepare_test_spatial_structures <- function(test_df,
   )
   
   # Calculate Area Weights
-  test_overlap_cell_areas <- terra::extract(area_raster, test_overlap_df$cell)
-  # test_overlap_df$w_area <- test_overlap_df$fraction * test_overlap_cell_areas[,1]
-  test_overlap_df$w_area <- test_overlap_df$fraction
+  # test_overlap_cell_areas <- terra::extract(area_raster, test_overlap_df$cell)
+  # # test_overlap_df$w_area <- test_overlap_df$fraction * test_overlap_cell_areas[,1]
+  # test_overlap_df$w_area <- test_overlap_df$fraction
   
+  r_res <- terra::res(cov_raster_albers)
+  cell_area_km2 <- (r_res[1] / 1000) * (r_res[2] / 1000)
+  
+  # test_overlap_df$w_area <- test_overlap_df$fraction * test_overlap_cell_areas[,1]
+  # Update to use km2
+  test_overlap_df$w_area <- test_overlap_df$fraction * cell_area_km2
+
   # Construct Sparse Matrix (Rows = Test Sites, Cols = Raster Cells)
   n_test_sites <- nrow(test_geoms)
   n_cells <- terra::ncell(cov_raster_albers)

@@ -256,7 +256,14 @@ generate_overlap_matrix <- function(site_geoms_sf, reference_raster) {
     ID = TRUE
   )
   
-  overlap_df$w_area <- overlap_df$fraction
+  # Get resolution from the raster to calculate cell area in km^2
+  r_res <- terra::res(reference_raster)
+  cell_area_km2 <- (r_res[1] / 1000) * (r_res[2] / 1000)
+  
+  # Multiply fraction by Area to get units of km^2
+  overlap_df$w_area <- overlap_df$fraction * cell_area_km2
+
+  # overlap_df$w_area <- overlap_df$fraction
   
   n_sites <- nrow(site_geoms_sf)
   n_cells <- terra::ncell(reference_raster)

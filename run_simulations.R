@@ -54,10 +54,10 @@ n_fit_repeats <- 50
 n_test_repeats <- 3
 
 
-# simulate_only <- TRUE # Debug override
-# n_simulations <- 1 # Debug override
-# n_fit_repeats <- 1 # Debug override
-# n_test_repeats <- 1 # Debug override
+simulate_only <- TRUE # Debug override
+n_simulations <- 1 # Debug override
+n_fit_repeats <- 50 # Debug override
+n_test_repeats <- 1 # Debug override
 
 
 res_m <- 100 
@@ -114,7 +114,13 @@ base_test_df <- prepare_test_data(
     standardization_params = full_standardization_params
 )
 
-area_j_raster <- cov_tif_albers[[1]] * 0 + 1
+
+
+# area_j_raster <- cov_tif_albers[[1]] * 0 + 1
+
+cell_area_km2 <- (res_m / 1000) * (res_m / 1000)
+area_j_raster <- cov_tif_albers[[1]] * 0 + cell_area_km2
+
 names(area_j_raster) <- "area"
 
 # 7. Use the Standardized Raster for generating Simulation Truth
@@ -347,9 +353,12 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
     N_j_raster <- exp(log_lambda_j) * area_j_raster
 
 
-    cell_abundance_val <- terra::values(N_j_raster, mat = FALSE)
-    cell_abundance_val[is.na(cell_abundance_val)] <- 0
+    # cell_abundance_val <- terra::values(N_j_raster, mat = FALSE)
+    # cell_abundance_val[is.na(cell_abundance_val)] <- 0
     
+    density_raster <- exp(log_lambda_j) 
+    cell_density_val <- terra::values(density_raster, mat = FALSE)
+    cell_density_val[is.na(cell_density_val)] <- 0
 
     obs_par_list <- as.list(current_parameter_set[, c("obs_intercept", obs_cov_names)])
     names(obs_par_list)[1] <- "intercept"
@@ -369,7 +378,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
         obs_cov_names = obs_cov_names,
         obs_par_list = obs_par_list,
         w_matrix = current_w_matrix,           # Pass Matrix
-        cell_density_vector = cell_abundance_val # Pass Density
+        cell_density_vector = cell_density_val # Pass Density
       )
       
       # Test data simulation 
@@ -378,7 +387,7 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
         obs_cov_names = obs_cov_names,
         obs_par_list = obs_par_list,
         w_matrix = w_matrix_test,
-        cell_density_vector = cell_abundance_val
+        cell_density_vector = cell_density_val
       )
 
       # Dataset Stats
