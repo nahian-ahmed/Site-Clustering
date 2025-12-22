@@ -54,10 +54,10 @@ n_fit_repeats <- 50
 n_test_repeats <- 3
 
 
-simulate_only <- TRUE # Debug override
-n_simulations <- 1 # Debug override
-n_fit_repeats <- 50 # Debug override
-n_test_repeats <- 1 # Debug override
+# simulate_only <- TRUE # Debug override
+# n_simulations <- 1 # Debug override
+# n_fit_repeats <- 50 # Debug override
+# n_test_repeats <- 1 # Debug override
 
 
 res_m <- 100 
@@ -67,7 +67,9 @@ state_cov_names <- names(sim_params)[2:6]
 obs_cov_names <- names(sim_params)[8:12]
 
 
-PARAM_BUFFER <- 5.0
+# PARAM_BUFFER <- 5.0
+PARAM_LOWER <- -10
+PARAM_UPPER <- 10
 
 ###
 # 4. PREPROCESS RASTER DATA
@@ -331,15 +333,15 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
     current_parameter_set <- sim_params[param_idx, ]
     cat(paste("  Param Set:", param_idx, "\n"))
 
-    params_only <- current_parameter_set[, c("state_intercept", state_cov_names, "obs_intercept", obs_cov_names)]
+    # params_only <- current_parameter_set[, c("state_intercept", state_cov_names, "obs_intercept", obs_cov_names)]
     
-    # 3. Find the set-specific min and max
-    set_min <- min(params_only, na.rm = TRUE)
-    set_max <- max(params_only, na.rm = TRUE)
+    # # 3. Find the set-specific min and max
+    # set_min <- min(params_only, na.rm = TRUE)
+    # set_max <- max(params_only, na.rm = TRUE)
     
-    # 4. Create scalar bounds with the buffer
-    current_lower <- set_min - PARAM_BUFFER
-    current_upper <- set_max + PARAM_BUFFER
+    # # 4. Create scalar bounds with the buffer
+    # current_lower <- set_min - PARAM_BUFFER
+    # current_upper <- set_max + PARAM_BUFFER
 
 
     # --- 6.1 Pre-calc N_j_raster ---
@@ -437,14 +439,14 @@ for (cluster_idx in seq_len(nrow(sim_clusterings))) {
           
           # Use modular function
           fm <- fit_occuN_model(
-            umf, 
-            state_formula, 
-            obs_formula, 
-            n_reps = n_fit_repeats, 
-            stable_reps = n_fit_repeats, 
-            optimizer = selected_optimizer, 
-            lower = current_lower, 
-            upper = current_upper
+            umf,
+            state_formula,
+            obs_formula,
+            n_reps = n_fit_repeats,
+            stable_reps = n_fit_repeats,
+            optimizer = selected_optimizer,
+            lower = PARAM_LOWER,
+            upper = PARAM_UPPER
           )
           
           # Define desired column names for coefficients
