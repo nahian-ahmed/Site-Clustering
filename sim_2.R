@@ -1,12 +1,19 @@
 # -----------------------------------------------------------------
-# sim_2.R
-# Complexity Gradient: Bridging Simulation and Reality
-# 4 Variants: Uniform/Real Locs x Simple/Complex Covariates
+# Simulation for occuN model
+
 # -----------------------------------------------------------------
 
 ###
 # 1. SETUP
 ###
+
+install_now = FALSE
+if (install_now){
+  options(repos = c(CRAN = "https://cloud.r-project.org/"))
+  if (!requireNamespace("devtools", quietly = FALSE)) install.packages("devtools")
+  suppressMessages(devtools::install_github("nahian-ahmed/unmarked", ref = "occuN", force = TRUE))
+}
+
 library(unmarked)
 library(dplyr)
 library(tidyr)
@@ -210,7 +217,7 @@ for (v_name in names(variants)) {
   
   
   # 4. Simulation Loops (Params -> Sims)
-  for (param_idx in 1:nrow(sim_params)) {
+  for (param_idx in seq_len(nrow(sim_params))) {
     
     # --- A. Setup Parameters ---
     curr_params <- sim_params[param_idx, ]

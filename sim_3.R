@@ -1,10 +1,12 @@
 # -----------------------------------------------------------------
 # Simulation for occuN model
+
 # -----------------------------------------------------------------
 
 ###
 # 1. SETUP
 ###
+
 install_now = FALSE
 if (install_now){
   options(repos = c(CRAN = "https://cloud.r-project.org/"))

@@ -1,29 +1,25 @@
 # -----------------------------------------------------------------
 # Simulation for occuN model
-#
+# Fully simualted experiments
 # -----------------------------------------------------------------
 
-# --- Installation ---
-# Set a CRAN mirror
-options(repos = c(CRAN = "https://cloud.r-project.org/"))
+###
+# 1. SETUP
+###
 
-packages <- c("devtools", "ggplot2", "patchwork")
-for(p in packages){
-    if (!requireNamespace(p, quietly = FALSE)) install.packages(p)
+install_now = TRUE
+if (install_now){
+  options(repos = c(CRAN = "https://cloud.r-project.org/"))
+  if (!requireNamespace("devtools", quietly = FALSE)) install.packages("devtools")
+  suppressMessages(devtools::install_github("nahian-ahmed/unmarked", ref = "occuN", force = TRUE))
 }
 
-# Quietly install forked 'unmarked' package
-suppressMessages(
-    devtools::install_github("nahian-ahmed/unmarked", ref = "occuN", force = TRUE, quiet = FALSE)
-)
-
-# --- Load required libraries ---
 library(unmarked)
 library(ggplot2)
 library(patchwork)
 
 ##########
-# 1. Set Simulation Parameters
+# 2. Set Simulation Parameters
 ##########
 
 set.seed(123) # For reproducibility
@@ -89,7 +85,7 @@ cat("True Betas (State/Abundance):", true_betas, "\n")
 
 
 ##########
-# 2. Define FULL Sites & Create Weight Matrix (w)
+# 3. Define FULL Sites & Create Weight Matrix (w)
 # (This is static geometry, so it lives OUTSIDE the loop)
 ##########
 
@@ -111,7 +107,7 @@ for (i in 1:full_M) {
 }
 
 ##########
-# 3. Helper Function for Subsetting
+# 4. Helper Function for Subsetting
 ##########
 
 #' Get Subset Landscape
@@ -179,7 +175,7 @@ get_subset_landscape <- function(M_target, site_dim, full_cell_row, full_cell_co
 }
 
 ##########
-# 4. Initialize Loop & Storage
+# 5. Initialize Loop & Storage
 ##########
 
 all_results_df <- data.frame()
@@ -195,7 +191,7 @@ for (sim in 1:n_sims) {
     cat(sprintf("===========================================\n"))
 
     ##########
-    # 5. Create FULL Landscape (Cells & Covariates)
+    # 6. Create FULL Landscape (Cells & Covariates)
     # (This is random, so it's INSIDE the sim loop)
     ##########
     
