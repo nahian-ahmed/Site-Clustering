@@ -1,6 +1,7 @@
 # -----------------------------------------------------------------
-# Simulation for occuN model
-
+# sim_2.R
+# Complexity Gradient: Bridging Simulation and Reality
+# 4 Variants: Uniform/Real Locs x Simple/Complex Covariates
 # -----------------------------------------------------------------
 
 ###
@@ -122,6 +123,7 @@ generate_variant_dataset <- function(variant_cfg, cov_raster, n_target_obs, real
     
     base_df <- data.frame(
       checklist_id = paste0("unif_", 1:n_target_obs),
+      locality_id = paste0("loc_unif_", 1:n_target_obs), # FIX: Added locality_id
       latitude = coords_geo[,2],
       longitude = coords_geo[,1],
       observation_date = "2017-06-01",
@@ -134,7 +136,8 @@ generate_variant_dataset <- function(variant_cfg, cov_raster, n_target_obs, real
     # Filter basic validity
     real_df <- real_df[!is.na(real_df$latitude) & !is.na(real_df$longitude),]
     
-    base_df <- real_df[, c("checklist_id", "latitude", "longitude", "observation_date")]
+    # FIX: Included locality_id in the subset
+    base_df <- real_df[, c("checklist_id", "locality_id", "latitude", "longitude", "observation_date")]
     base_df$formatted_date <- base_df$observation_date
     
     # Ensure N matches if needed, but usually we just take the full filtered set
