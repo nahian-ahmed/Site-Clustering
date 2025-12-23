@@ -123,7 +123,7 @@ generate_variant_dataset <- function(variant_cfg, cov_raster, n_target_obs, real
     
     base_df <- data.frame(
       checklist_id = paste0("unif_", 1:n_target_obs),
-      locality_id = paste0("loc_unif_", 1:n_target_obs), # FIX: Added locality_id
+      locality_id = paste0("loc_unif_", 1:n_target_obs),
       latitude = coords_geo[,2],
       longitude = coords_geo[,1],
       observation_date = "2017-06-01",
@@ -136,7 +136,7 @@ generate_variant_dataset <- function(variant_cfg, cov_raster, n_target_obs, real
     # Filter basic validity
     real_df <- real_df[!is.na(real_df$latitude) & !is.na(real_df$longitude),]
     
-    # FIX: Included locality_id in the subset
+    # Included locality_id in the subset
     base_df <- real_df[, c("checklist_id", "locality_id", "latitude", "longitude", "observation_date")]
     base_df$formatted_date <- base_df$observation_date
     
@@ -205,10 +205,10 @@ for (v_name in names(variants)) {
   for (m_name in names(all_clusterings)) {
     cluster_data <- all_clusterings[[m_name]]
     
-    # === FIX: ROBUST LIST CHECK ===
-    # Only try to extract $result_df if it is a list BUT NOT a dataframe
-    # (Because dataframes are technically lists in R, so is.list(df) is TRUE)
-    if (is.list(cluster_data) && !is.data.frame(cluster_data)) {
+    # === FIX: ROBUST CHECK ===
+    # Only extract 'result_df' if it explicitly exists.
+    # This prevents extracting from simple dataframes where it doesn't exist.
+    if (is.list(cluster_data) && "result_df" %in% names(cluster_data)) {
         cluster_data <- cluster_data$result_df
     }
     
@@ -276,7 +276,9 @@ for (v_name in names(variants)) {
       # We use the Reference Clustering DF and W Matrix
       ref_df <- all_clusterings[[ref_method]]
       # FIX: Same robust check here
-      if (is.list(ref_df) && !is.data.frame(ref_df)) ref_df <- ref_df$result_df
+      if (is.list(ref_df) && "result_df" %in% names(ref_df)) {
+        ref_df <- ref_df$result_df
+      }
       
       ref_w <- all_w_matrices[[ref_method]]
       
