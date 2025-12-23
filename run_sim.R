@@ -112,7 +112,6 @@ for (i in 1:full_M) {
 
 ##########
 # 3. Helper Function for Subsetting
-# (This is a static helper function, lives OUTSIDE the loop)
 ##########
 
 #' Get Subset Landscape
@@ -120,15 +119,6 @@ for (i in 1:full_M) {
 #' Slices the top-left quadrant of a full landscape to match a target
 #' number of sites (M_target).
 #'
-#' @param M_target The desired number of sites (e.g., 100, 225)
-#' @param site_dim Dimension of a single site (e.g., 5 for 5x5)
-#' @param full_cell_row Vector of row numbers for all cells
-#' @param full_cell_col Vector of col numbers for all cells
-#' @param full_cellCovs Data frame of covariates for all cells
-#' @param full_site_id_for_cell Vector mapping all cells to their site ID
-#' @param full_w The full weight matrix (full_M x full_n_cells)
-#' @param full_lambda_j Vector of latent abundance for all cells
-#' @return A list containing all necessary subsetted data structures for occuN.
 get_subset_landscape <- function(M_target, site_dim, full_cell_row, full_cell_col, full_cellCovs, full_site_id_for_cell, full_w, full_lambda_j) {
     
     # 1. Calculate dimensions of the target subset
@@ -470,7 +460,7 @@ for (sim in 1:n_sims) {
 cat("\n--- Simulation Study Complete ---\n")
 
 
-output_dir <- file.path("simulation_experiments", "output", "demo")
+output_dir <- file.path("simulation_experiments", "output", "sim")
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 
