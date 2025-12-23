@@ -72,12 +72,8 @@ variants <- list(
 )
 
 # Global Simulation Settings
-n_simulations <- 10  
-n_fit_repeats <- 10
-n_test_repeats <- 10
-
 n_simulations <- 1  
-n_fit_repeats <- 30
+n_fit_repeats <- 1
 n_test_repeats <- 1
 
 selected_optimizer <- "nlminb"
@@ -197,9 +193,7 @@ generate_variant_base_data <- function(variant_cfg, cov_raster_obj, boundary_vec
   }
   
   # 2. Simulate Observation Covariates (Placeholders)
-#   obs_cov_names <- c("duration_minutes", "effort_distance_km", "number_observers", "time_observations_started", "day_of_year")
-  obs_cov_names <- c("W1", "W2", "W3", "W4", "W5")
-  
+  obs_cov_names <- c("duration_minutes", "effort_distance_km", "number_observers", "time_observations_started", "day_of_year")
   for(col in obs_cov_names){
     base_df[[col]] <- rnorm(nrow(base_df)) 
   }
@@ -237,9 +231,7 @@ for (v_name in names(variants)) {
   cat(paste("################################################\n"))
   
   current_state_covs <- variant$state_covs_used
-#   all_obs_headers <- c("duration_minutes", "effort_distance_km", "number_observers", "time_observations_started", "day_of_year")
-  all_obs_headers <- c("W1", "W2", "W3", "W4", "W5")
-  
+  all_obs_headers <- c("duration_minutes", "effort_distance_km", "number_observers", "time_observations_started", "day_of_year")
   current_obs_covs <- all_obs_headers[1:variant$n_obs_covs] 
   
   # --- A. Generate Base Data ---
@@ -360,8 +352,11 @@ for (v_name in names(variants)) {
   for (ref_method in reference_method_list) {
     cat(paste("\n  === REF CLUSTERING:", ref_method, "===\n"))
     
+    # [FIX 1] Check for result_df explicitly
     current_reference_dataframe <- all_clusterings[[ref_method]]
-    if (is.list(current_reference_dataframe)) current_reference_dataframe <- current_reference_dataframe$result_df
+    if (is.list(current_reference_dataframe) && "result_df" %in% names(current_reference_dataframe)) {
+        current_reference_dataframe <- current_reference_dataframe$result_df
+    }
     
     current_w_matrix <- all_w_matrices[[ref_method]]
 
@@ -424,8 +419,11 @@ for (v_name in names(variants)) {
         
         for (method_name in methods_to_test) {
           
+          # [FIX 2] Check for result_df explicitly here too
           fit_clustering_df <- all_clusterings[[method_name]]
-          if (is.list(fit_clustering_df)) fit_clustering_df <- fit_clustering_df$result_df
+          if (is.list(fit_clustering_df) && "result_df" %in% names(fit_clustering_df)) {
+             fit_clustering_df <- fit_clustering_df$result_df
+          }
           fit_w_matrix <- all_w_matrices[[method_name]]
           
           if(is.null(fit_w_matrix)) next
