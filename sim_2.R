@@ -197,7 +197,9 @@ generate_variant_base_data <- function(variant_cfg, cov_raster_obj, boundary_vec
   }
   
   # 2. Simulate Observation Covariates (Placeholders)
-  obs_cov_names <- c("duration_minutes", "effort_distance_km", "number_observers", "time_observations_started", "day_of_year")
+#   obs_cov_names <- c("duration_minutes", "effort_distance_km", "number_observers", "time_observations_started", "day_of_year")
+  obs_cov_names <- c("W1", "W2", "W3", "W4", "W5")
+  
   for(col in obs_cov_names){
     base_df[[col]] <- rnorm(nrow(base_df)) 
   }
@@ -235,7 +237,9 @@ for (v_name in names(variants)) {
   cat(paste("################################################\n"))
   
   current_state_covs <- variant$state_covs_used
-  all_obs_headers <- c("duration_minutes", "effort_distance_km", "number_observers", "time_observations_started", "day_of_year")
+#   all_obs_headers <- c("duration_minutes", "effort_distance_km", "number_observers", "time_observations_started", "day_of_year")
+  all_obs_headers <- c("W1", "W2", "W3", "W4", "W5")
+  
   current_obs_covs <- all_obs_headers[1:variant$n_obs_covs] 
   
   # --- A. Generate Base Data ---
