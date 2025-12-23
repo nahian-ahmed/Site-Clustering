@@ -28,8 +28,6 @@ source(file.path("R", "simulation_helpers.R"))
 source(file.path("R", "clustering_helpers.R"))
 source(file.path("R", "model_helpers.R"))
 source(file.path("R", "analysis_helpers.R"))
-# Note: Ensure plotting_helpers.R is sourced if you use plotting functions
-# source(file.path("R", "plotting_helpers.R")) 
 
 set.seed(123)
 
@@ -42,7 +40,6 @@ sim_params <- read.csv(file.path("config", "simulation_parameters.csv"))
 sim_clusterings <- read.csv(file.path("config", "simulation_clusterings.csv"))
 
 # Define the 4 Variants
-# We Map the CSV column names to our Synthetic Columns here
 variants <- list(
   "V1_Uniform_Simple" = list(
     loc_type = "uniform",
@@ -111,11 +108,22 @@ generate_variant_dataset <- function(variant_cfg, cov_raster, n_target_obs, real
     # Sample from raster cells (ensuring valid data)
     valid_cells <- terra::cells(cov_raster[[1]])
     # Sample indices
-    sampled_indices <- sample(valid_cells, n_target_obs, replace = TRUE) # Replace=TRUE allows coincident points like eBird
+    sampled_indices <- sample(valid_cells, n_target_obs, replace = TRUE) 
     
+    # Get center coordinates
     coords_proj <- terra::xyFromCell(cov_raster[[1]], sampled_indices)
     
-    # Create DF with projected coords, then convert to Lat/Lon for compatibility with helpers
+    # --- FIX: ADD JITTER ---
+    # We add random jitter (+/- 20% of resolution) to avoid perfect grid alignment.
+    # This prevents the "Invalid number of points in LinearRing" error in st_voronoi.
+    r_res <- terra::res(cov_raster)[1]
+    jitter_amount <- r_res * 0.2 
+    
+    coords_proj[,1] <- coords_proj[,1] + runif(nrow(coords_proj), -jitter_amount, jitter_amount)
+    coords_proj[,2] <- coords_proj[,2] + runif(nrow(coords_proj), -jitter_amount, jitter_amount)
+    # -----------------------
+    
+    # Create DF with projected coords, then convert to Lat/Lon
     df_proj <- data.frame(x = coords_proj[,1], y = coords_proj[,2])
     v_proj <- terra::vect(df_proj, geom=c("x", "y"), crs = terra::crs(cov_raster))
     v_geo <- terra::project(v_proj, "+proj=longlat +datum=WGS84")
@@ -131,26 +139,20 @@ generate_variant_dataset <- function(variant_cfg, cov_raster, n_target_obs, real
     )
   } else {
     cat("    [DataGen] Using Real eBird Locations...\n")
-    # Load Real Data (using sim_3.R logic)
     real_df <- read.csv(real_file_template)
-    # Filter basic validity
     real_df <- real_df[!is.na(real_df$latitude) & !is.na(real_df$longitude),]
     
-    # Included locality_id in the subset
     base_df <- real_df[, c("checklist_id", "locality_id", "latitude", "longitude", "observation_date")]
     base_df$formatted_date <- base_df$observation_date
     
-    # Ensure N matches if needed, but usually we just take the full filtered set
     if(nrow(base_df) > n_target_obs) base_df <- base_df[1:n_target_obs, ]
   }
   
-  # B. State Covariates (Extract from Raster)
-  # We extract ALL state covs for the dataframe, but will only USE specific ones in Sim
+  # B. State Covariates
   env_df <- extract_state_covs(base_df, cov_raster)
   base_df <- dplyr::inner_join(base_df, env_df, by = "checklist_id")
   
   # C. Observation Covariates (Simulated)
-  # We create synthetic columns: obs_cov_1, obs_cov_2...
   cat(sprintf("    [DataGen] Simulating %d Obs Covariates...\n", variant_cfg$n_obs_covs))
   
   synthetic_obs_names <- c()
@@ -170,7 +172,7 @@ generate_variant_dataset <- function(variant_cfg, cov_raster, n_target_obs, real
 
 all_param_results <- list()
 
-# Get target N from a real file (to match eBird N)
+# Get target N from a real file
 template_file <- file.path("checklist_data", "species", "AMCR", "AMCR_zf_filtered_region_2017.csv")
 temp_df <- read.csv(template_file)
 TARGET_N_OBS <- nrow(temp_df)
@@ -183,31 +185,24 @@ for (v_name in names(variants)) {
   cat(paste("### STARTING VARIANT:", v_name, "###\n"))
   cat(paste("################################################\n"))
   
-  # 1. Generate Dataset for this Variant (Fixed Geometry for the Variant)
-  #    We generate ONE dataset and hold it constant across simulations (like a real dataset)
+  # 1. Generate Dataset
   ds_bundle <- generate_variant_dataset(variant, cov_tif_albers, TARGET_N_OBS, template_file)
   current_train_df <- ds_bundle$df
   current_obs_cols <- ds_bundle$obs_cols
   current_state_cols <- variant$state_covs_used
   
-  # 2. Pre-compute Clusterings (Using sim_3.R logic)
-  #    We only need the Reference Clustering defined in sim_clusterings.csv
-  #    But we calculate them all for consistency if comparison is needed
+  # 2. Pre-compute Clusterings
   cat("  --- Pre-computing Clusterings for Variant ---\n")
-  # Note: get_clusterings expects 'og_data' and 'state_covs'
-  # We pass ALL state covs for clustering to work, even if Sim uses fewer
   all_clusterings <- get_clusterings(unique(sim_clusterings$method), current_train_df, names(full_raster_covs))
   
-  # 3. Pre-compute Site Geometries & W Matrices
+  # 3. Pre-compute Geometries & W Matrices
   cat("  --- Generating Geometries & W Matrices ---\n")
   all_w_matrices <- list()
   
   for (m_name in names(all_clusterings)) {
     cluster_data <- all_clusterings[[m_name]]
     
-    # === FIX: ROBUST CHECK ===
-    # Only extract 'result_df' if it explicitly exists.
-    # This prevents extracting from simple dataframes where it doesn't exist.
+    # Robust check for list vs dataframe
     if (is.list(cluster_data) && "result_df" %in% names(cluster_data)) {
         cluster_data <- cluster_data$result_df
     }
@@ -215,45 +210,39 @@ for (v_name in names(variants)) {
     # Geometries
     geoms <- create_site_geometries(cluster_data, cov_tif_albers, buffer_m, m_name)
     
-    # Disjoint Split (Important!)
+    # Disjoint Split
     split_res <- disjoint_site_geometries(geoms, cluster_data)
     geoms <- split_res$geoms
-    all_clusterings[[m_name]] <- split_res$data # Update DF
+    all_clusterings[[m_name]] <- split_res$data 
     
     # W Matrix
     all_w_matrices[[m_name]] <- generate_overlap_matrix(geoms, cov_tif_albers)
   }
   
   
-  # 4. Simulation Loops (Params -> Sims)
+  # 4. Simulation Loops
   for (param_idx in seq_len(nrow(sim_params))) {
     
-    # --- A. Setup Parameters ---
     curr_params <- sim_params[param_idx, ]
     
-    # Filter State Params: Force unused state covs to 0 for the "Truth"
+    # Filter State Params
     state_par_list <- list(intercept = curr_params$state_intercept)
     for(sc in names(full_raster_covs)){
       if(sc %in% current_state_cols){
         state_par_list[[sc]] <- curr_params[[sc]]
       } else {
-        state_par_list[[sc]] <- 0 # Zero out unused covs
+        state_par_list[[sc]] <- 0 
       }
     }
     
-    # Map Obs Params: Map the first N params from CSV to our N synthetic columns
-    # CSV headers: duration_minutes, effort_distance_km, etc.
+    # Map Obs Params
     obs_csv_headers <- c("duration_minutes", "effort_distance_km", "number_observers", "time_observations_started", "day_of_year")
-    
     obs_par_list <- list(intercept = curr_params$obs_intercept)
     for(i in 1:variant$n_obs_covs){
-      # Take coefficient from the i-th CSV column
-      csv_col <- obs_csv_headers[i]
-      # Assign to the i-th Synthetic column
-      obs_par_list[[ current_obs_cols[i] ]] <- curr_params[[csv_col]]
+      obs_par_list[[ current_obs_cols[i] ]] <- curr_params[[obs_csv_headers[i]]]
     }
     
-    # --- B. Calculate Density Surface (Truth) ---
+    # Calculate Density Surface
     log_lambda_j <- cov_tif_albers[[1]] * 0 + state_par_list$intercept
     for (nm in names(full_raster_covs)) {
         if(state_par_list[[nm]] != 0){
@@ -263,39 +252,29 @@ for (v_name in names(variants)) {
     cell_density_val <- terra::values(exp(log_lambda_j), mat = FALSE)
     cell_density_val[is.na(cell_density_val)] <- 0
     
-    
-    # --- C. Loop Simulations ---
-    ref_method <- sim_clusterings$method[1] # Assuming 1 ref method for simplicity, or loop rows
+    # Loop Simulations
+    ref_method <- sim_clusterings$method[1] 
     
     for(sim_num in 1:n_simulations){
-      set.seed(sim_num * param_idx) # Unique seed
+      set.seed(sim_num * param_idx) 
       
       cat(sprintf("  [V: %s | P: %d | Sim: %d] Ref: %s\n", v_name, param_idx, sim_num, ref_method))
       
-      # Simulate Data
-      # We use the Reference Clustering DF and W Matrix
       ref_df <- all_clusterings[[ref_method]]
-      # FIX: Same robust check here
-      if (is.list(ref_df) && "result_df" %in% names(ref_df)) {
-        ref_df <- ref_df$result_df
-      }
+      if (is.list(ref_df) && "result_df" %in% names(ref_df)) ref_df <- ref_df$result_df
       
       ref_w <- all_w_matrices[[ref_method]]
       
       train_data <- simulate_train_data(
         reference_clustering_df = ref_df,
-        obs_cov_names = current_obs_cols, # Pass synthetic names
+        obs_cov_names = current_obs_cols,
         obs_par_list = obs_par_list,
         w_matrix = ref_w,
         cell_density_vector = cell_density_val
       )
       
-      # Fit Model (Using Reference Method for now, or loop 'comparison_method_list')
-      # We just fit the Reference Method to check recovery
-      
       umf <- prepare_occuN_data(train_data, ref_df, ref_w, current_obs_cols, full_raster_covs)
       
-      # Formulas based on USED covariates
       state_form <- as.formula(paste("~", paste(current_state_cols, collapse = " + ")))
       obs_form <- as.formula(paste("~", paste(current_obs_cols, collapse = " + ")))
       
@@ -304,17 +283,15 @@ for (v_name in names(variants)) {
         state_form, 
         obs_form, 
         n_reps = n_fit_repeats, 
-        stable_reps = 3, # Lower for speed in gradient
+        stable_reps = 3,
         optimizer = selected_optimizer,
         lower = -10, upper = 10
       )
       
-      # Save Results
       if(!is.null(fm)){
         est_betas <- coef(fm, 'state')
         est_alphas <- coef(fm, 'det')
         
-        # We save raw estimates with names to map back later
         res_row <- data.frame(
           Variant = v_name,
           ParamSet = param_idx,
@@ -331,7 +308,6 @@ for (v_name in names(variants)) {
   } # Param Loop
 } # Variant Loop
 
-# Save Final
 final_res <- dplyr::bind_rows(all_param_results)
 write.csv(final_res, file.path(output_dir, "gradient_results.csv"), row.names = FALSE)
 cat("\n--- Gradient Experiment Complete ---\n")
