@@ -204,7 +204,13 @@ for (v_name in names(variants)) {
   
   for (m_name in names(all_clusterings)) {
     cluster_data <- all_clusterings[[m_name]]
-    if (is.list(cluster_data)) cluster_data <- cluster_data$result_df
+    
+    # === FIX: ROBUST LIST CHECK ===
+    # Only try to extract $result_df if it is a list BUT NOT a dataframe
+    # (Because dataframes are technically lists in R, so is.list(df) is TRUE)
+    if (is.list(cluster_data) && !is.data.frame(cluster_data)) {
+        cluster_data <- cluster_data$result_df
+    }
     
     # Geometries
     geoms <- create_site_geometries(cluster_data, cov_tif_albers, buffer_m, m_name)
@@ -269,7 +275,9 @@ for (v_name in names(variants)) {
       # Simulate Data
       # We use the Reference Clustering DF and W Matrix
       ref_df <- all_clusterings[[ref_method]]
-      if (is.list(ref_df)) ref_df <- ref_df$result_df
+      # FIX: Same robust check here
+      if (is.list(ref_df) && !is.data.frame(ref_df)) ref_df <- ref_df$result_df
+      
       ref_w <- all_w_matrices[[ref_method]]
       
       train_data <- simulate_train_data(
