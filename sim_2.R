@@ -2,6 +2,7 @@
 # sim_2.R
 # Complexity Gradient: Bridging Simulation and Reality
 # 4 Variants with full Stats, Plotting, and 2017/2018 Real Data Split
+# Uniform Sampling matches Real Data N and respects Boundary Shapefile
 # -----------------------------------------------------------------
 
 ###
@@ -75,15 +76,13 @@ n_simulations <- 10
 n_fit_repeats <- 10
 n_test_repeats <- 10
 
-n_simulations <- 3 
+n_simulations <- 1  
 n_fit_repeats <- 30
-n_test_repeats <- 3
-
+n_test_repeats <- 1
 
 selected_optimizer <- "nlminb"
 buffer_m <- 200
 res_m <- 100
-
 PARAM_LOWER <- -10
 PARAM_UPPER <- 10
 
@@ -92,7 +91,7 @@ main_output_dir <- file.path("simulation_experiments", "output", "sim_2")
 if (!dir.exists(main_output_dir)) dir.create(main_output_dir, recursive = TRUE)
 
 ###
-# 3. PREPROCESS RASTER (Global)
+# 3. PREPROCESS RASTER & BOUNDARY (Global)
 ###
 
 # Standardize Raster Once
@@ -121,26 +120,45 @@ names(area_j_raster) <- "area"
 full_raster_covs <- as.data.frame(terra::values(cov_tif_albers))
 full_raster_covs[is.na(full_raster_covs)] <- 0
 
-# Boundary for plotting
+# Boundary for Sampling & Plotting
 boundary_shapefile_path <- file.path("state_covariate_raster", "boundary", "boundary.shp")
+boundary_vect <- terra::vect(boundary_shapefile_path)
+boundary_vect_albers <- terra::project(boundary_vect, albers_crs_str)
 
 ###
 # 4. HELPER: DATA GENERATION
 ###
 
-generate_variant_base_data <- function(variant_cfg, cov_raster_obj, n_target_obs, is_test=FALSE) {
+generate_variant_base_data <- function(variant_cfg, cov_raster_obj, boundary_vect_proj, real_train_file, real_test_file, is_test=FALSE) {
   
-  # 1. Determine Locations
+  # 1. Determine Target N based on Real Files
+  target_file <- if(is_test) real_test_file else real_train_file
+  real_df <- read.csv(target_file)
+  real_df <- real_df[!is.na(real_df$latitude) & !is.na(real_df$longitude),]
+  
+  target_n <- nrow(real_df)
+  
   if (variant_cfg$loc_type == "uniform") {
     
-    # Sample from raster cells
-    valid_cells <- terra::cells(cov_raster_obj[[1]])
-    sampled_indices <- sample(valid_cells, n_target_obs, replace = TRUE) 
+    cat(sprintf("    [DataGen] Uniform Sampling %d locations within Boundary...\n", target_n))
+    
+    # Mask the raster with the boundary to ensure we only sample valid cells INSIDE the boundary
+    # (Assuming cov_raster_obj is already in same CRS as boundary_vect_proj)
+    masked_raster <- terra::mask(cov_raster_obj[[1]], boundary_vect_proj)
+    
+    # Get valid cells from masked raster
+    valid_cells <- terra::cells(masked_raster)
+    
+    if(length(valid_cells) < target_n) {
+        warning("    [DataGen] Warning: Target N exceeds valid cells in boundary. Sampling with replacement.")
+    }
+    
+    sampled_indices <- sample(valid_cells, target_n, replace = TRUE) 
     
     # Get center coordinates
     coords_proj <- terra::xyFromCell(cov_raster_obj[[1]], sampled_indices)
     
-    # Add Jitter
+    # Add Jitter (+/- 20% of resolution)
     r_res <- terra::res(cov_raster_obj)[1]
     jitter_amount <- r_res * 0.2 
     coords_proj[,1] <- coords_proj[,1] + runif(nrow(coords_proj), -jitter_amount, jitter_amount)
@@ -154,8 +172,8 @@ generate_variant_base_data <- function(variant_cfg, cov_raster_obj, n_target_obs
     prefix <- if(is_test) "test_unif" else "train_unif"
     
     base_df <- data.frame(
-      checklist_id = paste0(prefix, "_", 1:n_target_obs),
-      locality_id = paste0("loc_", prefix, "_", 1:n_target_obs),
+      checklist_id = paste0(prefix, "_", 1:target_n),
+      locality_id = paste0("loc_", prefix, "_", 1:target_n),
       latitude = coords_geo[,2],
       longitude = coords_geo[,1],
       observation_date = if(is_test) "2018-06-01" else "2017-06-01",
@@ -168,21 +186,8 @@ generate_variant_base_data <- function(variant_cfg, cov_raster_obj, n_target_obs
     
   } else {
     # REAL LOCATIONS
-    # Train: 2017, Test: 2018
-    year_target <- if(is_test) "2018" else "2017"
-    real_file <- file.path("checklist_data", "species", "AMCR", paste0("AMCR_zf_filtered_region_", year_target, ".csv"))
+    cat(sprintf("    [DataGen] Using Real Data (N=%d)...\n", target_n))
     
-    cat(sprintf("    [DataGen] Loading real data from: %s\n", basename(real_file)))
-    
-    real_df <- read.csv(real_file)
-    real_df <- real_df[!is.na(real_df$latitude) & !is.na(real_df$longitude),]
-    
-    # Subsample if real data > target N
-    if(nrow(real_df) > n_target_obs) {
-        set.seed(if(is_test) 999 else 123) 
-        real_df <- real_df[sample(1:nrow(real_df), n_target_obs), ]
-    }
-
     base_df <- real_df[, c("checklist_id", "locality_id", "latitude", "longitude", "observation_date")]
     base_df$formatted_date <- base_df$observation_date
     
@@ -204,11 +209,9 @@ generate_variant_base_data <- function(variant_cfg, cov_raster_obj, n_target_obs
 # 5. MAIN VARIANT LOOP
 ###
 
-# Get N Targets from 2017 file
-template_file_2017 <- file.path("checklist_data", "species", "AMCR", "AMCR_zf_filtered_region_2017.csv")
-temp_df <- read.csv(template_file_2017)
-TARGET_N_OBS <- nrow(temp_df)
-TARGET_N_TEST <- floor(TARGET_N_OBS * 0.3) 
+# File paths for Real Data Counts
+file_train_2017 <- file.path("checklist_data", "species", "AMCR", "AMCR_zf_filtered_region_2017.csv")
+file_test_2018  <- file.path("checklist_data", "species", "AMCR", "AMCR_zf_filtered_region_2018.csv")
 
 all_param_results <- list()
 all_pred_results <- list()
@@ -236,9 +239,16 @@ for (v_name in names(variants)) {
   current_obs_covs <- all_obs_headers[1:variant$n_obs_covs] 
   
   # --- A. Generate Base Data ---
-  cat("  --- Generating Variant Dataset (Train=2017/Unif, Test=2018/Unif) ---\n")
-  base_train_df <- generate_variant_base_data(variant, cov_tif_albers, TARGET_N_OBS, is_test=FALSE)
-  base_test_df  <- generate_variant_base_data(variant, cov_tif_albers, TARGET_N_TEST, is_test=TRUE)
+  # Passing file paths so generator can match N exactly
+  cat("  --- Generating Variant Dataset ---\n")
+  base_train_df <- generate_variant_base_data(
+      variant, cov_tif_albers, boundary_vect_albers, 
+      file_train_2017, file_test_2018, is_test=FALSE
+  )
+  base_test_df  <- generate_variant_base_data(
+      variant, cov_tif_albers, boundary_vect_albers, 
+      file_train_2017, file_test_2018, is_test=TRUE
+  )
   
   # --- B. Pre-compute Clusterings (Train) ---
   cat("  --- Pre-computing Clusterings (Train) ---\n")
