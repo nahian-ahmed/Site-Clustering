@@ -2,7 +2,7 @@
 # sim_2.R
 # Complexity Gradient: Bridging Simulation and Reality
 # 4 Variants with full Stats, Plotting, and 2017/2018 Real Data Split
-# Uniform Sampling matches FILTERED Real Data N and respects Boundary
+# Consistent Uniform Locations for V1-V3 (Generated Once)
 # -----------------------------------------------------------------
 
 ###
@@ -72,10 +72,6 @@ variants <- list(
 )
 
 # Global Simulation Settings
-n_simulations <- 10  
-n_fit_repeats <- 10
-n_test_repeats <- 10
-
 n_simulations <- 1  
 n_fit_repeats <- 1
 n_test_repeats <- 1
@@ -126,109 +122,108 @@ boundary_vect <- terra::vect(boundary_shapefile_path)
 boundary_vect_albers <- terra::project(boundary_vect, albers_crs_str)
 
 ###
-# 4. PRE-LOAD AND FILTER REAL DATA (Global)
+# 4. DATA PREPARATION (GLOBAL)
 ###
-# We do this once to ensure N counts are correct and consistent
+# We generate Master Datasets ONCE here.
+# Variants V1, V2, V3 will all use 'unif_train_master' and 'unif_test_master'.
+# Variant V4 will use 'real_train_master' and 'real_test_master'.
 
-# --- Train (2017) ---
+obs_cov_names <- c("duration_minutes", "effort_distance_km", "number_observers", "time_observations_started", "day_of_year")
+
+# --- A. REAL DATA (Load & Filter) ---
+cat("--- Loading Real Data (Master) ---\n")
+
+# Train (2017)
 train_file <- file.path("checklist_data", "species", "AMCR", "AMCR_zf_filtered_region_2017.csv")
-cat(sprintf("Loading and filtering Train data from: %s\n", basename(train_file)))
 train_df_raw <- read.csv(train_file)
-# Filter: Duration exists & Date range (May 15 - July 9)
-train_df_real_filtered <- train_df_raw[!is.na(train_df_raw$duration_minutes), ]
-train_df_real_filtered <- train_df_real_filtered[
-  train_df_real_filtered$observation_date >= "2017-05-15" & 
-  train_df_real_filtered$observation_date <= "2017-07-09", 
+train_df_real <- train_df_raw[!is.na(train_df_raw$duration_minutes), ]
+train_df_real <- train_df_real[
+  train_df_real$observation_date >= "2017-05-15" & 
+  train_df_real$observation_date <= "2017-07-09", 
 ]
-TARGET_N_TRAIN <- nrow(train_df_real_filtered)
-cat(sprintf("  -> Final Training N: %d\n", TARGET_N_TRAIN))
+# Select minimal cols
+real_train_master <- train_df_real[, c("checklist_id", "locality_id", "latitude", "longitude", "observation_date")]
+real_train_master$formatted_date <- real_train_master$observation_date
 
-# --- Test (2018) ---
+TARGET_N_TRAIN <- nrow(real_train_master)
+cat(sprintf("  -> Real Training N: %d\n", TARGET_N_TRAIN))
+
+# Test (2018)
 test_file <- file.path("checklist_data", "species", "AMCR", "AMCR_zf_filtered_region_2018.csv")
-cat(sprintf("Loading and filtering Test data from: %s\n", basename(test_file)))
 test_df_raw <- read.csv(test_file)
-# Filter: Duration exists & Date range (May 15 - July 9)
-test_df_real_filtered <- test_df_raw[!is.na(test_df_raw$duration_minutes), ]
-test_df_real_filtered <- test_df_real_filtered[
-  test_df_real_filtered$observation_date >= "2018-05-15" & 
-  test_df_real_filtered$observation_date <= "2018-07-09", 
+test_df_real <- test_df_raw[!is.na(test_df_raw$duration_minutes), ]
+test_df_real <- test_df_real[
+  test_df_real$observation_date >= "2018-05-15" & 
+  test_df_real$observation_date <= "2018-07-09", 
 ]
-TARGET_N_TEST <- nrow(test_df_real_filtered)
-cat(sprintf("  -> Final Testing N: %d\n", TARGET_N_TEST))
+real_test_master <- test_df_real[, c("checklist_id", "locality_id", "latitude", "longitude", "observation_date")]
+real_test_master$formatted_date <- real_test_master$observation_date
 
+TARGET_N_TEST <- nrow(real_test_master)
+cat(sprintf("  -> Real Testing N: %d\n", TARGET_N_TEST))
 
-###
-# 5. HELPER: DATA GENERATION
-###
+# --- B. UNIFORM DATA (Generate Once) ---
+cat("--- Generating Uniform Data (Master) ---\n")
 
-generate_variant_base_data <- function(variant_cfg, cov_raster_obj, boundary_vect_proj, 
-                                       target_n, real_df_filtered, is_test=FALSE) {
+generate_uniform_master <- function(n, raster_obj, boundary_v, prefix, date_str) {
+  # Mask raster
+  masked <- terra::mask(raster_obj[[1]], boundary_v)
+  valid_cells <- terra::cells(masked)
   
-  if (variant_cfg$loc_type == "uniform") {
-    
-    cat(sprintf("    [DataGen] Uniform Sampling %d locations within Boundary...\n", target_n))
-    
-    # Mask raster with boundary
-    masked_raster <- terra::mask(cov_raster_obj[[1]], boundary_vect_proj)
-    valid_cells <- terra::cells(masked_raster)
-    
-    if(length(valid_cells) < target_n) {
-        warning("    [DataGen] Warning: Target N exceeds valid cells. Sampling with replacement.")
-    }
-    
-    sampled_indices <- sample(valid_cells, target_n, replace = TRUE) 
-    
-    # Center coords + Jitter
-    coords_proj <- terra::xyFromCell(cov_raster_obj[[1]], sampled_indices)
-    r_res <- terra::res(cov_raster_obj)[1]
-    jitter_amount <- r_res * 0.2 
-    coords_proj[,1] <- coords_proj[,1] + runif(nrow(coords_proj), -jitter_amount, jitter_amount)
-    coords_proj[,2] <- coords_proj[,2] + runif(nrow(coords_proj), -jitter_amount, jitter_amount)
-    
-    df_proj <- data.frame(x = coords_proj[,1], y = coords_proj[,2])
-    v_proj <- terra::vect(df_proj, geom=c("x", "y"), crs = terra::crs(cov_raster_obj))
-    v_geo <- terra::project(v_proj, "+proj=longlat +datum=WGS84")
-    coords_geo <- terra::crds(v_geo)
-    
-    prefix <- if(is_test) "test_unif" else "train_unif"
-    date_str <- if(is_test) "2018-06-01" else "2017-06-01"
-    
-    base_df <- data.frame(
-      checklist_id = paste0(prefix, "_", 1:target_n),
-      locality_id = paste0("loc_", prefix, "_", 1:target_n),
-      latitude = coords_geo[,2],
-      longitude = coords_geo[,1],
-      observation_date = date_str,
-      formatted_date = date_str
-    )
-    
-    # Extract State Covs
-    env_df <- extract_state_covs(base_df, cov_raster_obj)
-    base_df <- dplyr::inner_join(base_df, env_df, by = "checklist_id")
-    
-  } else {
-    # REAL LOCATIONS
-    cat(sprintf("    [DataGen] Using Pre-Filtered Real Data (N=%d)...\n", nrow(real_df_filtered)))
-    
-    base_df <- real_df_filtered[, c("checklist_id", "locality_id", "latitude", "longitude", "observation_date")]
-    base_df$formatted_date <- base_df$observation_date
-    
-    # Extract State Covs
-    env_df <- extract_state_covs(base_df, cov_raster_obj)
-    base_df <- dplyr::inner_join(base_df, env_df, by = "checklist_id")
-  }
+  if(length(valid_cells) < n) warning("Target N > Valid Cells in Boundary")
   
-  # Simulate Obs Covariates (Placeholders - will be used/overwritten in simulation loop)
-  obs_cov_names <- c("duration_minutes", "effort_distance_km", "number_observers", "time_observations_started", "day_of_year")
-  for(col in obs_cov_names){
-    base_df[[col]] <- rnorm(nrow(base_df)) 
-  }
+  # Sample
+  sampled_idx <- sample(valid_cells, n, replace = TRUE)
+  coords_proj <- terra::xyFromCell(raster_obj[[1]], sampled_idx)
   
-  return(base_df)
+  # Jitter
+  r_res <- terra::res(raster_obj)[1]
+  jitter_amt <- r_res * 0.2
+  coords_proj[,1] <- coords_proj[,1] + runif(n, -jitter_amt, jitter_amt)
+  coords_proj[,2] <- coords_proj[,2] + runif(n, -jitter_amt, jitter_amt)
+  
+  # To Lat/Lon
+  v_proj <- terra::vect(coords_proj, crs = terra::crs(raster_obj))
+  v_geo <- terra::project(v_proj, "+proj=longlat +datum=WGS84")
+  coords_geo <- terra::crds(v_geo)
+  
+  df <- data.frame(
+    checklist_id = paste0(prefix, "_", 1:n),
+    locality_id = paste0("loc_", prefix, "_", 1:n),
+    latitude = coords_geo[,2],
+    longitude = coords_geo[,1],
+    observation_date = date_str,
+    formatted_date = date_str
+  )
+  return(df)
 }
 
+unif_train_master <- generate_uniform_master(TARGET_N_TRAIN, cov_tif_albers, boundary_vect_albers, "train_unif", "2017-06-01")
+unif_test_master  <- generate_uniform_master(TARGET_N_TEST,  cov_tif_albers, boundary_vect_albers, "test_unif",  "2018-06-01")
+
+
+# --- C. ENRICH DATA (Add Obs Covs & Extract State Covs) ---
+cat("--- Enriching Master Datasets ---\n")
+
+enrich_dataset <- function(df, raster_obj, obs_names) {
+  # 1. Obs Covariates (Random Standard Normal)
+  for(col in obs_names) df[[col]] <- rnorm(nrow(df))
+  
+  # 2. State Covariates (Extract from Raster)
+  # This adds columns: elevation, TCB, TCG, TCW, TCA
+  env_df <- extract_state_covs(df, raster_obj)
+  df <- dplyr::inner_join(df, env_df, by = "checklist_id")
+  return(df)
+}
+
+real_train_master <- enrich_dataset(real_train_master, cov_tif_albers, obs_cov_names)
+real_test_master  <- enrich_dataset(real_test_master,  cov_tif_albers, obs_cov_names)
+unif_train_master <- enrich_dataset(unif_train_master, cov_tif_albers, obs_cov_names)
+unif_test_master  <- enrich_dataset(unif_test_master,  cov_tif_albers, obs_cov_names)
+
+
 ###
-# 6. MAIN VARIANT LOOP
+# 5. MAIN VARIANT LOOP
 ###
 
 all_param_results <- list()
@@ -253,29 +248,18 @@ for (v_name in names(variants)) {
   cat(paste("################################################\n"))
   
   current_state_covs <- variant$state_covs_used
-  all_obs_headers <- c("duration_minutes", "effort_distance_km", "number_observers", "time_observations_started", "day_of_year")
-  current_obs_covs <- all_obs_headers[1:variant$n_obs_covs] 
+  current_obs_covs <- obs_cov_names[1:variant$n_obs_covs] 
   
-  # --- A. Generate Base Data ---
-  cat("  --- Generating Variant Dataset ---\n")
-  
-  base_train_df <- generate_variant_base_data(
-      variant_cfg = variant, 
-      cov_raster_obj = cov_tif_albers, 
-      boundary_vect_proj = boundary_vect_albers,
-      target_n = TARGET_N_TRAIN,
-      real_df_filtered = train_df_real_filtered,
-      is_test = FALSE
-  )
-  
-  base_test_df  <- generate_variant_base_data(
-      variant_cfg = variant, 
-      cov_raster_obj = cov_tif_albers, 
-      boundary_vect_proj = boundary_vect_albers,
-      target_n = TARGET_N_TEST,
-      real_df_filtered = test_df_real_filtered,
-      is_test = TRUE
-  )
+  # --- A. Select Dataset ---
+  if (variant$loc_type == "uniform") {
+    cat("  --- Using Master UNIFORM Data (V1/V2/V3 Consistent) ---\n")
+    base_train_df <- unif_train_master
+    base_test_df  <- unif_test_master
+  } else {
+    cat("  --- Using Master REAL Data ---\n")
+    base_train_df <- real_train_master
+    base_test_df  <- real_test_master
+  }
   
   # --- B. Pre-compute Clusterings (Train) ---
   cat("  --- Pre-computing Clusterings (Train) ---\n")
@@ -530,7 +514,7 @@ for (v_name in names(variants)) {
 } # End Variant Loop
 
 ###
-# 7. SAVE GLOBAL RESULTS
+# 6. SAVE GLOBAL RESULTS
 ###
 
 final_params <- dplyr::bind_rows(all_param_results)
