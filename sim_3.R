@@ -133,7 +133,7 @@ full_raster_covs[is.na(full_raster_covs)] <- 0
 boundary_shapefile_path <- file.path("state_covariate_raster", "boundary", "boundary.shp")
 
 
-output_dir <- file.path("simulation_experiments", "output")
+output_dir <- file.path("simulation_experiments", "output", "sim_3")
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 ###

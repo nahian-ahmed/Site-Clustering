@@ -460,7 +460,7 @@ for (sim in 1:n_sims) {
 cat("\n--- Simulation Study Complete ---\n")
 
 
-output_dir <- file.path("simulation_experiments", "output", "sim")
+output_dir <- file.path("simulation_experiments", "output", "sim_1")
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 
@@ -522,28 +522,28 @@ p_err_beta_cov <- ggplot(all_results_df[all_results_df$Parameter == "beta (state
              y = "Error (True - Est.)") +
     theme_bw()
 
-# Plot 3: Detection Intercept
+# Plot 3: Observation Intercept
 p_err_alpha_int <- ggplot(all_results_df[all_results_df$Parameter == "alpha (det_int)", ],
                                                     aes(x = M_factor, y = Error)) +
     geom_boxplot() +
     geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 1) +
-    labs(title = "Detection Intercept", 
+    labs(title = "Observation Intercept", 
              x = "M (Sites)", 
              y = "Error (True - Est.)") +
     theme_bw()
 
-# Plot 4: Detection Slope
+# Plot 4: Observation Slope
 p_err_alpha_cov <- ggplot(all_results_df[all_results_df$Parameter == "alpha (det_cov1)", ],
                                                     aes(x = M_factor, y = Error)) +
     geom_boxplot() +
     geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 1) +
-    labs(title = "Detection Slope", 
+    labs(title = "Observation Slope", 
              x = "M (Sites)", 
              y = "Error (True - Est.)") +
     theme_bw()
 
 # Combine the 4 error plots into a 2x2 grid
-# (State Intercept | State Slope) / (Detection Intercept | Detection Slope)
+# (State Intercept | State Slope) / (Observation Intercept | Observation Slope)
 combined_error_plot <- (p_err_beta_int | p_err_beta_cov) / (p_err_alpha_int | p_err_alpha_cov)
 
 # Save the combined error plot
