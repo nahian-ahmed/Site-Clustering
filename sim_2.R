@@ -3,6 +3,7 @@
 # Complexity Gradient: Bridging Simulation and Reality
 # 4 Variants with full Stats, Plotting, and 2017/2018 Real Data Split
 # Consistent Uniform Locations for V1-V3 (Generated Once)
+# Clean Parameter Names & Dataset Descriptive Stats
 # -----------------------------------------------------------------
 
 ###
@@ -75,7 +76,6 @@ variants <- list(
 n_simulations <- 1  
 n_fit_repeats <- 1
 n_test_repeats <- 1
-
 selected_optimizer <- "nlminb"
 buffer_m <- 200
 res_m <- 100
@@ -124,9 +124,6 @@ boundary_vect_albers <- terra::project(boundary_vect, albers_crs_str)
 ###
 # 4. DATA PREPARATION (GLOBAL)
 ###
-# We generate Master Datasets ONCE here.
-# Variants V1, V2, V3 will all use 'unif_train_master' and 'unif_test_master'.
-# Variant V4 will use 'real_train_master' and 'real_test_master'.
 
 obs_cov_names <- c("duration_minutes", "effort_distance_km", "number_observers", "time_observations_started", "day_of_year")
 
@@ -141,7 +138,6 @@ train_df_real <- train_df_real[
   train_df_real$observation_date >= "2017-05-15" & 
   train_df_real$observation_date <= "2017-07-09", 
 ]
-# Select minimal cols
 real_train_master <- train_df_real[, c("checklist_id", "locality_id", "latitude", "longitude", "observation_date")]
 real_train_master$formatted_date <- real_train_master$observation_date
 
@@ -210,7 +206,6 @@ enrich_dataset <- function(df, raster_obj, obs_names) {
   for(col in obs_names) df[[col]] <- rnorm(nrow(df))
   
   # 2. State Covariates (Extract from Raster)
-  # This adds columns: elevation, TCB, TCG, TCW, TCA
   env_df <- extract_state_covs(df, raster_obj)
   df <- dplyr::inner_join(df, env_df, by = "checklist_id")
   return(df)
@@ -228,6 +223,7 @@ unif_test_master  <- enrich_dataset(unif_test_master,  cov_tif_albers, obs_cov_n
 
 all_param_results <- list()
 all_pred_results <- list()
+all_dataset_stats <- list() # New list for Dataset Stats
 
 # Define plot order
 all_method_names_plot_order <- c(
@@ -249,6 +245,10 @@ for (v_name in names(variants)) {
   
   current_state_covs <- variant$state_covs_used
   current_obs_covs <- obs_cov_names[1:variant$n_obs_covs] 
+  
+  # Define Clean Column Names
+  state_col_names <- c("state_intercept", current_state_covs)
+  obs_col_names   <- c("obs_intercept", current_obs_covs)
   
   # --- A. Select Dataset ---
   if (variant$loc_type == "uniform") {
@@ -367,7 +367,7 @@ for (v_name in names(variants)) {
   for (ref_method in reference_method_list) {
     cat(paste("\n  === REF CLUSTERING:", ref_method, "===\n"))
     
-    # [FIX] Handle list vs dataframe for Reference
+    # Handle list vs dataframe for Reference
     current_reference_dataframe <- all_clusterings[[ref_method]]
     if (is.list(current_reference_dataframe) && "result_df" %in% names(current_reference_dataframe)) {
       current_reference_dataframe <- current_reference_dataframe$result_df
@@ -424,6 +424,14 @@ for (v_name in names(variants)) {
           cell_density_vector = cell_density_val
         )
         
+        # --- SAVE DATASET STATS ---
+        ds_stats <- summarize_datasets(train_data, test_data_full)
+        ds_stats$Variant <- v_name
+        ds_stats$ref_method <- ref_method
+        ds_stats$param_set <- param_idx
+        ds_stats$sim_num <- sim_num
+        all_dataset_stats[[length(all_dataset_stats) + 1]] <- ds_stats
+        
         # Test Splits
         test_splits_list <- list()
         for (r in 1:n_test_repeats) {
@@ -434,7 +442,7 @@ for (v_name in names(variants)) {
         
         for (method_name in methods_to_test) {
           
-          # [FIX] Handle list vs dataframe for Fitted Model
+          # Handle list vs dataframe for Fitted Model
           fit_clustering_df <- all_clusterings[[method_name]]
           if (is.list(fit_clustering_df) && "result_df" %in% names(fit_clustering_df)) {
              fit_clustering_df <- fit_clustering_df$result_df
@@ -459,7 +467,7 @@ for (v_name in names(variants)) {
             est_betas <- coef(fm, 'state')
             est_alphas <- coef(fm, 'det')
             
-            # Save Params
+            # Init param row
             param_row <- data.frame(
               Variant = v_name,
               ref_method = ref_method,
@@ -469,8 +477,20 @@ for (v_name in names(variants)) {
               NLL = fm@negLogLike,
               convergence = 0
             )
-            for(n in names(est_betas)) param_row[[paste0("state_", n)]] <- est_betas[[n]]
-            for(n in names(est_alphas)) param_row[[paste0("obs_", n)]] <- est_alphas[[n]]
+            
+            # Save Parameters with Clean Names
+            # 1. State
+            if(length(est_betas) == length(state_col_names)){
+               for(i in seq_along(state_col_names)) param_row[[state_col_names[i]]] <- est_betas[i]
+            } else {
+               for(n in names(est_betas)) param_row[[paste0("state_", n)]] <- est_betas[[n]]
+            }
+            # 2. Obs
+            if(length(est_alphas) == length(obs_col_names)){
+               for(i in seq_along(obs_col_names)) param_row[[obs_col_names[i]]] <- est_alphas[i]
+            } else {
+               for(n in names(est_alphas)) param_row[[paste0("obs_", n)]] <- est_alphas[[n]]
+            }
             
             all_param_results[[length(all_param_results) + 1]] <- param_row
             
@@ -519,8 +539,10 @@ for (v_name in names(variants)) {
 
 final_params <- dplyr::bind_rows(all_param_results)
 final_preds <- dplyr::bind_rows(all_pred_results)
+final_stats  <- dplyr::bind_rows(all_dataset_stats)
 
 write.csv(final_params, file.path(main_output_dir, "gradient_parameters.csv"), row.names = FALSE)
 write.csv(final_preds, file.path(main_output_dir, "gradient_predictions.csv"), row.names = FALSE)
+write.csv(final_stats, file.path(main_output_dir, "dataset_descriptive_stats.csv"), row.names = FALSE)
 
 cat("\n--- Gradient Experiment Complete ---\n")
