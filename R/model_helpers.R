@@ -409,139 +409,47 @@ prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_name
 }
 
 
-# #' Fit occuN Model with Random Starts and Early Stopping
-# fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30, 
-#                             stable_reps = 10, optimizer = "nlminb", 
-#                             lower = -Inf, upper = Inf) { # <--- 1. Add arguments here
-  
-#   occuN_formula <- as.formula(paste(
-#     paste(deparse(obs_formula), collapse = ""), 
-#     paste(deparse(state_formula), collapse = "")
-#   ))
-  
-#   # Note: This parameter counting method assumes simple formulas (intercept + linear terms).
-#   # If you use interactions (*) or factors, model.matrix would be safer to count columns.
-#   n_obs_pars <- length(all.vars(obs_formula)) + 1 
-#   n_state_pars <- length(all.vars(state_formula)) + 1
-#   n_params <- n_obs_pars + n_state_pars
-  
-#   best_fm <- NULL
-#   min_nll <- Inf
-#   fit_successful <- FALSE
-  
-#   stable_count <- 0
-#   tolerance <- 0.01 
-  
-#   for (rep in 1:n_reps) {
-#     # Generate random starts
-#     # Note: If your bounds are tight (e.g., lower=0), 
-#     # make sure your starts respect them!
-#     # rand_starts <- runif(n_params, lower, upper)
-
-#     shape_param <- 5 
-#     rand_starts <- lower + (upper - lower) * rbeta(n_params, shape_param, shape_param)
-    
-#     # If bounds are provided, clamp the starts to be within bounds
-#     # to avoid immediate rejection by the optimizer
-#     if(any(is.finite(lower)) || any(is.finite(upper))) {
-#        # Simple clamping logic
-#        safe_lower <- ifelse(is.finite(lower), lower + 0.01, -2)
-#        safe_upper <- ifelse(is.finite(upper), upper - 0.01, 2)
-#        # Ensure we don't cross (if lower > -2, use lower, etc)
-#        # This is a basic safety check, adjust logic if specific bounds are needed
-#        rand_starts <- pmax(pmin(rand_starts, safe_upper), safe_lower)
-#     }
-
-#     fm_rep <- try(unmarked::occuN(
-#       formula = occuN_formula,
-#       data = umf,
-#       starts = rand_starts,
-#       se = FALSE, 
-#       method = optimizer,
-#       lower = lower,
-#       upper = upper
-#     ), silent = TRUE)
-    
-#     if (!inherits(fm_rep, "try-error")) {
-#       current_nll <- fm_rep@negLogLike
-      
-#       if (!is.nan(current_nll)) {
-#         if (current_nll < min_nll) {
-#           if (abs(min_nll - current_nll) < tolerance) {
-#              stable_count <- stable_count + 1
-#           } else {
-#              stable_count <- 0
-#           }
-#           min_nll <- current_nll
-#           best_fm <- fm_rep
-#           fit_successful <- TRUE
-#         } 
-#         else if (abs(current_nll - min_nll) < tolerance) {
-#           stable_count <- stable_count + 1
-#         }
-        
-#         if (stable_count >= stable_reps) {
-#           break 
-#         }
-#       }
-#     }
-#   }
-  
-#   if (!fit_successful) return(NULL)
-#   return(best_fm)
-# }
-
-
-#' Fit occuN Model with Explicit Handling for Fixed Parameters
+#' Fit occuN Model with Random Starts and Early Stopping
 fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30, 
                             stable_reps = 10, optimizer = "nlminb", 
-                            lower = -Inf, upper = Inf) {
+                            lower = -Inf, upper = Inf) { # <--- 1. Add arguments here
   
   occuN_formula <- as.formula(paste(
     paste(deparse(obs_formula), collapse = ""), 
     paste(deparse(state_formula), collapse = "")
   ))
   
+  # Note: This parameter counting method assumes simple formulas (intercept + linear terms).
+  # If you use interactions (*) or factors, model.matrix would be safer to count columns.
   n_obs_pars <- length(all.vars(obs_formula)) + 1 
   n_state_pars <- length(all.vars(state_formula)) + 1
   n_params <- n_obs_pars + n_state_pars
   
-  # 1. Expand bounds to vectors if they are scalars
-  if(length(lower) == 1) lower <- rep(lower, n_params)
-  if(length(upper) == 1) upper <- rep(upper, n_params)
-
-  # 2. Identify which parameters are fixed (Lower approx equal to Upper)
-  # Using a small epsilon for floating point safety
-  is_fixed <- abs(upper - lower) < 1e-9 & is.finite(lower)
-
   best_fm <- NULL
   min_nll <- Inf
   fit_successful <- FALSE
+  
   stable_count <- 0
   tolerance <- 0.01 
-
+  
   for (rep in 1:n_reps) {
+    # Generate random starts
+    # Note: If your bounds are tight (e.g., lower=0), 
+    # make sure your starts respect them!
+    # rand_starts <- runif(n_params, lower, upper)
+
+    shape_param <- 5 
+    rand_starts <- lower + (upper - lower) * rbeta(n_params, shape_param, shape_param)
     
-    # --- A. Initialize with generic random starts (e.g., -2 to 2) ---
-    rand_starts <- runif(n_params, min = -2, max = 2)
-    
-    # --- B. Force Fixed Parameters to their Exact Value ---
-    # This bypasses runif logic for these specific indices
-    if(any(is_fixed)) {
-      rand_starts[is_fixed] <- lower[is_fixed]
-    }
-    
-    # --- C. Safety Clamp for Non-Fixed Parameters ---
-    # Ensure free parameters don't violate bounds (e.g. if lower=5)
-    # We only modify the NON-FIXED parameters here
-    if(any(!is_fixed)) {
-      
-       # Create safe bounds (slight buffer)
-       safe_lower <- ifelse(is.finite(lower), lower + 0.01, -Inf)
-       safe_upper <- ifelse(is.finite(upper), upper - 0.01, Inf)
-       
-       # Apply clamping only to free parameters
-       rand_starts[!is_fixed] <- pmax(pmin(rand_starts[!is_fixed], safe_upper[!is_fixed]), safe_lower[!is_fixed])
+    # If bounds are provided, clamp the starts to be within bounds
+    # to avoid immediate rejection by the optimizer
+    if(any(is.finite(lower)) || any(is.finite(upper))) {
+       # Simple clamping logic
+       safe_lower <- ifelse(is.finite(lower), lower + 0.01, -2)
+       safe_upper <- ifelse(is.finite(upper), upper - 0.01, 2)
+       # Ensure we don't cross (if lower > -2, use lower, etc)
+       # This is a basic safety check, adjust logic if specific bounds are needed
+       rand_starts <- pmax(pmin(rand_starts, safe_upper), safe_lower)
     }
 
     fm_rep <- try(unmarked::occuN(
@@ -582,6 +490,7 @@ fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30,
   if (!fit_successful) return(NULL)
   return(best_fm)
 }
+
 
 
 ########

@@ -74,8 +74,9 @@ variants <- list(
 
 # Global Simulation Settings
 n_simulations <- 3
-n_fit_repeats <- 30
+n_fit_repeats <- 100
 n_test_repeats <- 3
+n_stable_repeats <- 100
 selected_optimizer <- "nlminb"
 buffer_m <- 200
 res_m <- 100
@@ -138,10 +139,10 @@ train_df_real <- train_df_real[
   train_df_real$observation_date >= "2017-05-15" & 
   train_df_real$observation_date <= "2017-07-09", 
 ]
-real_train_main <- train_df_real[, c("checklist_id", "locality_id", "latitude", "longitude", "observation_date")]
-real_train_main$formatted_date <- real_train_main$observation_date
+real_train_master <- train_df_real[, c("checklist_id", "locality_id", "latitude", "longitude", "observation_date")]
+real_train_master$formatted_date <- real_train_master$observation_date
 
-TARGET_N_TRAIN <- nrow(real_train_main)
+TARGET_N_TRAIN <- nrow(real_train_master)
 cat(sprintf("  -> Real Training N: %d\n", TARGET_N_TRAIN))
 
 # Test (2018)
@@ -152,16 +153,16 @@ test_df_real <- test_df_real[
   test_df_real$observation_date >= "2018-05-15" & 
   test_df_real$observation_date <= "2018-07-09", 
 ]
-real_test_main <- test_df_real[, c("checklist_id", "locality_id", "latitude", "longitude", "observation_date")]
-real_test_main$formatted_date <- real_test_main$observation_date
+real_test_master <- test_df_real[, c("checklist_id", "locality_id", "latitude", "longitude", "observation_date")]
+real_test_master$formatted_date <- real_test_master$observation_date
 
-TARGET_N_TEST <- nrow(real_test_main)
+TARGET_N_TEST <- nrow(real_test_master)
 cat(sprintf("  -> Real Testing N: %d\n", TARGET_N_TEST))
 
 # --- B. UNIFORM DATA (Generate Once) ---
 cat("--- Generating Uniform Data (Main) ---\n")
 
-generate_uniform_main <- function(n, raster_obj, boundary_v, prefix, date_str) {
+generate_uniform_master <- function(n, raster_obj, boundary_v, prefix, date_str) {
   # Mask raster
   masked <- terra::mask(raster_obj[[1]], boundary_v)
   valid_cells <- terra::cells(masked)
@@ -194,8 +195,8 @@ generate_uniform_main <- function(n, raster_obj, boundary_v, prefix, date_str) {
   return(df)
 }
 
-unif_train_main <- generate_uniform_main(TARGET_N_TRAIN, cov_tif_albers, boundary_vect_albers, "train_unif", "2017-06-01")
-unif_test_main  <- generate_uniform_main(TARGET_N_TEST,  cov_tif_albers, boundary_vect_albers, "test_unif",  "2018-06-01")
+unif_train_master <- generate_uniform_master(TARGET_N_TRAIN, cov_tif_albers, boundary_vect_albers, "train_unif", "2017-06-01")
+unif_test_master  <- generate_uniform_master(TARGET_N_TEST,  cov_tif_albers, boundary_vect_albers, "test_unif",  "2018-06-01")
 
 
 # --- C. ENRICH DATA (Add Obs Covs & Extract State Covs) ---
@@ -211,10 +212,10 @@ enrich_dataset <- function(df, raster_obj, obs_names) {
   return(df)
 }
 
-real_train_main <- enrich_dataset(real_train_main, cov_tif_albers, obs_cov_names)
-real_test_main  <- enrich_dataset(real_test_main,  cov_tif_albers, obs_cov_names)
-unif_train_main <- enrich_dataset(unif_train_main, cov_tif_albers, obs_cov_names)
-unif_test_main  <- enrich_dataset(unif_test_main,  cov_tif_albers, obs_cov_names)
+real_train_master <- enrich_dataset(real_train_master, cov_tif_albers, obs_cov_names)
+real_test_master  <- enrich_dataset(real_test_master,  cov_tif_albers, obs_cov_names)
+unif_train_master <- enrich_dataset(unif_train_master, cov_tif_albers, obs_cov_names)
+unif_test_master  <- enrich_dataset(unif_test_master,  cov_tif_albers, obs_cov_names)
 
 
 ###
@@ -253,12 +254,12 @@ for (v_name in names(variants)) {
   # --- A. Select Dataset ---
   if (variant$loc_type == "uniform") {
     cat("  --- Using Main UNIFORM Data (V1/V2/V3 Consistent) ---\n")
-    base_train_df <- unif_train_main
-    base_test_df  <- unif_test_main
+    base_train_df <- unif_train_master
+    base_test_df  <- unif_test_master
   } else {
     cat("  --- Using Main REAL Data ---\n")
-    base_train_df <- real_train_main
-    base_test_df  <- real_test_main
+    base_train_df <- real_train_master
+    base_test_df  <- real_test_master
   }
   
   # --- B. Pre-compute Clusterings (Train) ---
@@ -455,35 +456,16 @@ for (v_name in names(variants)) {
           
           state_form <- as.formula(paste("~", paste(current_state_covs, collapse = " + ")))
           obs_form <- as.formula(paste("~", paste(current_obs_covs, collapse = " + ")))
+          
 
-          # --- 1. Construct Parameter Bounds for Fixing Intercept ---
-          
-          # Calculate number of parameters
-          n_state_pars <- length(current_state_covs) + 1
-          n_obs_pars   <- length(current_obs_covs) + 1
-          n_total_pars <- n_state_pars + n_obs_pars
-          
-          # Initialize bounds with global defaults (e.g., -10 to 10)
-          lower_vec <- rep(PARAM_LOWER, n_total_pars)
-          upper_vec <- rep(PARAM_UPPER, n_total_pars)
-          
-          # Fix State Intercept to the TRUE value
-          # occuN Parameter Order: [Obs_Params, State_Params]
-          # The State Intercept is the first parameter AFTER the observation parameters.
-          state_int_idx <- n_obs_pars + 1
-          
-          true_state_int <- curr_params$state_intercept
-          lower_vec[state_int_idx] <- true_state_int
-          upper_vec[state_int_idx] <- true_state_int
-
-          # --- 2. Fit Model with Bounds ---
+          # --- Fit Model with Bounds ---
           
           fm <- fit_occuN_model(
             umf, state_form, obs_form, 
-            n_reps = n_fit_repeats, stable_reps = 3, 
+            n_reps = n_fit_repeats, stable_reps = n_stable_repeats, 
             optimizer = selected_optimizer,
-            lower = lower_vec, 
-            upper = upper_vec
+            lower = PARAM_LOWER, 
+            upper = PARAM_UPPER
           )
           
           if (!is.null(fm)) {
