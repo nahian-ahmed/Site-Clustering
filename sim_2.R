@@ -81,6 +81,9 @@ n_stable_repeats <- 30
 selected_optimizer <- "nlminb"
 buffer_m <- 200
 res_m <- 100
+
+DATA_SCALE_FACTOR <- 3
+
 PARAM_LOWER <- -10
 PARAM_UPPER <- 10
 INIT_LOWER <- -2
@@ -147,6 +150,18 @@ real_train_master$formatted_date <- real_train_master$observation_date
 
 TARGET_N_TRAIN <- nrow(real_train_master)
 cat(sprintf("  -> Real Training N: %d\n", TARGET_N_TRAIN))
+
+# --- MODIFIED BLOCK ---
+# Calculate scaled N for Uniform variants (V1-V3)
+SCALED_N_TRAIN <- ceiling(TARGET_N_TRAIN * DATA_SCALE_FACTOR)
+
+cat(sprintf("  -> Generating Uniform Training Data with N: %d (Factor: %.2f)\n", SCALED_N_TRAIN, DATA_SCALE_FACTOR))
+
+# Use SCALED_N_TRAIN for training, but keep TARGET_N_TEST for testing
+unif_train_master <- generate_uniform_master(SCALED_N_TRAIN, cov_tif_albers, boundary_vect_albers, "train_unif", "2017-06-01")
+unif_test_master  <- generate_uniform_master(TARGET_N_TEST,  cov_tif_albers, boundary_vect_albers, "test_unif",  "2018-06-01")
+# ----------------------
+
 
 # Test (2018)
 test_file <- file.path("checklist_data", "species", "AMCR", "AMCR_zf_filtered_region_2018.csv")
