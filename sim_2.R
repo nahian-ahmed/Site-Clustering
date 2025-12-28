@@ -82,6 +82,8 @@ buffer_m <- 200
 res_m <- 100
 PARAM_LOWER <- -10
 PARAM_UPPER <- 10
+INIT_LOWER <- -2
+INIT_UPPER <- 2
 
 # Main Output Directory
 main_output_dir <- file.path("simulation_experiments", "output", "sim_2")
@@ -464,8 +466,10 @@ for (v_name in names(variants)) {
             umf, state_form, obs_form, 
             n_reps = n_fit_repeats, stable_reps = n_stable_repeats, 
             optimizer = selected_optimizer,
-            lower = PARAM_LOWER, 
-            upper = PARAM_UPPER
+            lower = PARAM_LOWER,
+            upper = PARAM_UPPER,
+            init_lower = INIT_LOWER,
+            init_upper = INIT_UPPER
           )
           
           if (!is.null(fm)) {

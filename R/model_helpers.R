@@ -412,7 +412,8 @@ prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_name
 #' Fit occuN Model with Random Starts and Early Stopping
 fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30, 
                             stable_reps = 10, optimizer = "nlminb", 
-                            lower = -Inf, upper = Inf) { # <--- 1. Add arguments here
+                            lower = -Inf, upper = Inf,
+                            init_lower = -Inf, init_upper = Inf) {
   
   occuN_formula <- as.formula(paste(
     paste(deparse(obs_formula), collapse = ""), 
@@ -434,23 +435,10 @@ fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30,
   
   for (rep in 1:n_reps) {
     # Generate random starts
-    # Note: If your bounds are tight (e.g., lower=0), 
-    # make sure your starts respect them!
-    # rand_starts <- runif(n_params, lower, upper)
 
-    shape_param <- 5 
-    rand_starts <- lower + (upper - lower) * rbeta(n_params, shape_param, shape_param)
+    rand_starts <- runif(n_params, min = init_lower, max = init_upper)
     
-    # If bounds are provided, clamp the starts to be within bounds
-    # to avoid immediate rejection by the optimizer
-    if(any(is.finite(lower)) || any(is.finite(upper))) {
-       # Simple clamping logic
-       safe_lower <- ifelse(is.finite(lower), lower + 0.01, -2)
-       safe_upper <- ifelse(is.finite(upper), upper - 0.01, 2)
-       # Ensure we don't cross (if lower > -2, use lower, etc)
-       # This is a basic safety check, adjust logic if specific bounds are needed
-       rand_starts <- pmax(pmin(rand_starts, safe_upper), safe_lower)
-    }
+
 
     fm_rep <- try(unmarked::occuN(
       formula = occuN_formula,
