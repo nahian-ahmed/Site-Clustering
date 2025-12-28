@@ -74,9 +74,9 @@ variants <- list(
 
 # Global Simulation Settings
 n_simulations <- 3
-n_fit_repeats <- 100
+n_fit_repeats <- 30
 n_test_repeats <- 3
-n_stable_repeats <- 100
+n_stable_repeats <- 30
 selected_optimizer <- "nlminb"
 buffer_m <- 200
 res_m <- 100
