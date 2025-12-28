@@ -134,52 +134,9 @@ boundary_vect_albers <- terra::project(boundary_vect, albers_crs_str)
 
 obs_cov_names <- c("duration_minutes", "effort_distance_km", "number_observers", "time_observations_started", "day_of_year")
 
-# --- A. REAL DATA (Load & Filter) ---
-cat("--- Loading Real Data (Main) ---\n")
-
-# Train (2017)
-train_file <- file.path("checklist_data", "species", "AMCR", "AMCR_zf_filtered_region_2017.csv")
-train_df_raw <- read.csv(train_file)
-train_df_real <- train_df_raw[!is.na(train_df_raw$duration_minutes), ]
-train_df_real <- train_df_real[
-  train_df_real$observation_date >= "2017-05-15" & 
-  train_df_real$observation_date <= "2017-07-09", 
-]
-real_train_master <- train_df_real[, c("checklist_id", "locality_id", "latitude", "longitude", "observation_date")]
-real_train_master$formatted_date <- real_train_master$observation_date
-
-TARGET_N_TRAIN <- nrow(real_train_master)
-cat(sprintf("  -> Real Training N: %d\n", TARGET_N_TRAIN))
-
-# --- MODIFIED BLOCK ---
-# Calculate scaled N for Uniform variants (V1-V3)
-SCALED_N_TRAIN <- ceiling(TARGET_N_TRAIN * DATA_SCALE_FACTOR)
-
-cat(sprintf("  -> Generating Uniform Training Data with N: %d (Factor: %.2f)\n", SCALED_N_TRAIN, DATA_SCALE_FACTOR))
-
-# Use SCALED_N_TRAIN for training, but keep TARGET_N_TEST for testing
-unif_train_master <- generate_uniform_master(SCALED_N_TRAIN, cov_tif_albers, boundary_vect_albers, "train_unif", "2017-06-01")
-unif_test_master  <- generate_uniform_master(TARGET_N_TEST,  cov_tif_albers, boundary_vect_albers, "test_unif",  "2018-06-01")
-# ----------------------
-
-
-# Test (2018)
-test_file <- file.path("checklist_data", "species", "AMCR", "AMCR_zf_filtered_region_2018.csv")
-test_df_raw <- read.csv(test_file)
-test_df_real <- test_df_raw[!is.na(test_df_raw$duration_minutes), ]
-test_df_real <- test_df_real[
-  test_df_real$observation_date >= "2018-05-15" & 
-  test_df_real$observation_date <= "2018-07-09", 
-]
-real_test_master <- test_df_real[, c("checklist_id", "locality_id", "latitude", "longitude", "observation_date")]
-real_test_master$formatted_date <- real_test_master$observation_date
-
-TARGET_N_TEST <- nrow(real_test_master)
-cat(sprintf("  -> Real Testing N: %d\n", TARGET_N_TEST))
-
-# --- B. UNIFORM DATA (Generate Once) ---
-cat("--- Generating Uniform Data (Main) ---\n")
-
+# -------------------------------------------------------
+# 1. DEFINE FUNCTION FIRST (Moved from Part B to here)
+# -------------------------------------------------------
 generate_uniform_master <- function(n, raster_obj, boundary_v, prefix, date_str) {
   # Mask raster
   masked <- terra::mask(raster_obj[[1]], boundary_v)
@@ -213,8 +170,52 @@ generate_uniform_master <- function(n, raster_obj, boundary_v, prefix, date_str)
   return(df)
 }
 
-unif_train_master <- generate_uniform_master(TARGET_N_TRAIN, cov_tif_albers, boundary_vect_albers, "train_unif", "2017-06-01")
+# -------------------------------------------------------
+# 2. PART A: REAL DATA (Calculate N)
+# -------------------------------------------------------
+cat("--- Loading Real Data (Main) ---\n")
+
+# Train (2017)
+train_file <- file.path("checklist_data", "species", "AMCR", "AMCR_zf_filtered_region_2017.csv")
+train_df_raw <- read.csv(train_file)
+train_df_real <- train_df_raw[!is.na(train_df_raw$duration_minutes), ]
+train_df_real <- train_df_real[
+  train_df_real$observation_date >= "2017-05-15" & 
+  train_df_real$observation_date <= "2017-07-09", 
+]
+real_train_master <- train_df_real[, c("checklist_id", "locality_id", "latitude", "longitude", "observation_date")]
+real_train_master$formatted_date <- real_train_master$observation_date
+
+TARGET_N_TRAIN <- nrow(real_train_master)
+cat(sprintf("  -> Real Training N: %d\n", TARGET_N_TRAIN))
+
+# Test (2018)
+test_file <- file.path("checklist_data", "species", "AMCR", "AMCR_zf_filtered_region_2018.csv")
+test_df_raw <- read.csv(test_file)
+test_df_real <- test_df_raw[!is.na(test_df_raw$duration_minutes), ]
+test_df_real <- test_df_real[
+  test_df_real$observation_date >= "2018-05-15" & 
+  test_df_real$observation_date <= "2018-07-09", 
+]
+real_test_master <- test_df_real[, c("checklist_id", "locality_id", "latitude", "longitude", "observation_date")]
+real_test_master$formatted_date <- real_test_master$observation_date
+
+TARGET_N_TEST <- nrow(real_test_master)
+cat(sprintf("  -> Real Testing N: %d\n", TARGET_N_TEST))
+
+# -------------------------------------------------------
+# 3. PART B: UNIFORM DATA (Apply Scale Factor)
+# -------------------------------------------------------
+cat("--- Generating Uniform Data (Main) ---\n")
+
+# Apply Scale Factor F for Uniform Data Only
+SCALED_N_TRAIN <- ceiling(TARGET_N_TRAIN * DATA_SCALE_FACTOR)
+cat(sprintf("  -> Generating Uniform Training Data with N: %d (Factor: %.2f)\n", SCALED_N_TRAIN, DATA_SCALE_FACTOR))
+
+# Now the function is defined, so this will work:
+unif_train_master <- generate_uniform_master(SCALED_N_TRAIN, cov_tif_albers, boundary_vect_albers, "train_unif", "2017-06-01")
 unif_test_master  <- generate_uniform_master(TARGET_N_TEST,  cov_tif_albers, boundary_vect_albers, "test_unif",  "2018-06-01")
+
 
 
 # --- C. ENRICH DATA (Add Obs Covs & Extract State Covs) ---
