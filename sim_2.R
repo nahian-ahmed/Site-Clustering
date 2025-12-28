@@ -54,22 +54,23 @@ variants <- list(
     loc_type = "uniform",
     state_covs_used = c("elevation"), 
     n_obs_covs = 1
-  ),
-  "V2_Uniform_ComplexState" = list(
-    loc_type = "uniform",
-    state_covs_used = c("elevation", "TCB", "TCG", "TCW", "TCA"),
-    n_obs_covs = 1
-  ),
-  "V3_Uniform_ComplexAll" = list(
-    loc_type = "uniform",
-    state_covs_used = c("elevation", "TCB", "TCG", "TCW", "TCA"),
-    n_obs_covs = 5
-  ),
-  "V4_RealLocs_ComplexAll" = list(
-    loc_type = "real",
-    state_covs_used = c("elevation", "TCB", "TCG", "TCW", "TCA"),
-    n_obs_covs = 5
   )
+  # ,
+  # "V2_Uniform_ComplexState" = list(
+  #   loc_type = "uniform",
+  #   state_covs_used = c("elevation", "TCB", "TCG", "TCW", "TCA"),
+  #   n_obs_covs = 1
+  # ),
+  # "V3_Uniform_ComplexAll" = list(
+  #   loc_type = "uniform",
+  #   state_covs_used = c("elevation", "TCB", "TCG", "TCW", "TCA"),
+  #   n_obs_covs = 5
+  # ),
+  # "V4_RealLocs_ComplexAll" = list(
+  #   loc_type = "real",
+  #   state_covs_used = c("elevation", "TCB", "TCG", "TCW", "TCA"),
+  #   n_obs_covs = 5
+  # )
 )
 
 # Global Simulation Settings
