@@ -455,23 +455,26 @@ for (v_name in names(variants)) {
           
           state_form <- as.formula(paste("~", paste(current_state_covs, collapse = " + ")))
           obs_form <- as.formula(paste("~", paste(current_obs_covs, collapse = " + ")))
-          
+
           # --- 1. Construct Parameter Bounds for Fixing Intercept ---
           
-          # Calculate number of parameters (Intercept + Covariates)
+          # Calculate number of parameters
           n_state_pars <- length(current_state_covs) + 1
           n_obs_pars   <- length(current_obs_covs) + 1
           n_total_pars <- n_state_pars + n_obs_pars
           
-          # Initialize bounds with global defaults (-10, 10)
+          # Initialize bounds with global defaults (e.g., -10 to 10)
           lower_vec <- rep(PARAM_LOWER, n_total_pars)
           upper_vec <- rep(PARAM_UPPER, n_total_pars)
           
-          # Fix State Intercept (Index 1) to the TRUE value
-          # Note: unmarked typically orders parameters as [State_Params, Obs_Params]
+          # Fix State Intercept to the TRUE value
+          # occuN Parameter Order: [Obs_Params, State_Params]
+          # The State Intercept is the first parameter AFTER the observation parameters.
+          state_int_idx <- n_obs_pars + 1
+          
           true_state_int <- curr_params$state_intercept
-          lower_vec[1] <- true_state_int
-          upper_vec[1] <- true_state_int
+          lower_vec[state_int_idx] <- true_state_int
+          upper_vec[state_int_idx] <- true_state_int
 
           # --- 2. Fit Model with Bounds ---
           
