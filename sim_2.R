@@ -82,7 +82,7 @@ selected_optimizer <- "nlminb"
 buffer_m <- 200
 res_m <- 100
 
-DATA_SCALE_FACTOR <- 3
+DATA_SCALE_FACTOR <- 1
 
 PARAM_LOWER <- -10
 PARAM_UPPER <- 10
