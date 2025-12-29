@@ -567,8 +567,8 @@ final_params <- dplyr::bind_rows(all_param_results)
 final_preds <- dplyr::bind_rows(all_pred_results)
 final_stats  <- dplyr::bind_rows(all_dataset_stats)
 
-write.csv(final_params, file.path(main_output_dir, "gradient_parameters.csv"), row.names = FALSE)
-write.csv(final_preds, file.path(main_output_dir, "gradient_predictions.csv"), row.names = FALSE)
+write.csv(final_params, file.path(main_output_dir, "estimated_parameters.csv"), row.names = FALSE)
+write.csv(final_preds, file.path(main_output_dir, "predictive_performance.csv"), row.names = FALSE)
 write.csv(final_stats, file.path(main_output_dir, "dataset_descriptive_stats.csv"), row.names = FALSE)
 
 cat("\n--- Gradient Experiment Complete ---\n")
