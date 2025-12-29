@@ -335,15 +335,112 @@ generate_overlap_matrix <- function(site_geoms_sf, reference_raster) {
   return(w)
 }
 
+# #' Prepare Data for occuN Model
+# prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_names, cell_covs) {
+
+#   # DEBUG CHECK
+#   missing_ids <- setdiff(train_data$checklist_id, clustering_df$checklist_id)
+#   if(length(missing_ids) > 0) {
+#      warning(paste("WARNING:", length(missing_ids), "checklists from Train Data are missing in Clustering DF!"))
+#   }
+
+#   train_data_prepped <- train_data %>%
+#     dplyr::left_join(comparison_site_lookup, by = "checklist_id") %>%
+#     dplyr::filter(!is.na(comparison_site)) 
+    
+#   if(nrow(train_data_prepped) < 100) {
+#       stop("CRITICAL ERROR: Almost all training data was dropped during site lookup join. Check checklist_id matching.")
+#   }
+
+
+  
+#   # 1. Join checklists to the specific clustering method's site IDs
+#   comparison_site_lookup <- clustering_df %>%
+#     dplyr::select(checklist_id, comparison_site = site)
+  
+#   train_data_prepped <- train_data %>%
+#     dplyr::left_join(comparison_site_lookup, by = "checklist_id") %>%
+#     dplyr::filter(!is.na(comparison_site)) %>%
+#     dplyr::select(-site) %>%          
+#     dplyr::rename(site = comparison_site) 
+  
+#   # 2. Create numeric site index matching the W matrix rows
+#   M <- nrow(w_matrix)
+#   site_id_lookup <- data.frame(
+#     site_char = rownames(w_matrix),  
+#     site_numeric = 1:M
+#   )
+  
+#   # Ensure character matching
+#   train_data_prepped$site <- as.character(train_data_prepped$site)
+#   site_id_lookup$site_char <- as.character(site_id_lookup$site_char)
+  
+#   # 3. Re-index and create visit IDs
+#   train_data_prepped <- train_data_prepped %>%
+#     dplyr::inner_join(site_id_lookup, by = c("site" = "site_char")) %>%
+#     dplyr::select(-site) %>%
+#     dplyr::rename(site = site_numeric) %>%
+#     dplyr::group_by(site) %>%
+#     dplyr::mutate(visit_id = dplyr::row_number()) %>%
+#     dplyr::ungroup()
+  
+#   # 4. Pivot Observations (y)
+#   y_wide <- train_data_prepped %>% 
+#     tidyr::pivot_wider(
+#       id_cols = site,
+#       names_from = visit_id,
+#       values_from = species_observed,
+#       values_fill = NA 
+#     ) %>%
+#     dplyr::right_join(data.frame(site = 1:M), by = "site") %>%
+#     dplyr::arrange(site) %>%
+#     dplyr::select(-site) %>%
+#     as.matrix()
+  
+#   # 5. Pivot Observation Covariates
+#   obs_covs_wide <- list()
+#   for (cov_name in obs_cov_names) {
+#     obs_covs_wide[[cov_name]] <- train_data_prepped %>% 
+#       tidyr::pivot_wider(
+#         id_cols = site,
+#         names_from = visit_id,
+#         values_from = dplyr::all_of(cov_name),
+#         values_fill = NA
+#       ) %>%
+#       dplyr::right_join(data.frame(site = 1:M), by = "site") %>%
+#       dplyr::arrange(site) %>%
+#       dplyr::select(-site) %>%
+#       as.matrix()
+#   }
+  
+#   # 6. Create Unmarked Frame
+#   umf <- unmarked::unmarkedFrameOccuN(
+#     y = y_wide,
+#     obsCovs = obs_covs_wide,
+#     cellCovs = cell_covs,
+#     w = w_matrix
+#   )
+  
+#   return(umf)
+# }
+
+
+
 #' Prepare Data for occuN Model
 prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_names, cell_covs) {
 
-  # DEBUG CHECK
+  # --- 1. DEFINE LOOKUP FIRST ---
+  # Create the lookup table immediately so it is available for checks
+  comparison_site_lookup <- clustering_df %>%
+    dplyr::select(checklist_id, comparison_site = site)
+
+  # --- 2. DEBUG CHECKS ---
   missing_ids <- setdiff(train_data$checklist_id, clustering_df$checklist_id)
   if(length(missing_ids) > 0) {
      warning(paste("WARNING:", length(missing_ids), "checklists from Train Data are missing in Clustering DF!"))
   }
 
+  # --- 3. FILTER & PREPARE ---
   train_data_prepped <- train_data %>%
     dplyr::left_join(comparison_site_lookup, by = "checklist_id") %>%
     dplyr::filter(!is.na(comparison_site)) 
@@ -351,20 +448,13 @@ prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_name
   if(nrow(train_data_prepped) < 100) {
       stop("CRITICAL ERROR: Almost all training data was dropped during site lookup join. Check checklist_id matching.")
   }
-
   
-  
-  # 1. Join checklists to the specific clustering method's site IDs
-  comparison_site_lookup <- clustering_df %>%
-    dplyr::select(checklist_id, comparison_site = site)
-  
-  train_data_prepped <- train_data %>%
-    dplyr::left_join(comparison_site_lookup, by = "checklist_id") %>%
-    dplyr::filter(!is.na(comparison_site)) %>%
+  # Clean up columns for the model
+  train_data_prepped <- train_data_prepped %>%
     dplyr::select(-site) %>%          
     dplyr::rename(site = comparison_site) 
   
-  # 2. Create numeric site index matching the W matrix rows
+  # --- 4. CREATE NUMERIC SITE INDICES ---
   M <- nrow(w_matrix)
   site_id_lookup <- data.frame(
     site_char = rownames(w_matrix),  
@@ -375,7 +465,7 @@ prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_name
   train_data_prepped$site <- as.character(train_data_prepped$site)
   site_id_lookup$site_char <- as.character(site_id_lookup$site_char)
   
-  # 3. Re-index and create visit IDs
+  # --- 5. RE-INDEX & CREATE VISIT IDs ---
   train_data_prepped <- train_data_prepped %>%
     dplyr::inner_join(site_id_lookup, by = c("site" = "site_char")) %>%
     dplyr::select(-site) %>%
@@ -384,7 +474,7 @@ prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_name
     dplyr::mutate(visit_id = dplyr::row_number()) %>%
     dplyr::ungroup()
   
-  # 4. Pivot Observations (y)
+  # --- 6. PIVOT OBSERVATIONS (y) ---
   y_wide <- train_data_prepped %>% 
     tidyr::pivot_wider(
       id_cols = site,
@@ -397,7 +487,7 @@ prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_name
     dplyr::select(-site) %>%
     as.matrix()
   
-  # 5. Pivot Observation Covariates
+  # --- 7. PIVOT OBSERVATION COVARIATES ---
   obs_covs_wide <- list()
   for (cov_name in obs_cov_names) {
     obs_covs_wide[[cov_name]] <- train_data_prepped %>% 
@@ -413,7 +503,7 @@ prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_name
       as.matrix()
   }
   
-  # 6. Create Unmarked Frame
+  # --- 8. CREATE UNMARKED FRAME ---
   umf <- unmarked::unmarkedFrameOccuN(
     y = y_wide,
     obsCovs = obs_covs_wide,
@@ -423,7 +513,6 @@ prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_name
   
   return(umf)
 }
-
 
 #' Fit occuN Model with Random Starts and Early Stopping
 fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30, 
