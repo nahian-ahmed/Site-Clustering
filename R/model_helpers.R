@@ -337,6 +337,22 @@ generate_overlap_matrix <- function(site_geoms_sf, reference_raster) {
 
 #' Prepare Data for occuN Model
 prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_names, cell_covs) {
+
+  # DEBUG CHECK
+  missing_ids <- setdiff(train_data$checklist_id, clustering_df$checklist_id)
+  if(length(missing_ids) > 0) {
+     warning(paste("WARNING:", length(missing_ids), "checklists from Train Data are missing in Clustering DF!"))
+  }
+
+  train_data_prepped <- train_data %>%
+    dplyr::left_join(comparison_site_lookup, by = "checklist_id") %>%
+    dplyr::filter(!is.na(comparison_site)) 
+    
+  if(nrow(train_data_prepped) < 100) {
+      stop("CRITICAL ERROR: Almost all training data was dropped during site lookup join. Check checklist_id matching.")
+  }
+
+  
   
   # 1. Join checklists to the specific clustering method's site IDs
   comparison_site_lookup <- clustering_df %>%
