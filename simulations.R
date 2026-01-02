@@ -374,7 +374,7 @@ for (sac_level in sac_levels) {
                 final_comb_plot <- col_cov | col_abund | col_occ
                 
                 fname <- sprintf("plot_SAC=%s_sampling=%s.png", sac_level, sampling_strat)
-                ggsave(file.path(output_dir, fname), plot=final_comb_plot, dpi=150, width=12, height=18)
+                ggsave(file.path(output_dir, fname), plot=final_comb_plot, dpi=300, width=13, height=18)
             }
             
         } # End Sampling Loop
