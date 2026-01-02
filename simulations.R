@@ -30,6 +30,7 @@ set.seed(123)
 
 # --- Simulation repetitions ---
 n_sims <- 100 # Number of full datasets to generate per SAC level
+n_sims <- 3
 
 # --- Model fitting repetitions ---
 n_reps <- 30 
@@ -73,8 +74,8 @@ sac_levels <- c("Low", "Medium", "High")
 sac_sigmas <- c(Low = 0, Medium = 2, High = 5) 
 
 # --- Cluster Settings for "Nonrandom" Strategy ---
-n_clusters <- 5
-cluster_sigma <- 20 # Controls the spread/size of the clusters
+n_clusters <- 3
+cluster_sigma <- 10 # Controls the spread/size of the clusters
 
 cat("--- Simulation Starting ---\n")
 cat(sprintf("Running %d full simulations per SAC level.\n", n_sims))
