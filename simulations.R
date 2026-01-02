@@ -30,7 +30,7 @@ set.seed(123)
 
 # --- Simulation repetitions ---
 n_sims <- 100 # Number of full datasets to generate per SAC level
-# n_sims <- 3 # Debug count
+n_sims <- 3 # Debug count
 
 # --- Model fitting repetitions ---
 n_reps <- 30 
@@ -60,7 +60,7 @@ PARAM_UPPER <- 20
 
 # --- Ablation Study Parameters ---
 # NOTE: Removed 1600 because sampling all sites Nonrandomly = sampling all sites Randomly
-M_values_to_test <- c(100, 225, 400, 900)
+M_values_to_test <- c(100, 200, 400, 800)
 
 # --- Sampling Strategies ---
 # Random: Uniformly sample M sites from the full landscape
