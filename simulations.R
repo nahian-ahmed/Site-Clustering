@@ -74,7 +74,7 @@ sac_levels <- c("Low", "Medium", "High")
 sac_sigmas <- c(Low = 0, Medium = 2, High = 5) 
 
 # --- Cluster Settings for "Nonrandom" Strategy ---
-n_clusters <- 3
+n_clusters <- 5
 cluster_sigma <- 5 # Controls the spread/size of the clusters
 
 cat("--- Simulation Starting ---\n")
