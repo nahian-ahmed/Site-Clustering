@@ -164,7 +164,7 @@ get_subset_landscape <- function(M_target, site_dim, full_cell_row, full_cell_co
 all_results_df <- data.frame()
 
 # Setup Output Directory
-output_dir <- file.path("simulation_experiments", "output", "sim_1")
+output_dir <- file.path("simulation_experiments", "output")
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 cat("\n--- Starting Main Simulation Loop ---\n")
