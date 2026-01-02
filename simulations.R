@@ -65,7 +65,7 @@ M_values_to_test <- c(100, 225, 400, 900, 1600)
 sac_levels <- c("Low", "Medium", "High")
 # Sigma values for Gaussian smoothing (0 = random/Low, higher = more smooth)
 sac_sigmas <- c(Low = 0, Medium = 5, High = 15) 
-sac_sigmas <- c(Low = 0, Medium = 5, High = 10) 
+# sac_sigmas <- c(Low = 0, Medium = 5, High = 10) # Alternative sigma values
 
 
 cat("--- Simulation Starting ---\n")
@@ -266,7 +266,9 @@ for (sac_level in sac_levels) {
             # 7. Simulate True State (Occupancy Z)
             ##########
             
-            lambda_tilde_i <- w %*% lambda_j
+            # BUG FIX: as.numeric() needed because Matrix multiplication returns a Matrix object
+            lambda_tilde_i <- as.numeric(w %*% lambda_j) 
+            
             psi_i <- 1 - exp(-lambda_tilde_i)
             Z_i <- rbinom(M, 1, psi_i)
             
@@ -379,6 +381,7 @@ for (sac_level in sac_levels) {
                 )
                 
                 # Map site-level results
+                # BUG FIX: as.numeric() needed for these lookups too, just to be safe
                 cell_df$site_latent_abundance <- as.numeric(lambda_tilde_i[subset_data$site_id_for_cell])
                 cell_df$site_occupancy_prob <- as.numeric(psi_i[subset_data$site_id_for_cell])
                 cell_df$site_true_occupancy <- as.factor(Z_i[subset_data$site_id_for_cell])
@@ -452,7 +455,7 @@ cat("\n--- Simulation Study Complete ---\n")
 # Combine all results from list
 all_results_df <- do.call(rbind, results_list)
 # Clean up any potential NULL entries (e.g., if loops were interrupted or counter logic had gaps)
-all_results_df <- all_results_df[!sapply(results_list, is.null), ] # Check if necessary, or just rely on correct indexing
+all_results_df <- all_results_df[!sapply(results_list, is.null), ] 
 
 # Save the full results data frame
 write.csv(all_results_df, file.path(output_dir, "params.csv"), row.names = FALSE)
