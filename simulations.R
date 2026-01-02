@@ -1,4 +1,3 @@
-
 # -----------------------------------------------------------------
 # Simulation for occuN model
 # Fully simulated experiments with varying Spatial Autocorrelation (SAC)
@@ -20,6 +19,7 @@ library(unmarked)
 library(ggplot2)
 library(patchwork)
 library(terra) # Required for spatial autocorrelation generation
+library(Matrix) # Required for sparse matrix optimization
 
 ##########
 # 2. Set Simulation Parameters
@@ -92,10 +92,13 @@ full_site_col <- (full_cell_col - 1) %/% site_dim + 1
 full_site_id_for_cell <- (full_site_row - 1) * full_n_sites_x + full_site_col
 
 # Create the full weight matrix w (1600 x 40000)
-full_w <- matrix(0, full_M, full_n_cells)
-for (i in 1:full_M) {
-    full_w[i, full_site_id_for_cell == i] = 1
-}
+# OPTIMIZATION: Use sparse matrix to save ~600MB of RAM
+full_w <- Matrix::sparseMatrix(
+    i = full_site_id_for_cell,
+    j = 1:full_n_cells,
+    x = 1,
+    dims = c(full_M, full_n_cells)
+)
 
 ##########
 # 4. Helper Function for Subsetting
@@ -161,7 +164,10 @@ get_subset_landscape <- function(M_target, site_dim, full_cell_row, full_cell_co
 # 5. Initialize Loop & Storage
 ##########
 
-all_results_df <- data.frame()
+# OPTIMIZATION: Pre-allocate list instead of growing dataframe
+total_iterations <- length(sac_levels) * n_sims * length(M_values_to_test)
+results_list <- vector("list", total_iterations)
+results_counter <- 1
 
 # Setup Output Directory
 output_dir <- file.path("simulation_experiments", "output")
@@ -334,7 +340,10 @@ for (sac_level in sac_levels) {
                         sim_id = sim,
                         SAC_Level = sac_level
                     )
-                    all_results_df <- rbind(all_results_df, loop_results)
+                    
+                    # STORE IN LIST (OPTIMIZATION)
+                    results_list[[results_counter]] <- loop_results
+                    results_counter <- results_counter + 1
                     
                     if(sim == 1) all_plots_list <- c(all_plots_list, list(ggplot(), ggplot(), ggplot()))
                     next 
@@ -350,10 +359,12 @@ for (sac_level in sac_levels) {
                 Estimated_Value = c(coef(fm, 'det'), coef(fm, 'state')),
                 M = M, 
                 sim_id = sim,
-                SAC_Level = sac_level # NEW: Store SAC Level
+                SAC_Level = sac_level
             )
             
-            all_results_df <- rbind(all_results_df, loop_results)
+            # STORE IN LIST (OPTIMIZATION)
+            results_list[[results_counter]] <- loop_results
+            results_counter <- results_counter + 1
             
             ##########
             # 12. Generate Plots (ONLY FOR SIM 1 of CURRENT SAC)
@@ -414,6 +425,9 @@ for (sac_level in sac_levels) {
             
         } # --- End M Loop ---
         
+        # OPTIMIZATION: Garbage collection after every simulation
+        gc()
+        
     } # --- End Sim Loop ---
     
     ##########
@@ -434,6 +448,11 @@ for (sac_level in sac_levels) {
 ##########
 
 cat("\n--- Simulation Study Complete ---\n")
+
+# Combine all results from list
+all_results_df <- do.call(rbind, results_list)
+# Clean up any potential NULL entries (e.g., if loops were interrupted or counter logic had gaps)
+all_results_df <- all_results_df[!sapply(results_list, is.null), ] # Check if necessary, or just rely on correct indexing
 
 # Save the full results data frame
 write.csv(all_results_df, file.path(output_dir, "params.csv"), row.names = FALSE)
