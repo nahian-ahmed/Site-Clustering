@@ -71,7 +71,8 @@ sampling_strategies <- c("Random", "Positive", "Negative", "Nonrandom")
 
 # --- Spatial Autocorrelation (SAC) Settings ---
 sac_levels <- c("Low", "Medium", "High")
-sac_sigmas <- c(Low = 0, Medium = 2, High = 5) 
+sac_sigmas <- c(Low = 0, Medium = 2, High = 5)
+sac_sigmas <- c(Low = 0, Medium = 1, High = 3) 
 
 # --- Cluster Settings for "Nonrandom" Strategy ---
 n_clusters <- 5
