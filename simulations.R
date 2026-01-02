@@ -1,4 +1,3 @@
-
 # -----------------------------------------------------------------
 # Simulation for occuN model
 # Fully simulated experiments with varying Spatial Autocorrelation (SAC)
@@ -31,7 +30,7 @@ set.seed(123)
 
 # --- Simulation repetitions ---
 n_sims <- 100 # Number of full datasets to generate per SAC level
-n_sims <- 3 # Debug count
+# n_sims <- 3 # Debug count
 
 # --- Model fitting repetitions ---
 n_reps <- 30 
@@ -60,7 +59,8 @@ PARAM_LOWER <- -20
 PARAM_UPPER <- 20
 
 # --- Ablation Study Parameters ---
-M_values_to_test <- c(100, 225, 400, 900, 1600)
+# NOTE: Removed 1600 because sampling all sites Nonrandomly = sampling all sites Randomly
+M_values_to_test <- c(100, 225, 400, 900)
 
 # --- Sampling Strategies ---
 # Random: Uniformly sample M sites from the full landscape
@@ -165,18 +165,14 @@ for (sac_level in sac_levels) {
         full_lambda_j <- exp(full_X_cell %*% true_betas)
         
         # True Site States (for full 1600 sites)
-        # Note: full_w is 1600x40000, lambda_j is 40000x1
         full_lambda_tilde_i <- as.numeric(full_w %*% full_lambda_j)
         full_psi_i <- 1 - exp(-full_lambda_tilde_i)
         full_Z_i <- rbinom(full_M, 1, full_psi_i)
         
         # Calculate Site-Level Covariate Weights for Nonrandom Sampling
-        # Sum of cell values in site / 25 = Mean cell value
         site_cov_sums <- as.numeric(full_w %*% full_cellCovs$cell_cov1)
         site_cov_means <- site_cov_sums / (site_dim^2)
-        
-        # Weights: Prefer high values. Use exp() to ensure positivity and bias.
-        # Scale to avoid explosion before exp
+        # Weights: Prefer high values
         pref_weights <- exp(site_cov_means) 
 
         # --- LOOP OVER SAMPLING STRATEGIES ---
@@ -192,11 +188,8 @@ for (sac_level in sac_levels) {
                 
                 # --- 6.1. Select Sites ---
                 if (sampling_strat == "Random") {
-                    # Uniform random sampling
                     selected_site_indices <- sample(1:full_M, M_i, replace = FALSE)
                 } else {
-                    # Nonrandom sampling (weighted)
-                    # Note: We sample M_i sites (not M/2) to keep sample size constant for error comparison
                     selected_site_indices <- sample(1:full_M, M_i, replace = FALSE, prob = pref_weights)
                 }
                 
@@ -204,10 +197,7 @@ for (sac_level in sac_levels) {
                 M <- length(selected_site_indices)
                 
                 # --- 6.2. Subset Data ---
-                # We retain FULL cellCovs (40000) for integration, but subset 'w' rows
                 w_sub <- full_w[selected_site_indices, , drop=FALSE]
-                
-                # Subset True State for selected sites
                 Z_sub <- full_Z_i[selected_site_indices]
                 
                 ##########
@@ -289,17 +279,19 @@ for (sac_level in sac_levels) {
                 results_counter <- results_counter + 1
                 
                 ##########
-                # 12. Plotting (Sim 1 Only)
+                # 12. Plotting (Sim 1 Only) - 3-COLUMN STYLE
                 ##########
                 if (sim == 1) {
-                    # For plotting, we show the full landscape and highlight selected sites
-                    
+                    # Create data frame for FULL landscape
                     cell_df <- data.frame(
                         x = full_cell_col,
                         y = full_cell_row,
-                        covariate = full_cellCovs$cell_cov1,
-                        true_occupancy = as.factor(full_Z_i[full_site_id_for_cell])
+                        covariate = full_cellCovs$cell_cov1
                     )
+                    
+                    # Map full site attributes to cells
+                    cell_df$site_latent_abundance <- full_lambda_tilde_i[full_site_id_for_cell]
+                    cell_df$site_true_occupancy <- as.factor(full_Z_i[full_site_id_for_cell])
                     
                     # Generate boxes for SELECTED sites only
                     boxes_list <- lapply(selected_site_indices, function(sid) {
@@ -317,19 +309,29 @@ for (sac_level in sac_levels) {
                         geom_rect(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
                                   color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
                         labs(title=sprintf("Covariate (M=%d)", M), fill="Cov") +
-                        theme_void() + theme(legend.position="none")
+                        theme_minimal() + theme(legend.position="none")
 
-                    # Plot 2: True Occupancy + Selected Sites
-                    p_occ <- ggplot(cell_df, aes(x=x, y=y, fill=true_occupancy)) +
+                    # Plot 2: Abundance + Selected Sites
+                    p_abund <- ggplot(cell_df, aes(x=x, y=y, fill=site_latent_abundance)) +
                         geom_raster() +
-                        scale_fill_manual(values=c("0"="navy", "1"="yellow")) +
+                        scale_fill_viridis_c(option = "magma") +
                         coord_fixed(expand=FALSE) +
                         geom_rect(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
                                   color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
-                        labs(title=sprintf("True Occ (M=%d)", M), fill="Occ") +
-                        theme_void() + theme(legend.position="none")
+                        labs(title=sprintf("Abundance (M=%d)", M), fill="Abund") +
+                        theme_minimal() + theme(legend.position="none")
+
+                    # Plot 3: Occupancy + Selected Sites
+                    p_occ <- ggplot(cell_df, aes(x=x, y=y, fill=site_true_occupancy)) +
+                        geom_raster() +
+                        scale_fill_manual(values=c("0"="navyblue", "1"="yellow")) +
+                        coord_fixed(expand=FALSE) +
+                        geom_rect(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
+                                  color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
+                        labs(title=sprintf("Occupancy (M=%d)", M), fill="Occ") +
+                        theme_minimal() + theme(legend.position="none")
                         
-                    current_strat_plots <- c(current_strat_plots, list(p_cov, p_occ))
+                    current_strat_plots <- c(current_strat_plots, list(p_cov, p_abund, p_occ))
                 }
                 
             } # End M Loop
@@ -337,10 +339,10 @@ for (sac_level in sac_levels) {
             # Save Strategy Specific Plots for this SAC level
             if (sim == 1) {
                 cat(sprintf("Saving plots for SAC=%s, Sampling=%s...\n", sac_level, sampling_strat))
-                # 2 columns (Cov, Occ) x Length(M) rows
-                comb_plot <- patchwork::wrap_plots(current_strat_plots, ncol=2, nrow=length(M_values_to_test))
+                # 3 columns (Cov, Abund, Occ) x Length(M) rows
+                comb_plot <- patchwork::wrap_plots(current_strat_plots, ncol=3, nrow=length(M_values_to_test))
                 fname <- sprintf("plot_SAC=%s_sampling=%s.png", sac_level, sampling_strat)
-                ggsave(file.path(output_dir, fname), plot=comb_plot, dpi=150, width=10, height=18)
+                ggsave(file.path(output_dir, fname), plot=comb_plot, dpi=150, width=15, height=18)
             }
             
         } # End Sampling Loop
