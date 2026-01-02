@@ -339,7 +339,7 @@ for (sac_level in sac_levels) {
                         coord_fixed(expand=FALSE) +
                         geom_rect(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
                                   color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
-                        labs(title=sprintf("Occupancy (M=%d)", M), fill="Occupance") +
+                        labs(title=sprintf("Occupancy (M=%d)", M), fill="Occupancy") +
                         tight_theme
                         
                     plots_cov[[length(plots_cov)+1]]     <- p_cov
@@ -374,7 +374,7 @@ for (sac_level in sac_levels) {
                 final_comb_plot <- col_cov | col_abund | col_occ
                 
                 fname <- sprintf("plot_SAC=%s_sampling=%s.png", sac_level, sampling_strat)
-                ggsave(file.path(output_dir, fname), plot=final_comb_plot, dpi=150, width=14, height=18)
+                ggsave(file.path(output_dir, fname), plot=final_comb_plot, dpi=150, width=12, height=18)
             }
             
         } # End Sampling Loop
@@ -415,7 +415,7 @@ for (strat in sampling_strategies) {
         geom_boxplot(outlier.size = 0.5) +
         geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
         scale_fill_manual(values = c("Low" = "yellow", "Medium" = "orange", "High" = "red")) +
-        labs(title = title, x = "M (Sites)", y = "Error") +
+        labs(title = title, x = "M (Sites)", y = "Error", fill = "Spatial Autocorrelation") +
         theme_bw() + theme(legend.position = "none")
     }
     
