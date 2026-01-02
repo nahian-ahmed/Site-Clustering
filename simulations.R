@@ -50,7 +50,8 @@ J_obs <- 3
 
 # --- True parameter values ---
 true_alphas <- c(alpha_int = 0.5, alpha_cov = -1.0)
-true_betas <- c(beta_int = -5.0, beta_cov = 1.0) 
+true_betas <- c(beta_int = -5.0, beta_cov = 1.0)
+
 
 # --- Model settings ---
 selected_optimizer <- "nlminb"
@@ -69,7 +70,7 @@ sampling_strategies <- c("Random", "Nonrandom")
 
 # --- Spatial Autocorrelation (SAC) Settings ---
 sac_levels <- c("Low", "Medium", "High")
-sac_sigmas <- c(Low = 0, Medium = 3, High = 9) 
+sac_sigmas <- c(Low = 0, Medium = 2, High = 5) 
 
 
 cat("--- Simulation Starting ---\n")
