@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------
 # Simulation for occuN model
 # Fully simulated experiments with varying Spatial Autocorrelation (SAC)
-# AND Sampling Strategies (Random, Positive, Negative, Nonrandom-Clustered)
+# AND Sampling Strategies (Random, Positive, Negative, Nonrandom)
 # -----------------------------------------------------------------
 
 ###
@@ -10,7 +10,7 @@
 
 install_now = FALSE
 if (install_now){
-  options(repos = c(CRAN = "[https://cloud.r-project.org/](https://cloud.r-project.org/)"))
+  options(repos = c(CRAN = "https://cloud.r-project.org/"))
   if (!requireNamespace("devtools", quietly = FALSE)) install.packages("devtools")
   if (!requireNamespace("terra", quietly = FALSE)) install.packages("terra")
   suppressMessages(devtools::install_github("nahian-ahmed/unmarked", ref = "occuN", force = TRUE))
@@ -30,7 +30,6 @@ set.seed(123)
 
 # --- Simulation repetitions ---
 n_sims <- 100 # Number of full datasets to generate per SAC level
-n_sims <- 3
 
 # --- Model fitting repetitions ---
 n_reps <- 30 
@@ -63,16 +62,19 @@ PARAM_UPPER <- 20
 M_values_to_test <- c(100, 225, 400, 900)
 
 # --- Sampling Strategies ---
-# Random: Uniform sampling
-# Positive: Weighted by state covariate (High Cov -> High Prob)
-# Negative: Weighted by state covariate (Low Cov -> High Prob)
-# Nonrandom: Spatially clustered around random seeds (Independent of Covariate)
+# Random: Uniformly sample M sites
+# Positive: Sample sites weighted by state covariate (High Cov -> High Prob)
+# Negative: Sample sites weighted by inverse state covariate (Low Cov -> High Prob)
+# Nonrandom: Sample sites clustered around random seeds (Independent of Covariate)
 sampling_strategies <- c("Random", "Positive", "Negative", "Nonrandom")
 
 # --- Spatial Autocorrelation (SAC) Settings ---
 sac_levels <- c("Low", "Medium", "High")
 sac_sigmas <- c(Low = 0, Medium = 2, High = 5) 
 
+# --- Cluster Settings for "Nonrandom" Strategy ---
+n_clusters <- 5
+cluster_sigma <- 20 # Controls the spread/size of the clusters
 
 cat("--- Simulation Starting ---\n")
 cat(sprintf("Running %d full simulations per SAC level.\n", n_sims))
@@ -103,14 +105,18 @@ full_w <- Matrix::sparseMatrix(
     dims = c(full_M, full_n_cells)
 )
 
-# Pre-calculate site centroids for the "Nonrandom" (Clustered) strategy
-# Grid coordinates for site centers
-site_centroids_x <- (1:full_n_sites_x - 0.5) * site_dim
-site_centroids_y <- (1:full_n_sites_y - 0.5) * site_dim
-# Create a grid of centroids aligned with full_M indices (row-major order matching full_site_id)
-site_coords <- expand.grid(col = 1:full_n_sites_x, row = 1:full_n_sites_y)
-site_coords$x <- (site_coords$col - 1) * site_dim + (site_dim/2)
-site_coords$y <- (site_coords$row - 1) * site_dim + (site_dim/2)
+# --- Pre-calculate Site Centroids (for Nonrandom distance calc) ---
+# Create a grid of site indices (1 to 1600)
+site_indices <- 1:full_M
+# Calculate row/col for every site
+s_rows <- (site_indices - 1) %/% full_n_sites_x + 1
+s_cols <- (site_indices - 1) %% full_n_sites_x + 1
+# Calculate centroid X/Y
+site_coords <- data.frame(
+  site_id = site_indices,
+  x = (s_cols - 1) * site_dim + (site_dim / 2),
+  y = (s_rows - 1) * site_dim + (site_dim / 2)
+)
 
 # Helper to get site boxes for plotting
 get_site_box <- function(site_id, site_dim, n_sites_x) {
@@ -123,6 +129,19 @@ get_site_box <- function(site_id, site_dim, n_sites_x) {
     ymin <- (s_row - 1) * site_dim + 0.5
     ymax <- ymin + site_dim
     return(c(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax))
+}
+
+##########
+# 4. Pre-generate Fixed Cluster Seeds
+##########
+# We generate these ONCE per simulation ID so they remain fixed across SAC levels.
+cat("Pre-generating fixed cluster seeds for all simulations...\n")
+sim_cluster_seeds <- vector("list", n_sims)
+for(i in 1:n_sims){
+  sim_cluster_seeds[[i]] <- list(
+    x = runif(n_clusters, 0, full_grid_dim),
+    y = runif(n_clusters, 0, full_grid_dim)
+  )
 }
 
 ##########
@@ -180,31 +199,31 @@ for (sac_level in sac_levels) {
         full_psi_i <- 1 - exp(-full_lambda_tilde_i)
         full_Z_i <- rbinom(full_M, 1, full_psi_i)
         
-        # --- Prepare Covariate Weights (Shared for Positive/Negative) ---
+        # --- Calculate Weights for Sampling Strategies ---
+        
+        # 1. Covariate Based Weights (Positive & Negative)
         site_cov_sums <- as.numeric(full_w %*% full_cellCovs$cell_cov1)
         site_cov_means <- site_cov_sums / (site_dim^2)
         
-        # --- Prepare Cluster Weights (for "Nonrandom" strategy) ---
-        # Generate 5 random cluster centers for this simulation iteration
-        n_clusters <- 5
-        clust_centers_x <- runif(n_clusters, 0, full_grid_dim)
-        clust_centers_y <- runif(n_clusters, 0, full_grid_dim)
+        # 2. Cluster Based Weights (Nonrandom)
+        # Retrieve the fixed seeds for this specific simulation ID
+        current_seeds <- sim_cluster_seeds[[sim]]
         
-        # Calculate distance from every site to the nearest cluster center
-        # Using the pre-calculated site_coords
+        # Calculate min distance from each site to ANY of the 5 seeds
+        # We vectorise this distance calculation
         site_dists <- rep(Inf, full_M)
         for(k in 1:n_clusters){
-           d <- sqrt((site_coords$x - clust_centers_x[k])^2 + (site_coords$y - clust_centers_y[k])^2)
+           d <- sqrt((site_coords$x - current_seeds$x[k])^2 + (site_coords$y - current_seeds$y[k])^2)
            site_dists <- pmin(site_dists, d)
         }
-        
-        # Cluster weights: Exponential decay based on distance (sigma=20 ensures moderate cluster size)
-        cluster_weights <- exp(-site_dists^2 / (2 * 20^2))
+        # Gaussian decay weights based on distance
+        cluster_weights <- exp(-site_dists^2 / (2 * cluster_sigma^2))
+
 
         # --- LOOP OVER SAMPLING STRATEGIES ---
         for (sampling_strat in sampling_strategies) {
             
-            # Helper for plotting accumulation
+            # Helper for plotting accumulation: Initialize separate lists per column
             if(sim == 1) {
                 plots_cov   <- list()
                 plots_abund <- list()
@@ -213,29 +232,28 @@ for (sac_level in sac_levels) {
             
             cat(sprintf("  >> Strategy: %s\n", sampling_strat))
 
-            # --- DEFINE PROBABILITIES ---
+            # --- SELECT SAMPLING WEIGHTS ---
             if (sampling_strat == "Random") {
-                pref_weights <- NULL # Uniform sampling
+                curr_weights <- NULL
             } else if (sampling_strat == "Positive") {
-                # Original Nonrandom: Prefer High Covariate
-                pref_weights <- exp(site_cov_means)
+                # Prefer High Covariate values
+                curr_weights <- exp(site_cov_means) 
             } else if (sampling_strat == "Negative") {
-                # New: Prefer Low Covariate (Negative Correlation)
-                # We use exp(-val) to flip the preference
-                pref_weights <- exp(-site_cov_means)
+                # Prefer Low Covariate values (invert the relationship)
+                curr_weights <- exp(-site_cov_means)
             } else if (sampling_strat == "Nonrandom") {
-                # New: Spatially Clustered, Independent of Covariate
-                pref_weights <- cluster_weights
+                # Prefer sites close to the fixed random seeds
+                curr_weights <- cluster_weights
             }
-            
+
             # --- LOOP OVER M ---
             for (M_i in M_values_to_test) {
                 
                 # --- 6.1. Select Sites ---
-                if (is.null(pref_weights)) {
+                if (is.null(curr_weights)) {
                     selected_site_indices <- sample(1:full_M, M_i, replace = FALSE)
                 } else {
-                    selected_site_indices <- sample(1:full_M, M_i, replace = FALSE, prob = pref_weights)
+                    selected_site_indices <- sample(1:full_M, M_i, replace = FALSE, prob = curr_weights)
                 }
                 
                 selected_site_indices <- sort(selected_site_indices)
