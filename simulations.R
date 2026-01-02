@@ -1,6 +1,8 @@
+
 # -----------------------------------------------------------------
 # Simulation for occuN model
 # Fully simulated experiments with varying Spatial Autocorrelation (SAC)
+# AND Sampling Strategies (Random vs Nonrandom)
 # -----------------------------------------------------------------
 
 ###
@@ -18,81 +20,80 @@ if (install_now){
 library(unmarked)
 library(ggplot2)
 library(patchwork)
-library(terra) # Required for spatial autocorrelation generation
-library(Matrix) # Required for sparse matrix optimization
+library(terra) 
+library(Matrix) 
 
 ##########
 # 2. Set Simulation Parameters
 ##########
 
-set.seed(123) # For reproducibility
+set.seed(123) 
 
 # --- Simulation repetitions ---
 n_sims <- 100 # Number of full datasets to generate per SAC level
-# n_sims <- 3
+n_sims <- 3 # Debug count
+
 # --- Model fitting repetitions ---
-n_reps <- 30 # Number of random-start repetitions for each model fit
+n_reps <- 30 
 
 # --- Full Landscape parameters (200x200) ---
-full_grid_dim <- 200 # Landscape is 200x200 cells
-full_n_cells <- full_grid_dim * full_grid_dim # Total number of cells (40000)
+full_grid_dim <- 200 
+full_n_cells <- full_grid_dim * full_grid_dim # 40000
 
-# --- Site parameters (reference clustering) ---
-site_dim <- 5 # Sites are 5x5 cell blocks (5-cellSq)
+# --- Site parameters ---
+site_dim <- 5 # Sites are 5x5 cell blocks
 full_n_sites_x <- full_grid_dim / site_dim # 40
 full_n_sites_y <- full_grid_dim / site_dim # 40
-full_M <- full_n_sites_x * full_n_sites_y # Total number of sites (1600)
+full_M <- full_n_sites_x * full_n_sites_y # 1600
 
 # --- Observation parameters ---
-J_obs <- 3 # Number of surveys per site
+J_obs <- 3 
 
 # --- True parameter values ---
-# Detection (alphas) for formula ~obs_cov1
 true_alphas <- c(alpha_int = 0.5, alpha_cov = -1.0)
-
-# State (betas) for formula ~cell_cov1
 true_betas <- c(beta_int = -5.0, beta_cov = 1.0) 
 
 # --- Model settings ---
 selected_optimizer <- "nlminb"
+# Optimization bounds
+PARAM_LOWER <- -20
+PARAM_UPPER <- 20
 
 # --- Ablation Study Parameters ---
 M_values_to_test <- c(100, 225, 400, 900, 1600)
 
+# --- Sampling Strategies ---
+# Random: Uniformly sample M sites from the full landscape
+# Nonrandom: Sample M sites weighted by the state covariate (high values -> higher prob)
+sampling_strategies <- c("Random", "Nonrandom")
+
 # --- Spatial Autocorrelation (SAC) Settings ---
-# We test 3 levels of spatial autocorrelation.
-# We use a Gaussian filter with varying sigma to induce correlation.
 sac_levels <- c("Low", "Medium", "High")
-# Sigma values for Gaussian smoothing (0 = random/Low, higher = more smooth)
 sac_sigmas <- c(Low = 0, Medium = 5, High = 15) 
-# sac_sigmas <- c(Low = 0, Medium = 5, High = 10) # Alternative sigma values
 
 
 cat("--- Simulation Starting ---\n")
 cat(sprintf("Running %d full simulations per SAC level.\n", n_sims))
 cat(sprintf("SAC Levels: %s\n", paste(sac_levels, collapse=", ")))
-cat(sprintf("Each simulation tests %d M-values.\n", length(M_values_to_test)))
-cat(sprintf("TOTAL MODEL FITS: %d\n\n", length(sac_levels) * n_sims * length(M_values_to_test) * n_reps))
+cat(sprintf("Sampling Strategies: %s\n", paste(sampling_strategies, collapse=", ")))
+cat(sprintf("TOTAL MODEL FITS: %d\n\n", length(sac_levels) * n_sims * length(M_values_to_test) * length(sampling_strategies) * n_reps))
 
 
 ##########
 # 3. Define FULL Sites & Create Weight Matrix (w)
-# (This is static geometry, so it lives OUTSIDE the loop)
 ##########
 
 cat("Generating static full landscape geometry (1600 sites from 40000 cells)...\n")
 
-# Assign each cell (1 to 40000) to a site (1 to 1600)
+# Assign each cell to a site
 full_cell_row <- (0:(full_n_cells - 1) %/% full_grid_dim) + 1
 full_cell_col <- (0:(full_n_cells - 1) %% full_grid_dim) + 1
 full_site_row <- (full_cell_row - 1) %/% site_dim + 1
 full_site_col <- (full_cell_col - 1) %/% site_dim + 1
 
-# This vector has length 40000, with values from 1 to 1600
 full_site_id_for_cell <- (full_site_row - 1) * full_n_sites_x + full_site_col
 
-# Create the full weight matrix w (1600 x 40000)
-# OPTIMIZATION: Use sparse matrix to save ~600MB of RAM
+# Full weight matrix w (1600 x 40000)
 full_w <- Matrix::sparseMatrix(
     i = full_site_id_for_cell,
     j = 1:full_n_cells,
@@ -100,350 +101,255 @@ full_w <- Matrix::sparseMatrix(
     dims = c(full_M, full_n_cells)
 )
 
-##########
-# 4. Helper Function for Subsetting
-##########
-
-get_subset_landscape <- function(M_target, site_dim, full_cell_row, full_cell_col, full_cellCovs, full_site_id_for_cell, full_w, full_lambda_j) {
+# Helper to get site boxes for plotting
+get_site_box <- function(site_id, site_dim, n_sites_x) {
+    # 1-based row/col for the site
+    s_row <- (site_id - 1) %/% n_sites_x + 1
+    s_col <- (site_id - 1) %% n_sites_x + 1
     
-    # 1. Calculate dimensions of the target subset
-    n_sites_per_dim_target <- sqrt(M_target)
-    grid_dim_target <- n_sites_per_dim_target * site_dim
-    
-    # cat(sprintf("\n--- Subsetting for M = %d ---\n", M_target))
-    
-    # 2. Find which *full* cell indices are in the top-left quadrant
-    cell_indices_to_keep <- which(full_cell_row <= grid_dim_target & full_cell_col <= grid_dim_target)
-    
-    # 3. Find which *full* site indices are in the top-left quadrant
-    site_ids_in_subset <- unique(full_site_id_for_cell[cell_indices_to_keep])
-    site_ids_to_keep <- sort(site_ids_in_subset) # Should be 1:M_target
-    
-    if (length(site_ids_to_keep) != M_target) {
-        warning(sprintf("Expected %d sites, but found %d unique sites in subset.", M_target, length(site_ids_to_keep)))
-    }
-    
-    # --- 4. Subset all the data ---
-    
-    # Subset cellCovs
-    sub_cellCovs <- full_cellCovs[cell_indices_to_keep, , drop = FALSE]
-    rownames(sub_cellCovs) <- NULL
-    
-    # Subset weight matrix 'w'
-    sub_w <- full_w[site_ids_to_keep, cell_indices_to_keep]
-    
-    # Map site IDs
-    global_site_ids_for_subset_cells <- full_site_id_for_cell[cell_indices_to_keep]
-    local_site_id_map <- 1:M_target
-    names(local_site_id_map) <- as.character(site_ids_to_keep)
-    sub_site_id_for_cell <- as.numeric(local_site_id_map[as.character(global_site_ids_for_subset_cells)])
-    
-    # Subset cell coordinates
-    sub_cell_row <- full_cell_row[cell_indices_to_keep]
-    sub_cell_col <- full_cell_col[cell_indices_to_keep]
-    
-    # Subset lambda_j
-    sub_lambda_j <- full_lambda_j[cell_indices_to_keep]
-    
-    return(list(
-        M = M_target,
-        n_cells = length(cell_indices_to_keep),
-        grid_dim = grid_dim_target,
-        n_sites_x = n_sites_per_dim_target,
-        n_sites_y = n_sites_per_dim_target,
-        cellCovs = sub_cellCovs,
-        w = sub_w,
-        site_id_for_cell = sub_site_id_for_cell,
-        cell_row = sub_cell_row,
-        cell_col = sub_cell_col,
-        lambda_j = sub_lambda_j
-    ))
+    xmin <- (s_col - 1) * site_dim + 0.5
+    xmax <- xmin + site_dim
+    ymin <- (s_row - 1) * site_dim + 0.5
+    ymax <- ymin + site_dim
+    return(c(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax))
 }
 
 ##########
 # 5. Initialize Loop & Storage
 ##########
 
-# OPTIMIZATION: Pre-allocate list instead of growing dataframe
-total_iterations <- length(sac_levels) * n_sims * length(M_values_to_test)
+total_iterations <- length(sac_levels) * n_sims * length(M_values_to_test) * length(sampling_strategies)
 results_list <- vector("list", total_iterations)
 results_counter <- 1
 
-# Setup Output Directory
 output_dir <- file.path("simulation_experiments", "output")
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 cat("\n--- Starting Main Simulation Loop ---\n")
 
-# --- Main loop over SAC Levels ---
 for (sac_level in sac_levels) {
     
     current_sigma <- sac_sigmas[[sac_level]]
-    all_plots_list <- list() # Store plots only for the current SAC level
     
     cat(sprintf("\n#######################################################\n"))
     cat(sprintf("### STARTING EXPERIMENT: SAC = %s (Sigma = %d) ###\n", sac_level, current_sigma))
     cat(sprintf("#######################################################\n"))
 
-    # --- Loop over SIMULATIONS ---
     for (sim in 1:n_sims) {
         
         cat(sprintf("\n=== SAC: %s | Sim %d of %d ===\n", sac_level, sim, n_sims))
     
         ##########
-        # 6. Create FULL Landscape (Cells & Covariates)
-        #    WITH SPATIAL AUTOCORRELATION
+        # 6. Create FULL Landscape
         ##########
         
-        # 1. Generate base random noise
         r_base <- terra::rast(nrows=full_grid_dim, ncols=full_grid_dim, 
                               xmin=0, xmax=full_grid_dim, ymin=0, ymax=full_grid_dim,
                               vals=rnorm(full_n_cells))
         
-        # 2. Apply Gaussian smoothing if Sigma > 0 (Medium/High SAC)
         if (current_sigma > 0) {
-            # Create Gaussian weights
             fw <- terra::focalMat(r_base, current_sigma, type = "Gauss")
-            # Apply focal filter (this induces autocorrelation)
             r_smooth <- terra::focal(r_base, w = fw, fun = sum, na.rm = TRUE)
-            
-            # 3. Rescale to Mean=0, SD=1
-            # (Important to keep effect sizes comparable across SAC levels)
-            vals <- terra::values(r_smooth)
-            vals_scaled <- as.vector(scale(vals))
-            terra::values(r_smooth) <- vals_scaled
-            
+            terra::values(r_smooth) <- as.vector(scale(terra::values(r_smooth)))
             r_final <- r_smooth
         } else {
-            # Low SAC (Zero): Just ensure it's scaled (rnorm is already ~0,1)
-            vals <- terra::values(r_base)
-            terra::values(r_base) <- as.vector(scale(vals))
+            terra::values(r_base) <- as.vector(scale(terra::values(r_base)))
             r_final <- r_base
         }
         
-        # Extract covariate vector (ensuring correct order)
-        # Terra values are row-major (top-left to bottom-right), matching our grid indexing
-        full_cellCovs <- data.frame(
-            cell_cov1 = terra::values(r_final, mat=FALSE) 
-        )
-        # Handle edge-case NAs from focal (should be minimal/none with padding, but safer to fill)
-        if(any(is.na(full_cellCovs$cell_cov1))) {
-             full_cellCovs$cell_cov1[is.na(full_cellCovs$cell_cov1)] <- 0
-        }
+        full_cellCovs <- data.frame(cell_cov1 = terra::values(r_final, mat=FALSE))
+        if(any(is.na(full_cellCovs$cell_cov1))) full_cellCovs$cell_cov1[is.na(full_cellCovs$cell_cov1)] <- 0
         
-        # Create design matrix for state (X_design) for all cells
+        # True Lambda
         full_X_cell <- model.matrix(~cell_cov1, data = full_cellCovs)
+        full_lambda_j <- exp(full_X_cell %*% true_betas)
         
-        # Calculate true latent abundance (lambda_j) for each cell
-        full_log_lambda_j <- full_X_cell %*% true_betas
-        full_lambda_j <- exp(full_log_lambda_j)
-    
-    
-        # --- Main loop over M values ---
-        for (M_i in M_values_to_test) {
-            
-            # --- 6.1. Get subset data for M = M_i ---
-            subset_data <- get_subset_landscape(
-                M_target = M_i,
-                site_dim = site_dim,
-                full_cell_row = full_cell_row,
-                full_cell_col = full_cell_col,
-                full_cellCovs = full_cellCovs,
-                full_site_id_for_cell = full_site_id_for_cell,
-                full_w = full_w,
-                full_lambda_j = full_lambda_j
-            )
-            
-            # --- 6.2. Unpack ---
-            M <- subset_data$M
-            w <- subset_data$w
-            lambda_j <- subset_data$lambda_j
-            cellCovs <- subset_data$cellCovs
-            
-            # cat(sprintf("  Running M=%d.\n", M))
-            
-            ##########
-            # 7. Simulate True State (Occupancy Z)
-            ##########
-            
-            # BUG FIX: as.numeric() needed because Matrix multiplication returns a Matrix object
-            lambda_tilde_i <- as.numeric(w %*% lambda_j) 
-            
-            psi_i <- 1 - exp(-lambda_tilde_i)
-            Z_i <- rbinom(M, 1, psi_i)
-            
-            ##########
-            # 8. Simulate Observation Data (y)
-            ##########
-            
-            obs_cov1 <- matrix(rnorm(M * J_obs), M, J_obs)
-            obsCovs <- list(obs_cov1 = obs_cov1)
-            
-            y <- matrix(NA, M, J_obs)
-            for (i in 1:M) {
-                if (Z_i[i] == 0) {
-                    y[i, ] <- 0
-                    next
-                }
-                for (k in 1:J_obs) {
-                    logit_p_ik <- true_alphas[1] * 1 + true_alphas[2] * obsCovs$obs_cov1[i, k]
-                    p_ik <- plogis(logit_p_ik)
-                    y[i, k] <- rbinom(1, 1, p_ik)
-                }
-            }
-            
-            ##########
-            # 9. Bundle Data
-            ##########
-            
-            umf <- unmarkedFrameOccuN(
-                y = y,
-                obsCovs = obsCovs,
-                cellCovs = cellCovs,
-                w = w
-            )
-            
-            ##########
-            # 10. Fit the occuN Model
-            ##########
-            
-            best_fm <- NULL
-            min_nll <- Inf
-            n_params <- length(true_alphas) + length(true_betas)
+        # True Site States (for full 1600 sites)
+        # Note: full_w is 1600x40000, lambda_j is 40000x1
+        full_lambda_tilde_i <- as.numeric(full_w %*% full_lambda_j)
+        full_psi_i <- 1 - exp(-full_lambda_tilde_i)
+        full_Z_i <- rbinom(full_M, 1, full_psi_i)
         
-            for (rep in 1:n_reps) {
-                rand_starts <- runif(n_params, -5, 5) 
-                fm_rep <- try(occuN(
-                    formula = ~obs_cov1 ~ cell_cov1,
-                    data = umf,
-                    starts = rand_starts,
-                    se = TRUE,
-                    method = selected_optimizer
-                ), silent = TRUE)
+        # Calculate Site-Level Covariate Weights for Nonrandom Sampling
+        # Sum of cell values in site / 25 = Mean cell value
+        site_cov_sums <- as.numeric(full_w %*% full_cellCovs$cell_cov1)
+        site_cov_means <- site_cov_sums / (site_dim^2)
+        
+        # Weights: Prefer high values. Use exp() to ensure positivity and bias.
+        # Scale to avoid explosion before exp
+        pref_weights <- exp(site_cov_means) 
+
+        # --- LOOP OVER SAMPLING STRATEGIES ---
+        for (sampling_strat in sampling_strategies) {
+            
+            # Helper for plotting accumulation
+            if(sim == 1) current_strat_plots <- list()
+            
+            cat(sprintf("  >> Strategy: %s\n", sampling_strat))
+
+            # --- LOOP OVER M ---
+            for (M_i in M_values_to_test) {
                 
-                if (inherits(fm_rep, "try-error")) next
-                
-                current_nll <- fm_rep@negLogLike
-                if (current_nll < min_nll) {
-                    min_nll <- current_nll
-                    best_fm <- fm_rep
+                # --- 6.1. Select Sites ---
+                if (sampling_strat == "Random") {
+                    # Uniform random sampling
+                    selected_site_indices <- sample(1:full_M, M_i, replace = FALSE)
+                } else {
+                    # Nonrandom sampling (weighted)
+                    # Note: We sample M_i sites (not M/2) to keep sample size constant for error comparison
+                    selected_site_indices <- sample(1:full_M, M_i, replace = FALSE, prob = pref_weights)
                 }
-            } 
-            
-            fm <- best_fm
-            
-            if (is.null(fm)) {
-                    # cat(sprintf("    (All reps failed for M=%d)\n", M))
-                    loop_results <- data.frame(
-                        Parameter = c("alpha (det_int)", "alpha (det_cov1)", "beta (state_int)", "beta (state_cov1)"),
-                        True_Value = c(true_alphas, true_betas),
-                        Estimated_Value = c(NA, NA, NA, NA),
-                        M = M,
-                        sim_id = sim,
-                        SAC_Level = sac_level
-                    )
-                    
-                    # STORE IN LIST (OPTIMIZATION)
-                    results_list[[results_counter]] <- loop_results
-                    results_counter <- results_counter + 1
-                    
-                    if(sim == 1) all_plots_list <- c(all_plots_list, list(ggplot(), ggplot(), ggplot()))
-                    next 
-            }
-        
-            ##########
-            # 11. Store Results
-            ##########
-            
-            loop_results <- data.frame(
-                Parameter = c("alpha (det_int)", "alpha (det_cov1)", "beta (state_int)", "beta (state_cov1)"),
-                True_Value = c(true_alphas, true_betas),
-                Estimated_Value = c(coef(fm, 'det'), coef(fm, 'state')),
-                M = M, 
-                sim_id = sim,
-                SAC_Level = sac_level
-            )
-            
-            # STORE IN LIST (OPTIMIZATION)
-            results_list[[results_counter]] <- loop_results
-            results_counter <- results_counter + 1
-            
-            ##########
-            # 12. Generate Plots (ONLY FOR SIM 1 of CURRENT SAC)
-            ##########
-            
-            if (sim == 1) {
-                # Create data frame for cell covariates
-                cell_df <- data.frame(
-                    x = subset_data$cell_col,
-                    y = subset_data$cell_row,
-                    covariate = cellCovs$cell_cov1
+                
+                selected_site_indices <- sort(selected_site_indices)
+                M <- length(selected_site_indices)
+                
+                # --- 6.2. Subset Data ---
+                # We retain FULL cellCovs (40000) for integration, but subset 'w' rows
+                w_sub <- full_w[selected_site_indices, , drop=FALSE]
+                
+                # Subset True State for selected sites
+                Z_sub <- full_Z_i[selected_site_indices]
+                
+                ##########
+                # 8. Simulate Observation Data (y) for Selected Sites
+                ##########
+                
+                obs_cov1 <- matrix(rnorm(M * J_obs), M, J_obs)
+                obsCovs <- list(obs_cov1 = obs_cov1)
+                
+                y <- matrix(NA, M, J_obs)
+                for (i in 1:M) {
+                    if (Z_sub[i] == 0) {
+                        y[i, ] <- 0
+                        next
+                    }
+                    for (k in 1:J_obs) {
+                        logit_p_ik <- true_alphas[1] * 1 + true_alphas[2] * obsCovs$obs_cov1[i, k]
+                        p_ik <- plogis(logit_p_ik)
+                        y[i, k] <- rbinom(1, 1, p_ik)
+                    }
+                }
+                
+                ##########
+                # 9. Bundle Data
+                ##########
+                
+                umf <- unmarkedFrameOccuN(
+                    y = y,
+                    obsCovs = obsCovs,
+                    cellCovs = full_cellCovs, # Pass FULL landscape
+                    w = w_sub # Sparse matrix handles the mapping
                 )
                 
-                # Map site-level results
-                # BUG FIX: as.numeric() needed for these lookups too, just to be safe
-                cell_df$site_latent_abundance <- as.numeric(lambda_tilde_i[subset_data$site_id_for_cell])
-                cell_df$site_occupancy_prob <- as.numeric(psi_i[subset_data$site_id_for_cell])
-                cell_df$site_true_occupancy <- as.factor(Z_i[subset_data$site_id_for_cell])
+                ##########
+                # 10. Fit the occuN Model
+                ##########
                 
-                # Site boxes
-                xmin_vals <- seq(from = 0.5, to = subset_data$grid_dim - site_dim + 0.5, by = site_dim)
-                xmax_vals <- seq(from = site_dim + 0.5, to = subset_data$grid_dim + 0.5, by = site_dim)
-                site_boxes <- expand.grid(xmin = xmin_vals, ymin = xmin_vals)
-                site_boxes$xmax <- site_boxes$xmin + site_dim
-                site_boxes$ymax <- site_boxes$ymin + site_dim
-                
-                # Plot 1: Covariate
-                p_covariate <- ggplot(cell_df, aes(x = x, y = y, fill = covariate)) +
-                    geom_raster() +
-                    scale_fill_viridis_c() +
-                    coord_fixed(expand = FALSE) +
-                    geom_rect(data = site_boxes, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                                        color = "red", fill = NA, linewidth = 0.5, inherit.aes = FALSE) +
-                    labs(title = sprintf("Sites & Covariate (M=%d, SAC=%s)", M, sac_level), fill = "Covariate") +
-                    theme_minimal()
-                
-                # Plot 2: Abundance
-                p_abundance <- ggplot(cell_df, aes(x = x, y = y, fill = site_latent_abundance)) +
-                    geom_raster() +
-                    scale_fill_viridis_c(option = "magma") +
-                    coord_fixed(expand = FALSE) +
-                    geom_rect(data = site_boxes, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                                        color = "red", fill = NA, linewidth = 0.5, inherit.aes = FALSE) +
-                    labs(title = sprintf("Site Abundance (M=%d)", M), fill = "Latent Abund.") +
-                    theme_minimal()
-                
-                # Plot 3: Occupancy
-                p_occupancy <- ggplot(cell_df, aes(x = x, y = y, fill = site_true_occupancy)) +
-                    geom_raster() +
-                    scale_fill_manual(values = c("0" = "navyblue", "1" = "yellow")) +
-                    coord_fixed(expand = FALSE) +
-                    geom_rect(data = site_boxes, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                                        color = "red", fill = NA, linewidth = 0.5, inherit.aes = FALSE) +
-                    labs(title = sprintf("Site Occupancy (M=%d)", M), fill = "Occupied") +
-                    theme_minimal()
-                
-                all_plots_list <- c(all_plots_list, list(p_covariate, p_abundance, p_occupancy))
-            } 
+                best_fm <- NULL
+                min_nll <- Inf
+                n_params <- length(true_alphas) + length(true_betas)
             
-        } # --- End M Loop ---
+                for (rep in 1:n_reps) {
+                    rand_starts <- runif(n_params, -2, 2) 
+                    fm_rep <- try(occuN(
+                        formula = ~obs_cov1 ~ cell_cov1,
+                        data = umf,
+                        starts = rand_starts,
+                        se = TRUE,
+                        method = selected_optimizer,
+                        lower = PARAM_LOWER, # Added Bounds
+                        upper = PARAM_UPPER  # Added Bounds
+                    ), silent = TRUE)
+                    
+                    if (inherits(fm_rep, "try-error")) next
+                    
+                    current_nll <- fm_rep@negLogLike
+                    if (current_nll < min_nll) {
+                        min_nll <- current_nll
+                        best_fm <- fm_rep
+                    }
+                } 
+                
+                fm <- best_fm
+                
+                # Store Results
+                est_val <- if(is.null(fm)) c(NA,NA,NA,NA) else c(coef(fm, 'det'), coef(fm, 'state'))
+                
+                loop_results <- data.frame(
+                    Parameter = c("alpha (det_int)", "alpha (det_cov1)", "beta (state_int)", "beta (state_cov1)"),
+                    True_Value = c(true_alphas, true_betas),
+                    Estimated_Value = est_val,
+                    M = M, 
+                    sim_id = sim,
+                    SAC_Level = sac_level,
+                    Sampling = sampling_strat
+                )
+                
+                results_list[[results_counter]] <- loop_results
+                results_counter <- results_counter + 1
+                
+                ##########
+                # 12. Plotting (Sim 1 Only)
+                ##########
+                if (sim == 1) {
+                    # For plotting, we show the full landscape and highlight selected sites
+                    
+                    cell_df <- data.frame(
+                        x = full_cell_col,
+                        y = full_cell_row,
+                        covariate = full_cellCovs$cell_cov1,
+                        true_occupancy = as.factor(full_Z_i[full_site_id_for_cell])
+                    )
+                    
+                    # Generate boxes for SELECTED sites only
+                    boxes_list <- lapply(selected_site_indices, function(sid) {
+                        coords <- get_site_box(sid, site_dim, full_n_sites_x)
+                        data.frame(xmin=coords['xmin'], xmax=coords['xmax'], 
+                                   ymin=coords['ymin'], ymax=coords['ymax'])
+                    })
+                    site_boxes <- do.call(rbind, boxes_list)
+                    
+                    # Plot 1: Covariate + Selected Sites
+                    p_cov <- ggplot(cell_df, aes(x=x, y=y, fill=covariate)) +
+                        geom_raster() +
+                        scale_fill_viridis_c() +
+                        coord_fixed(expand=FALSE) +
+                        geom_rect(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
+                                  color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
+                        labs(title=sprintf("Covariate (M=%d)", M), fill="Cov") +
+                        theme_void() + theme(legend.position="none")
+
+                    # Plot 2: True Occupancy + Selected Sites
+                    p_occ <- ggplot(cell_df, aes(x=x, y=y, fill=true_occupancy)) +
+                        geom_raster() +
+                        scale_fill_manual(values=c("0"="navy", "1"="yellow")) +
+                        coord_fixed(expand=FALSE) +
+                        geom_rect(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
+                                  color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
+                        labs(title=sprintf("True Occ (M=%d)", M), fill="Occ") +
+                        theme_void() + theme(legend.position="none")
+                        
+                    current_strat_plots <- c(current_strat_plots, list(p_cov, p_occ))
+                }
+                
+            } # End M Loop
+            
+            # Save Strategy Specific Plots for this SAC level
+            if (sim == 1) {
+                cat(sprintf("Saving plots for SAC=%s, Sampling=%s...\n", sac_level, sampling_strat))
+                # 2 columns (Cov, Occ) x Length(M) rows
+                comb_plot <- patchwork::wrap_plots(current_strat_plots, ncol=2, nrow=length(M_values_to_test))
+                fname <- sprintf("plot_SAC=%s_sampling=%s.png", sac_level, sampling_strat)
+                ggsave(file.path(output_dir, fname), plot=comb_plot, dpi=150, width=10, height=18)
+            }
+            
+        } # End Sampling Loop
         
-        # OPTIMIZATION: Garbage collection after every simulation
         gc()
         
-    } # --- End Sim Loop ---
+    } # End Sim Loop
     
-    ##########
-    # 13. Save SAC-Specific Landscape Plot
-    ##########
-    
-    cat(sprintf("\nSaving landscape plots for SAC=%s...\n", sac_level))
-    combined_plot <- patchwork::wrap_plots(all_plots_list, nrow = length(M_values_to_test), ncol = 3)
-    
-    ggsave(file.path(output_dir, sprintf("plot_SAC=%s.png", sac_level)), 
-                 plot = combined_plot, dpi = 300, width = 18, height = 26) 
-    
-} # --- End SAC Level Loop ---
+} # End SAC Loop
 
 
 ##########
@@ -452,46 +358,44 @@ for (sac_level in sac_levels) {
 
 cat("\n--- Simulation Study Complete ---\n")
 
-# Combine all results from list
 all_results_df <- do.call(rbind, results_list)
-# Clean up any potential NULL entries (e.g., if loops were interrupted or counter logic had gaps)
-# all_results_df <- all_results_df[!sapply(results_list, is.null), ] 
+# Remove NULLs if any
+all_results_df <- all_results_df[!sapply(all_results_df$Parameter, is.null), ]
 
-# Save the full results data frame
 write.csv(all_results_df, file.path(output_dir, "params.csv"), row.names = FALSE)
-cat(sprintf("All parameters saved to %s/params.csv\n", output_dir))
 
-cat("Generating combined error boxplots (colored by SAC level)...\n")
+# --- Boxplots Separate by Sampling Strategy ---
 
-# Calculate error
-all_results_df$Error <- all_results_df$True_Value - all_results_df$Estimated_Value
-all_results_df$M_factor <- as.factor(all_results_df$M)
-# Ensure SAC factor order
-all_results_df$SAC_Level <- factor(all_results_df$SAC_Level, levels = c("Low", "Medium", "High"))
-
-# Helper for boxplots
-create_error_plot <- function(param_name, title) {
-  ggplot(all_results_df[all_results_df$Parameter == param_name, ], 
-         aes(x = M_factor, y = Error, fill = SAC_Level)) +
-    geom_boxplot() +
-    geom_hline(yintercept = 0, linetype = "dashed", color = "black", linewidth = 1) +
-    scale_fill_manual(values = c("Low" = "yellow", "Medium" = "orange", "High" = "red")) +
-    labs(title = title, x = "M (Sites)", y = "Error (True - Est.)") +
-    theme_bw()
+for (strat in sampling_strategies) {
+    
+    strat_df <- all_results_df[all_results_df$Sampling == strat, ]
+    if(nrow(strat_df) == 0) next
+    
+    strat_df$Error <- strat_df$True_Value - strat_df$Estimated_Value
+    strat_df$M_factor <- as.factor(strat_df$M)
+    strat_df$SAC_Level <- factor(strat_df$SAC_Level, levels = c("Low", "Medium", "High"))
+    
+    create_error_plot <- function(param_name, title) {
+      ggplot(strat_df[strat_df$Parameter == param_name, ], 
+             aes(x = M_factor, y = Error, fill = SAC_Level)) +
+        geom_boxplot(outlier.size = 0.5) +
+        geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+        scale_fill_manual(values = c("Low" = "yellow", "Medium" = "orange", "High" = "red")) +
+        labs(title = title, x = "M (Sites)", y = "Error") +
+        theme_bw() + theme(legend.position = "none")
+    }
+    
+    p1 <- create_error_plot("beta (state_int)", "State Int")
+    p2 <- create_error_plot("beta (state_cov1)", "State Slope")
+    p3 <- create_error_plot("alpha (det_int)", "Det Int")
+    p4 <- create_error_plot("alpha (det_cov1)", "Det Slope")
+    
+    combined_error_plot <- (p1 | p2) / (p3 | p4) +
+      plot_layout(guides = "collect") & theme(legend.position = "bottom")
+    
+    fname <- sprintf("error_boxplots_sampling=%s.png", strat)
+    ggsave(file.path(output_dir, fname), plot = combined_error_plot, dpi = 300, width = 10, height = 10)
+    cat(sprintf("Saved %s\n", fname))
 }
 
-p_err_beta_int <- create_error_plot("beta (state_int)", "State Intercept")
-p_err_beta_cov <- create_error_plot("beta (state_cov1)", "State Slope")
-p_err_alpha_int <- create_error_plot("alpha (det_int)", "Observation Intercept")
-p_err_alpha_cov <- create_error_plot("alpha (det_cov1)", "Observation Slope")
-
-# Combine the 4 error plots
-combined_error_plot <- (p_err_beta_int | p_err_beta_cov) / (p_err_alpha_int | p_err_alpha_cov) +
-  plot_layout(guides = "collect") & theme(legend.position = "bottom")
-
-# Save the combined error plot
-ggsave(file.path(output_dir, "error_boxplots.png"), 
-             plot = combined_error_plot, dpi = 300, width = 12, height = 12)
-
-cat(sprintf("Error boxplots saved to %s/error_boxplots.png\n", output_dir))
 cat("--- Script Finished ---\n")
