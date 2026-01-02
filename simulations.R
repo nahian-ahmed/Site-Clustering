@@ -65,7 +65,7 @@ M_values_to_test <- c(100, 225, 400, 900, 1600)
 sac_levels <- c("Low", "Medium", "High")
 # Sigma values for Gaussian smoothing (0 = random/Low, higher = more smooth)
 sac_sigmas <- c(Low = 0, Medium = 5, High = 15) 
-# sac_sigmas <- c(Low = 0, Medium = 2, High = 5) 
+sac_sigmas <- c(Low = 0, Medium = 5, High = 10) 
 
 
 cat("--- Simulation Starting ---\n")
