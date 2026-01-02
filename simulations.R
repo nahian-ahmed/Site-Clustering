@@ -69,7 +69,7 @@ sampling_strategies <- c("Random", "Nonrandom")
 
 # --- Spatial Autocorrelation (SAC) Settings ---
 sac_levels <- c("Low", "Medium", "High")
-sac_sigmas <- c(Low = 0, Medium = 5, High = 15) 
+sac_sigmas <- c(Low = 0, Medium = 3, High = 5) 
 
 
 cat("--- Simulation Starting ---\n")
