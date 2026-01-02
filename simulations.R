@@ -455,7 +455,7 @@ cat("\n--- Simulation Study Complete ---\n")
 # Combine all results from list
 all_results_df <- do.call(rbind, results_list)
 # Clean up any potential NULL entries (e.g., if loops were interrupted or counter logic had gaps)
-all_results_df <- all_results_df[!sapply(results_list, is.null), ] 
+# all_results_df <- all_results_df[!sapply(results_list, is.null), ] 
 
 # Save the full results data frame
 write.csv(all_results_df, file.path(output_dir, "params.csv"), row.names = FALSE)
