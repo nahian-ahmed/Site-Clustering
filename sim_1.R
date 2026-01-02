@@ -29,7 +29,7 @@ set.seed(123) # For reproducibility
 
 # --- Simulation repetitions ---
 n_sims <- 100 # Number of full datasets to generate per SAC level
-
+# n_sims <- 3
 # --- Model fitting repetitions ---
 n_reps <- 30 # Number of random-start repetitions for each model fit
 
@@ -65,6 +65,7 @@ M_values_to_test <- c(100, 225, 400, 900, 1600)
 sac_levels <- c("Low", "Medium", "High")
 # Sigma values for Gaussian smoothing (0 = random/Low, higher = more smooth)
 sac_sigmas <- c(Low = 0, Medium = 5, High = 15) 
+# sac_sigmas <- c(Low = 0, Medium = 2, High = 5) 
 
 
 cat("--- Simulation Starting ---\n")
@@ -452,7 +453,7 @@ create_error_plot <- function(param_name, title) {
          aes(x = M_factor, y = Error, fill = SAC_Level)) +
     geom_boxplot() +
     geom_hline(yintercept = 0, linetype = "dashed", color = "black", linewidth = 1) +
-    scale_fill_manual(values = c("Low" = "green", "Medium" = "yellow", "High" = "red")) +
+    scale_fill_manual(values = c("Low" = "yellow", "Medium" = "orange", "High" = "red")) +
     labs(title = title, x = "M (Sites)", y = "Error (True - Est.)") +
     theme_bw()
 }
