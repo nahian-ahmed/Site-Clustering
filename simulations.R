@@ -13,6 +13,8 @@ if (install_now){
   options(repos = c(CRAN = "https://cloud.r-project.org/"))
   if (!requireNamespace("devtools", quietly = FALSE)) install.packages("devtools")
   if (!requireNamespace("terra", quietly = FALSE)) install.packages("terra")
+  # Install ggpattern for hatched plots
+  if (!requireNamespace("ggpattern", quietly = FALSE)) install.packages("ggpattern")
   suppressMessages(devtools::install_github("nahian-ahmed/unmarked", ref = "occuN", force = TRUE))
 }
 
@@ -20,7 +22,8 @@ library(unmarked)
 library(ggplot2)
 library(patchwork)
 library(terra) 
-library(Matrix) 
+library(Matrix)
+library(ggpattern) # Added for hatched patterns
 
 ##########
 # 2. Set Simulation Parameters
@@ -60,7 +63,7 @@ PARAM_UPPER <- 20
 
 # --- Ablation Study Parameters ---
 # NOTE: Removed 1600 because sampling all sites Nonrandomly = sampling all sites Randomly
-M_values_to_test <- c(100, 200, 400, 800)
+M_values_to_test <- c(100, 225, 400, 900)
 
 # --- Sampling Strategies ---
 # Random: Uniformly sample M sites from the full landscape
@@ -178,8 +181,12 @@ for (sac_level in sac_levels) {
         # --- LOOP OVER SAMPLING STRATEGIES ---
         for (sampling_strat in sampling_strategies) {
             
-            # Helper for plotting accumulation
-            if(sim == 1) current_strat_plots <- list()
+            # Helper for plotting accumulation: Initialize separate lists per column
+            if(sim == 1) {
+                plots_cov   <- list()
+                plots_abund <- list()
+                plots_occ   <- list()
+            }
             
             cat(sprintf("  >> Strategy: %s\n", sampling_strat))
 
@@ -279,7 +286,7 @@ for (sac_level in sac_levels) {
                 results_counter <- results_counter + 1
                 
                 ##########
-                # 12. Plotting (Sim 1 Only) - 3-COLUMN STYLE
+                # 12. Plotting (Sim 1 Only) - UPDATED PLOTTING
                 ##########
                 if (sim == 1) {
                     # Create data frame for FULL landscape
@@ -301,37 +308,70 @@ for (sac_level in sac_levels) {
                     })
                     site_boxes <- do.call(rbind, boxes_list)
                     
-                    # Plot 1: Covariate + Selected Sites
+                    # Common Theme to remove Axis Titles and reduce margins
+                    tight_theme <- theme_minimal() + 
+                                   theme(
+                                     axis.title = element_blank(),
+                                     plot.margin = margin(t=0, r=0, b=0, l=0, unit="pt")
+                                   )
+
+                    # Plot 1: Covariate + Selected Sites (Using geom_rect_pattern)
                     p_cov <- ggplot(cell_df, aes(x=x, y=y, fill=covariate)) +
                         geom_raster() +
                         scale_fill_viridis_c() +
                         coord_fixed(expand=FALSE) +
-                        geom_rect(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
-                                  color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
+                        geom_rect_pattern(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
+                                          color="red",         # Border Color
+                                          fill = NA,           # Transparent Background
+                                          pattern = 'stripe',  # Hatched Pattern
+                                          pattern_colour = "red",
+                                          pattern_angle = 45,
+                                          pattern_density = 0.05,
+                                          pattern_spacing = 0.02,
+                                          linewidth=0.3, 
+                                          inherit.aes=FALSE) +
                         labs(title=sprintf("Covariate (M=%d)", M), fill="Cov") +
-                        theme_minimal() + theme(legend.position="none")
+                        tight_theme
 
                     # Plot 2: Abundance + Selected Sites
                     p_abund <- ggplot(cell_df, aes(x=x, y=y, fill=site_latent_abundance)) +
                         geom_raster() +
                         scale_fill_viridis_c(option = "magma") +
                         coord_fixed(expand=FALSE) +
-                        geom_rect(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
-                                  color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
+                        geom_rect_pattern(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
+                                          color="red", 
+                                          fill = NA, 
+                                          pattern = 'stripe',
+                                          pattern_colour = "red",
+                                          pattern_angle = 45,
+                                          pattern_density = 0.05,
+                                          pattern_spacing = 0.02,
+                                          linewidth=0.3, 
+                                          inherit.aes=FALSE) +
                         labs(title=sprintf("Abundance (M=%d)", M), fill="Abund") +
-                        theme_minimal() + theme(legend.position="none")
+                        tight_theme
 
                     # Plot 3: Occupancy + Selected Sites
                     p_occ <- ggplot(cell_df, aes(x=x, y=y, fill=site_true_occupancy)) +
                         geom_raster() +
                         scale_fill_manual(values=c("0"="navyblue", "1"="yellow")) +
                         coord_fixed(expand=FALSE) +
-                        geom_rect(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
-                                  color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
+                        geom_rect_pattern(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
+                                          color="red", 
+                                          fill = NA, 
+                                          pattern = 'stripe',
+                                          pattern_colour = "red",
+                                          pattern_angle = 45,
+                                          pattern_density = 0.05,
+                                          pattern_spacing = 0.02,
+                                          linewidth=0.3, 
+                                          inherit.aes=FALSE) +
                         labs(title=sprintf("Occupancy (M=%d)", M), fill="Occ") +
-                        theme_minimal() + theme(legend.position="none")
+                        tight_theme
                         
-                    current_strat_plots <- c(current_strat_plots, list(p_cov, p_abund, p_occ))
+                    plots_cov[[length(plots_cov)+1]]     <- p_cov
+                    plots_abund[[length(plots_abund)+1]] <- p_abund
+                    plots_occ[[length(plots_occ)+1]]     <- p_occ
                 }
                 
             } # End M Loop
@@ -339,10 +379,29 @@ for (sac_level in sac_levels) {
             # Save Strategy Specific Plots for this SAC level
             if (sim == 1) {
                 cat(sprintf("Saving plots for SAC=%s, Sampling=%s...\n", sac_level, sampling_strat))
-                # 3 columns (Cov, Abund, Occ) x Length(M) rows
-                comb_plot <- patchwork::wrap_plots(current_strat_plots, ncol=3, nrow=length(M_values_to_test))
+                
+                # Construct columns independently to place legends at the bottom of each column
+                
+                # Column 1: Covariate
+                col_cov <- patchwork::wrap_plots(plots_cov, ncol = 1) + 
+                  patchwork::plot_layout(guides = "collect") & 
+                  theme(legend.position = "bottom", legend.direction = "horizontal")
+                  
+                # Column 2: Abundance
+                col_abund <- patchwork::wrap_plots(plots_abund, ncol = 1) + 
+                  patchwork::plot_layout(guides = "collect") & 
+                  theme(legend.position = "bottom", legend.direction = "horizontal")
+                
+                # Column 3: Occupancy
+                col_occ <- patchwork::wrap_plots(plots_occ, ncol = 1) + 
+                  patchwork::plot_layout(guides = "collect") & 
+                  theme(legend.position = "bottom", legend.direction = "horizontal")
+                
+                # Combine columns side-by-side
+                final_comb_plot <- col_cov | col_abund | col_occ
+                
                 fname <- sprintf("plot_SAC=%s_sampling=%s.png", sac_level, sampling_strat)
-                ggsave(file.path(output_dir, fname), plot=comb_plot, dpi=150, width=15, height=18)
+                ggsave(file.path(output_dir, fname), plot=final_comb_plot, dpi=150, width=15, height=18)
             }
             
         } # End Sampling Loop
