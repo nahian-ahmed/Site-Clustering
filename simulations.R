@@ -13,8 +13,6 @@ if (install_now){
   options(repos = c(CRAN = "https://cloud.r-project.org/"))
   if (!requireNamespace("devtools", quietly = FALSE)) install.packages("devtools")
   if (!requireNamespace("terra", quietly = FALSE)) install.packages("terra")
-  # Install ggpattern for hatched plots
-  if (!requireNamespace("ggpattern", quietly = FALSE)) install.packages("ggpattern")
   suppressMessages(devtools::install_github("nahian-ahmed/unmarked", ref = "occuN", force = TRUE))
 }
 
@@ -22,8 +20,7 @@ library(unmarked)
 library(ggplot2)
 library(patchwork)
 library(terra) 
-library(Matrix)
-library(ggpattern) # Added for hatched patterns
+library(Matrix) 
 
 ##########
 # 2. Set Simulation Parameters
@@ -315,22 +312,14 @@ for (sac_level in sac_levels) {
                                      plot.margin = margin(t=0, r=0, b=0, l=0, unit="pt")
                                    )
 
-                    # Plot 1: Covariate + Selected Sites (Using geom_rect_pattern)
+                    # Plot 1: Covariate + Selected Sites
                     p_cov <- ggplot(cell_df, aes(x=x, y=y, fill=covariate)) +
                         geom_raster() +
                         scale_fill_viridis_c() +
                         coord_fixed(expand=FALSE) +
-                        geom_rect_pattern(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
-                                          color="red",         # Border Color
-                                          fill = NA,           # Transparent Background
-                                          pattern = 'stripe',  # Hatched Pattern
-                                          pattern_colour = "red",
-                                          pattern_angle = 45,
-                                          pattern_density = 0.05,
-                                          pattern_spacing = 0.02,
-                                          linewidth=0.3, 
-                                          inherit.aes=FALSE) +
-                        labs(title=sprintf("Covariate (M=%d)", M), fill="Cov") +
+                        geom_rect(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
+                                  color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
+                        labs(title=sprintf("Covariate (M=%d)", M), fill="Covariate") +
                         tight_theme
 
                     # Plot 2: Abundance + Selected Sites
@@ -338,17 +327,9 @@ for (sac_level in sac_levels) {
                         geom_raster() +
                         scale_fill_viridis_c(option = "magma") +
                         coord_fixed(expand=FALSE) +
-                        geom_rect_pattern(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
-                                          color="red", 
-                                          fill = NA, 
-                                          pattern = 'stripe',
-                                          pattern_colour = "red",
-                                          pattern_angle = 45,
-                                          pattern_density = 0.05,
-                                          pattern_spacing = 0.02,
-                                          linewidth=0.3, 
-                                          inherit.aes=FALSE) +
-                        labs(title=sprintf("Abundance (M=%d)", M), fill="Abund") +
+                        geom_rect(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
+                                  color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
+                        labs(title=sprintf("Abundance (M=%d)", M), fill="Abundance") +
                         tight_theme
 
                     # Plot 3: Occupancy + Selected Sites
@@ -356,17 +337,9 @@ for (sac_level in sac_levels) {
                         geom_raster() +
                         scale_fill_manual(values=c("0"="navyblue", "1"="yellow")) +
                         coord_fixed(expand=FALSE) +
-                        geom_rect_pattern(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
-                                          color="red", 
-                                          fill = NA, 
-                                          pattern = 'stripe',
-                                          pattern_colour = "red",
-                                          pattern_angle = 45,
-                                          pattern_density = 0.05,
-                                          pattern_spacing = 0.02,
-                                          linewidth=0.3, 
-                                          inherit.aes=FALSE) +
-                        labs(title=sprintf("Occupancy (M=%d)", M), fill="Occ") +
+                        geom_rect(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
+                                  color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
+                        labs(title=sprintf("Occupancy (M=%d)", M), fill="Occupance") +
                         tight_theme
                         
                     plots_cov[[length(plots_cov)+1]]     <- p_cov
@@ -401,7 +374,7 @@ for (sac_level in sac_levels) {
                 final_comb_plot <- col_cov | col_abund | col_occ
                 
                 fname <- sprintf("plot_SAC=%s_sampling=%s.png", sac_level, sampling_strat)
-                ggsave(file.path(output_dir, fname), plot=final_comb_plot, dpi=150, width=15, height=18)
+                ggsave(file.path(output_dir, fname), plot=final_comb_plot, dpi=150, width=14, height=18)
             }
             
         } # End Sampling Loop
@@ -446,10 +419,10 @@ for (strat in sampling_strategies) {
         theme_bw() + theme(legend.position = "none")
     }
     
-    p1 <- create_error_plot("beta (state_int)", "State Int")
+    p1 <- create_error_plot("beta (state_int)", "State Intercept")
     p2 <- create_error_plot("beta (state_cov1)", "State Slope")
-    p3 <- create_error_plot("alpha (det_int)", "Det Int")
-    p4 <- create_error_plot("alpha (det_cov1)", "Det Slope")
+    p3 <- create_error_plot("alpha (det_int)", "Detection Intercept")
+    p4 <- create_error_plot("alpha (det_cov1)", "Detection Slope")
     
     combined_error_plot <- (p1 | p2) / (p3 | p4) +
       plot_layout(guides = "collect") & theme(legend.position = "bottom")
