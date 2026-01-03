@@ -69,8 +69,8 @@ M_values_to_test <- c(100, 225, 400, 900)
 sampling_strategies <- c("Uniform", "Positive", "Negative", "Hotspots")
 
 # --- Spatial Autocorrelation (SAC) Settings ---
-sac_levels <- c("Low", "Medium", "High")
-sac_sigmas <- c(Low = 0, Medium = 5, High = 15) 
+sac_levels <- c("Low", "Medium", "High") 
+sac_sigmas <- c(Low = 0, Medium = 10, High = 20)
 
 # --- Skew Patterns (Renamed Back) ---
 # Uniform: Standard SAC (No gradient)
