@@ -31,7 +31,7 @@ set.seed(123)
 
 # --- Simulation repetitions ---
 n_sims <- 100 # Number of full datasets to generate per SAC level
-# n_sims <- 3 # FOR DEBUGGING
+n_sims <- 3 # FOR DEBUGGING
 
 # --- Model fitting repetitions ---
 n_reps <- 30 
@@ -70,7 +70,8 @@ sampling_strat <- "Uniform"
 # --- Spatial Autocorrelation (SAC) Settings ---
 sac_levels <- c("Low", "Medium", "High") 
 # sac_sigmas <- c(Low = 0, Medium = 5, High = 15)
-sac_sigmas <- c(Low = 0, Medium = 5, High = 10)
+# sac_sigmas <- c(Low = 0, Medium = 5, High = 10)
+sac_sigmas <- c(Low = 0, Medium = 10, High = 30) 
 
 # --- Skew Patterns ---
 # Fixed to Centers
@@ -78,7 +79,7 @@ skew <- "Centers"
 
 # --- Centers for "Centers" Skew ---
 n_centers <- 3
-centers_scale <- 5
+centers_scale <- 1.5
 decay_scale <- 15^2
 
 cat("--- Simulation Starting ---\n")
