@@ -31,7 +31,7 @@ set.seed(123)
 
 # --- Simulation repetitions ---
 n_sims <- 100 # Number of full datasets to generate per SAC level
-n_sims <- 10 # FOR DEBUGGING
+# n_sims <- 10 # FOR DEBUGGING
 
 # --- Model fitting repetitions ---
 n_reps <- 30 
