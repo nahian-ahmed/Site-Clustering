@@ -70,7 +70,7 @@ sampling_strat <- "Uniform"
 # --- Spatial Autocorrelation (SAC) Settings ---
 sac_levels <- c("Low", "Medium", "High") 
 # sac_sigmas <- c(Low = 0, Medium = 5, High = 15)
-sac_sigmas <- c(Low = 0, Medium = 5, High = 10)
+sac_sigmas <- c(Low = 0, Medium = 5, High = 7)
 
 # --- Skew Patterns ---
 # Fixed to Centers
@@ -149,9 +149,6 @@ if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 cat("\n--- Starting Main Simulation Loop ---\n")
 
-cat(sprintf("\n*******************************************************\n"))
-cat(sprintf("*** SKEW PATTERN: %s ***", skew))
-cat(sprintf("\n*******************************************************\n"))
 
 for (sac_level in sac_levels) {
     
@@ -159,7 +156,7 @@ for (sac_level in sac_levels) {
     
     for (sim in 1:n_sims) {
         
-        cat(sprintf("\n=== Skew: %s | SAC: %s | Sim %d of %d ===\n", skew, sac_level, sim, n_sims))
+        cat(sprintf("\n=== SAC: %s | Sim %d of %d ===\n", skew, sac_level, sim, n_sims))
     
         ##########
         # 6. Create FULL Landscape
@@ -232,7 +229,6 @@ for (sac_level in sac_levels) {
             plots_occ   <- list()
         }
         
-        cat(sprintf("  >> Strategy: %s\n", sampling_strat))
 
         # --- LOOP OVER M ---
         for (M_i in M_values_to_test) {
