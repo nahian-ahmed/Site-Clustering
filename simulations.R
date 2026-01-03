@@ -2,7 +2,7 @@
 # Simulation for occuN model
 # Fully simulated experiments with varying Spatial Autocorrelation (SAC)
 # AND Sampling Strategies (Random, Positive, Negative, Nonrandom)
-# AND Landscape Skew Patterns (Uniform, TopRight, Centered)
+# AND Landscape Skew Patterns (Uniform, Gradient, Hotspots)
 # -----------------------------------------------------------------
 
 ###
@@ -31,7 +31,8 @@ set.seed(123)
 
 # --- Simulation repetitions ---
 n_sims <- 100 # Number of full datasets to generate per SAC/Skew level
-n_sims <- 3 # For testing
+n_sims <- 3
+
 
 # --- Model fitting repetitions ---
 n_reps <- 30 
@@ -68,13 +69,13 @@ sampling_strategies <- c("Random", "Positive", "Negative", "Nonrandom")
 
 # --- Spatial Autocorrelation (SAC) Settings ---
 sac_levels <- c("Low", "Medium", "High")
-sac_sigmas <- c(Low = 0, Medium = 1, High = 3) 
+sac_sigmas <- c(Low = 0, Medium = 5, High = 15) 
 
-# --- NEW: Landscape Skew Patterns ---
+# --- NEW: Landscape Skew Patterns (Renamed) ---
 # Uniform: Standard SAC (No gradient)
-# TopRight: Gradient from Bottom-Left (Low) to Top-Right (High)
-# Centered: High values clustered around fixed seed locations ("mountains")
-skew_levels <- c("Uniform", "TopRight", "Centered")
+# Gradient: Linear trend Low(Bottom-Left) -> High(Top-Right)
+# Hotspots: High values clustered around 3 random seed locations (was "Centered")
+skew_levels <- c("Uniform", "Gradient", "Hotspots")
 
 # --- Cluster Settings for "Nonrandom" Strategy ---
 n_clusters <- 5
@@ -147,8 +148,7 @@ for(i in 1:n_sims){
   )
 }
 
-# 4b. Skew Center Seeds (for "Centered" Skew Pattern)
-# These act as the "mountains" for the covariate
+# 4b. Skew Center Seeds (for "Hotspots" Skew Pattern)
 cat("Pre-generating fixed COVARIATE skew seeds...\n")
 cov_center_seeds <- vector("list", n_sims)
 for(i in 1:n_sims){
@@ -210,12 +210,12 @@ for (skew in skew_levels) {
                 # No change, just the GRF
                 r_trend <- r_smooth 
                 
-            } else if (skew == "TopRight") {
+            } else if (skew == "Gradient") { # Renamed from TopRight
                 # Create coordinate rasters
                 r_x <- terra::init(r_smooth, "x")
                 r_y <- terra::init(r_smooth, "y")
                 
-                # Gradient: Low at (0,0), High at (Max, Max)
+                # Gradient: Low at Bottom-Left (Min X, Min Y) -> High at Top-Right (Max X, Max Y)
                 r_gradient <- (r_x + r_y) 
                 
                 # Normalize gradient to 0-1 range
@@ -226,7 +226,7 @@ for (skew in skew_levels) {
                 terra::values(r_gradient) <- v * 4 - 2 
                 r_trend <- r_smooth + r_gradient
                 
-            } else if (skew == "Centered") {
+            } else if (skew == "Hotspots") { # Renamed from Centered
                 # Get seeds for this sim
                 seeds <- cov_center_seeds[[sim]]
                 
