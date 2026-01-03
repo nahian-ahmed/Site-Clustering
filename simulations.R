@@ -70,7 +70,7 @@ sampling_strat <- "Uniform"
 # --- Spatial Autocorrelation (SAC) Settings ---
 sac_levels <- c("Low", "Medium", "High") 
 # sac_sigmas <- c(Low = 0, Medium = 5, High = 15)
-sac_sigmas <- c(Low = 0, Medium = 5, High = 7)
+sac_sigmas <- c(Low = 0, Medium = 3, High = 6)
 
 # --- Skew Patterns ---
 # Fixed to Centers
@@ -385,7 +385,7 @@ for (sac_level in sac_levels) {
         
         # Save Plots for this SAC level
         if (sim == 1) {
-            cat(sprintf("Saving plots for Skew=%s, SAC=%s, Sampling=%s...\n", skew, sac_level, sampling_strat))
+            cat(sprintf("\nSaving plots for SAC=%s...\n", sac_level))
             
             col_cov <- patchwork::wrap_plots(plots_cov, ncol = 1) + 
               patchwork::plot_layout(guides = "collect") & 
