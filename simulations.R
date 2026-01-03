@@ -403,7 +403,7 @@ for (sac_level in sac_levels) {
             
             # Updated Filename (No loops for skew/sampling)
             fname <- sprintf("plot_SAC=%s.png", sac_level)
-            ggsave(file.path(output_dir, fname), plot=final_comb_plot, dpi=300, width=12, height=22)
+            ggsave(file.path(output_dir, fname), plot=final_comb_plot, dpi=300, width=11, height=22)
         }
         
         gc()
