@@ -78,9 +78,9 @@ sac_sigmas <- c(Low = 0, Medium = 10, High = 30)
 skew <- "Centers"
 
 # --- Centers for "Centers" Skew ---
-n_centers <- 0
-centers_scale <- 1.5
-decay_scale <- 15^2
+n_centers <- 1
+centers_scale <- 5
+decay_scale <- 30^2
 
 cat("--- Simulation Starting ---\n")
 cat(sprintf("Running %d full simulations per SAC level.\n", n_sims))
