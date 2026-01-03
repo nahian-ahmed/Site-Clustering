@@ -31,7 +31,7 @@ set.seed(123)
 
 # --- Simulation repetitions ---
 n_sims <- 100 # Number of full datasets to generate per SAC level
-n_sims <- 10 # FOR DEBUGGING
+n_sims <- 3 # FOR DEBUGGING
 
 # --- Model fitting repetitions ---
 n_reps <- 30 
@@ -403,7 +403,7 @@ for (sac_level in sac_levels) {
             
             # Updated Filename (No loops for skew/sampling)
             fname <- sprintf("plot_SAC=%s.png", sac_level)
-            ggsave(file.path(output_dir, fname), plot=final_comb_plot, dpi=300, width=13, height=22)
+            ggsave(file.path(output_dir, fname), plot=final_comb_plot, dpi=300, width=12, height=22)
         }
         
         gc()
