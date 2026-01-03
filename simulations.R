@@ -245,7 +245,7 @@ for (skew in skew_levels) {
                 rows <- terra::init(r_smooth, "y")
                 cols <- terra::init(r_smooth, "x")
                 
-                for(k in 1:length(seeds$x)) {
+                for(k in seq_len(seeds$x)) {
                     # Distance from seed
                     d2 <- (cols - seeds$x[k])^2 + (rows - seeds$y[k])^2
                     # Gaussian decay (broad mountains, sigma=30)
