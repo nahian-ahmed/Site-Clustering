@@ -61,7 +61,7 @@ PARAM_LOWER <- -20
 PARAM_UPPER <- 20
 
 # --- Ablation Study Parameters ---
-M_values_to_test <- c(100, 225, 400, 900)
+M_values_to_test <- c(100, 200, 400, 800, 1600)
 
 # --- Sampling Strategies ---
 # Fixed to Uniform
@@ -70,7 +70,7 @@ sampling_strat <- "Uniform"
 # --- Spatial Autocorrelation (SAC) Settings ---
 sac_levels <- c("Low", "Medium", "High") 
 # sac_sigmas <- c(Low = 0, Medium = 5, High = 15)
-sac_sigmas <- c(Low = 0, Medium = 10, High = 20)
+sac_sigmas <- c(Low = 0, Medium = 5, High = 10)
 
 # --- Skew Patterns ---
 # Fixed to Centers
@@ -407,7 +407,7 @@ for (sac_level in sac_levels) {
             
             # Updated Filename (No loops for skew/sampling)
             fname <- sprintf("plot_SAC=%s.png", sac_level)
-            ggsave(file.path(output_dir, fname), plot=final_comb_plot, dpi=300, width=13, height=18)
+            ggsave(file.path(output_dir, fname), plot=final_comb_plot, dpi=300, width=13, height=20)
         }
         
         gc()
