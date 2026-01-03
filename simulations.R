@@ -1,8 +1,8 @@
 # -----------------------------------------------------------------
 # Simulation for occuN model
 # Fully simulated experiments with varying Spatial Autocorrelation (SAC)
-# AND Sampling Strategies (Random, Positive, Negative, Nonrandom)
-# AND Landscape Skew Patterns (Uniform, Gradient, Hotspots)
+# AND Sampling Strategies (Uniform, Positive, Negative, Hotspots)
+# AND Landscape Skew Patterns (Uniform, TopRight, Centers)
 # -----------------------------------------------------------------
 
 ###
@@ -31,8 +31,7 @@ set.seed(123)
 
 # --- Simulation repetitions ---
 n_sims <- 100 # Number of full datasets to generate per SAC/Skew level
-n_sims <- 3
-
+n_sims <- 3 # FOR DEBUGGING
 
 # --- Model fitting repetitions ---
 n_reps <- 30 
@@ -64,20 +63,22 @@ PARAM_UPPER <- 20
 # --- Ablation Study Parameters ---
 M_values_to_test <- c(100, 225, 400, 900)
 
-# --- Sampling Strategies ---
-sampling_strategies <- c("Random", "Positive", "Negative", "Nonrandom")
+# --- Sampling Strategies (Renamed) ---
+# Uniform (was Random)
+# Hotspots (was Nonrandom)
+sampling_strategies <- c("Uniform", "Positive", "Negative", "Hotspots")
 
 # --- Spatial Autocorrelation (SAC) Settings ---
 sac_levels <- c("Low", "Medium", "High")
-sac_sigmas <- c(Low = 0, Medium = 5, High = 15) 
+sac_sigmas <- c(Low = 0, Medium = 1, High = 3) 
 
-# --- NEW: Landscape Skew Patterns (Renamed) ---
+# --- Skew Patterns (Renamed Back) ---
 # Uniform: Standard SAC (No gradient)
-# Gradient: Linear trend Low(Bottom-Left) -> High(Top-Right)
-# Hotspots: High values clustered around 3 random seed locations (was "Centered")
-skew_levels <- c("Uniform", "Gradient", "Hotspots")
+# TopRight: Gradient Low->High (Visually Top-Right)
+# Centers: High values clustered around seed locations (was "Hotspots"/"Centered")
+skew_levels <- c("Uniform", "TopRight", "Centers")
 
-# --- Cluster Settings for "Nonrandom" Strategy ---
+# --- Cluster Settings for "Hotspots" Strategy ---
 n_clusters <- 5
 cluster_sigma <- 5 # Controls the spread/size of the sampling clusters
 
@@ -112,7 +113,7 @@ full_w <- Matrix::sparseMatrix(
     dims = c(full_M, full_n_cells)
 )
 
-# --- Pre-calculate Site Centroids (for Nonrandom distance calc) ---
+# --- Pre-calculate Site Centroids (for Hotspots distance calc) ---
 site_indices <- 1:full_M
 s_rows <- (site_indices - 1) %/% full_n_sites_x + 1
 s_cols <- (site_indices - 1) %% full_n_sites_x + 1
@@ -138,7 +139,7 @@ get_site_box <- function(site_id, site_dim, n_sites_x) {
 # 4. Pre-generate Fixed Seeds
 ##########
 
-# 4a. Sampling Cluster Seeds (for "Nonrandom" Strategy)
+# 4a. Sampling Cluster Seeds (for "Hotspots" Strategy)
 cat("Pre-generating fixed SAMPLING cluster seeds...\n")
 sim_cluster_seeds <- vector("list", n_sims)
 for(i in 1:n_sims){
@@ -148,7 +149,7 @@ for(i in 1:n_sims){
   )
 }
 
-# 4b. Skew Center Seeds (for "Hotspots" Skew Pattern)
+# 4b. Skew Center Seeds (for "Centers" Skew Pattern)
 cat("Pre-generating fixed COVARIATE skew seeds...\n")
 cov_center_seeds <- vector("list", n_sims)
 for(i in 1:n_sims){
@@ -210,13 +211,15 @@ for (skew in skew_levels) {
                 # No change, just the GRF
                 r_trend <- r_smooth 
                 
-            } else if (skew == "Gradient") { # Renamed from TopRight
+            } else if (skew == "TopRight") {
                 # Create coordinate rasters
                 r_x <- terra::init(r_smooth, "x")
                 r_y <- terra::init(r_smooth, "y")
                 
-                # Gradient: Low at Bottom-Left (Min X, Min Y) -> High at Top-Right (Max X, Max Y)
-                r_gradient <- (r_x + r_y) 
+                # FIX: In plot logic, Y increases UP, but Row Index increases DOWN.
+                # To get Visual Top-Right (High X, High Plot-Y), we need High X and Low Raster-Y (Bottom of Raster).
+                # Subtracting r_y (which is typically high at top) achieves this visual effect in ggplot
+                r_gradient <- (r_x - r_y) 
                 
                 # Normalize gradient to 0-1 range
                 v <- terra::values(r_gradient)
@@ -226,7 +229,7 @@ for (skew in skew_levels) {
                 terra::values(r_gradient) <- v * 4 - 2 
                 r_trend <- r_smooth + r_gradient
                 
-            } else if (skew == "Hotspots") { # Renamed from Centered
+            } else if (skew == "Centers") { # Renamed from Centered/Hotspots
                 # Get seeds for this sim
                 seeds <- cov_center_seeds[[sim]]
                 
@@ -272,7 +275,7 @@ for (skew in skew_levels) {
             site_cov_sums <- as.numeric(full_w %*% full_cellCovs$cell_cov1)
             site_cov_means <- site_cov_sums / (site_dim^2)
             
-            # 2. Cluster Based Weights (Nonrandom)
+            # 2. Cluster Based Weights (Hotspots)
             current_seeds <- sim_cluster_seeds[[sim]]
             
             site_dists <- rep(Inf, full_M)
@@ -295,13 +298,13 @@ for (skew in skew_levels) {
                 cat(sprintf("  >> Strategy: %s\n", sampling_strat))
 
                 # --- SELECT SAMPLING WEIGHTS ---
-                if (sampling_strat == "Random") {
+                if (sampling_strat == "Uniform") { # Renamed from Random
                     curr_weights <- NULL
                 } else if (sampling_strat == "Positive") {
                     curr_weights <- exp(site_cov_means) 
                 } else if (sampling_strat == "Negative") {
                     curr_weights <- exp(-site_cov_means)
-                } else if (sampling_strat == "Nonrandom") {
+                } else if (sampling_strat == "Hotspots") { # Renamed from Nonrandom
                     curr_weights <- cluster_weights
                 }
 
