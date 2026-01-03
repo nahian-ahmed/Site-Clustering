@@ -31,7 +31,7 @@ set.seed(123)
 
 # --- Simulation repetitions ---
 n_sims <- 100 # Number of full datasets to generate per SAC level
-# n_sims <- 3 # FOR DEBUGGING
+n_sims <- 3 # FOR DEBUGGING
 
 # --- Model fitting repetitions ---
 n_reps <- 30 
@@ -219,6 +219,27 @@ for (sac_level in sac_levels) {
         full_psi_i <- 1 - exp(-full_lambda_tilde_i)
         full_Z_i <- rbinom(full_M, 1, full_psi_i)
         
+        ##########
+        # 8. Simulate Full Observation Data (y) for ALL sites
+        #    (Moved outside the M loop)
+        ##########
+        
+        full_obs_cov1 <- matrix(rnorm(full_M * J_obs), full_M, J_obs)
+        full_obsCovs <- list(obs_cov1 = full_obs_cov1)
+        
+        full_y <- matrix(NA, full_M, J_obs)
+        for (i in 1:full_M) {
+            if (full_Z_i[i] == 0) {
+                full_y[i, ] <- 0
+                next
+            }
+            for (k in 1:J_obs) {
+                logit_p_ik <- true_alphas[1] * 1 + true_alphas[2] * full_obsCovs$obs_cov1[i, k]
+                p_ik <- plogis(logit_p_ik)
+                full_y[i, k] <- rbinom(1, 1, p_ik)
+            }
+        }
+        
         # --- Weights for Sampling Strategies ---
         # Fixed to Uniform: No weights needed
         curr_weights <- NULL
@@ -242,35 +263,21 @@ for (sac_level in sac_levels) {
             
             # --- 6.2. Subset Data ---
             w_sub <- full_w[selected_site_indices, , drop=FALSE]
-            Z_sub <- full_Z_i[selected_site_indices]
+            # Z_sub <- full_Z_i[selected_site_indices] 
             
-            ##########
-            # 8. Simulate Observation Data (y)
-            ##########
-            
-            obs_cov1 <- matrix(rnorm(M * J_obs), M, J_obs)
-            obsCovs <- list(obs_cov1 = obs_cov1)
-            
-            y <- matrix(NA, M, J_obs)
-            for (i in 1:M) {
-                if (Z_sub[i] == 0) {
-                    y[i, ] <- 0
-                    next
-                }
-                for (k in 1:J_obs) {
-                    logit_p_ik <- true_alphas[1] * 1 + true_alphas[2] * obsCovs$obs_cov1[i, k]
-                    p_ik <- plogis(logit_p_ik)
-                    y[i, k] <- rbinom(1, 1, p_ik)
-                }
-            }
+            # Subset Observations (Sliced from the full simulation)
+            y_sub <- full_y[selected_site_indices, , drop=FALSE]
+            obs_cov1_sub <- full_obs_cov1[selected_site_indices, , drop=FALSE]
+            obsCovs_sub <- list(obs_cov1 = obs_cov1_sub)
+
             
             ##########
             # 9. Bundle Data
             ##########
             
             umf <- unmarkedFrameOccuN(
-                y = y,
-                obsCovs = obsCovs,
+                y = y_sub,
+                obsCovs = obsCovs_sub,
                 cellCovs = full_cellCovs, 
                 w = w_sub 
             )
