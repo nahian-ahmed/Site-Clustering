@@ -70,7 +70,7 @@ sampling_strat <- "Uniform"
 # --- Spatial Autocorrelation (SAC) Settings ---
 sac_levels <- c("Low", "Medium", "High") 
 # sac_sigmas <- c(Low = 0, Medium = 5, High = 15)
-sac_sigmas <- c(Low = 0, Medium = 3, High = 6)
+sac_sigmas <- c(Low = 0, Medium = 2, High = 5)
 
 # --- Skew Patterns ---
 # Fixed to Centers
