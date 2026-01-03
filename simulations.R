@@ -156,7 +156,7 @@ for (sac_level in sac_levels) {
     
     for (sim in 1:n_sims) {
         
-        cat(sprintf("\n=== SAC: %s | Sim %d of %d ===\n", skew, sac_level, sim, n_sims))
+        cat(sprintf("\n=== SAC: %s | Sim %d of %d ===\n", sac_level, sim, n_sims))
     
         ##########
         # 6. Create FULL Landscape
