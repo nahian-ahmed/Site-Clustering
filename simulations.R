@@ -61,7 +61,7 @@ PARAM_LOWER <- -20
 PARAM_UPPER <- 20
 
 # --- Ablation Study Parameters ---
-M_values_to_test <- c(100, 200, 400, 800)
+M_values_to_test <- c(100, 225, 400, 900)
 
 # --- Sampling Strategies ---
 # Fixed to Uniform
@@ -147,8 +147,6 @@ results_counter <- 1
 output_dir <- file.path("simulation_experiments", "output")
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
-cat("\n--- Simulation Study Complete ---\n")
-
 cat("\n--- Starting Main Simulation Loop ---\n")
 
 cat(sprintf("\n*******************************************************\n"))
@@ -196,7 +194,8 @@ for (sac_level in sac_levels) {
         rows <- terra::init(r_smooth, "y")
         cols <- terra::init(r_smooth, "x")
         
-        for(k in seq_len(seeds$x)) {
+        # --- FIX: Loop over indices, not values ---
+        for(k in seq_along(seeds$x)) {
             # Distance from seed
             d2 <- (cols - seeds$x[k])^2 + (rows - seeds$y[k])^2
             # Gaussian decay (broad mountains, sigma=30)
