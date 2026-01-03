@@ -61,7 +61,7 @@ PARAM_LOWER <- -20
 PARAM_UPPER <- 20
 
 # --- Ablation Study Parameters ---
-M_values_to_test <- c(50, 100, 200, 400, 800, 1600)
+M_values_to_test <- c(100, 200, 400, 800, 1600)
 
 # --- Sampling Strategies ---
 # Fixed to Uniform
