@@ -31,7 +31,7 @@ set.seed(123)
 
 # --- Simulation repetitions ---
 n_sims <- 100 # Number of full datasets to generate per SAC level
-n_sims <- 3 # FOR DEBUGGING
+n_sims <- 10 # FOR DEBUGGING
 
 # --- Model fitting repetitions ---
 n_reps <- 30 
@@ -78,7 +78,7 @@ sac_sigmas <- c(Low = 0, Medium = 10, High = 30)
 skew <- "Centers"
 
 # --- Centers for "Centers" Skew ---
-n_centers <- 3
+n_centers <- 0
 centers_scale <- 1.5
 decay_scale <- 15^2
 
