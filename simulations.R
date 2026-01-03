@@ -78,6 +78,8 @@ skew <- "Centers"
 
 # --- Centers for "Centers" Skew ---
 n_centers <- 3
+centers_scale <- 5
+decay_scale <- 15^2
 
 cat("--- Simulation Starting ---\n")
 cat(sprintf("Running %d full simulations per SAC level.\n", n_sims))
@@ -196,11 +198,11 @@ for (sac_level in sac_levels) {
             # Distance from seed
             d2 <- (cols - seeds$x[k])^2 + (rows - seeds$y[k])^2
             # Gaussian decay (broad mountains, sigma=30)
-            r_centers <- r_centers + exp(-d2 / (2 * 30^2))
+            r_centers <- r_centers + exp(-d2 / (2 * decay_scale))
         }
         
         # Scale centers to be impactful (0 to 3)
-        r_trend <- r_smooth + (r_centers * 3)
+        r_trend <- r_smooth + (r_centers * centers_scale)
         
         # --- 6c. Final Standardization ---
         # Important: Ensure mean=0, sd=1 so betas remain comparable across skews
@@ -410,7 +412,7 @@ for (sac_level in sac_levels) {
             
             # Updated Filename (No loops for skew/sampling)
             fname <- sprintf("plot_SAC=%s.png", sac_level)
-            ggsave(file.path(output_dir, fname), plot=final_comb_plot, dpi=300, width=11, height=22)
+            ggsave(file.path(output_dir, fname), plot=final_comb_plot, dpi=300, width=11, height=20)
         }
         
         gc()
