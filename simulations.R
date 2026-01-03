@@ -61,7 +61,7 @@ PARAM_LOWER <- -20
 PARAM_UPPER <- 20
 
 # --- Ablation Study Parameters ---
-M_values_to_test <- c(100, 200, 400, 800, 1600)
+M_values_to_test <- c(50, 100, 200, 400, 800, 1600)
 
 # --- Sampling Strategies ---
 # Fixed to Uniform
@@ -407,7 +407,7 @@ for (sac_level in sac_levels) {
             
             # Updated Filename (No loops for skew/sampling)
             fname <- sprintf("plot_SAC=%s.png", sac_level)
-            ggsave(file.path(output_dir, fname), plot=final_comb_plot, dpi=300, width=13, height=20)
+            ggsave(file.path(output_dir, fname), plot=final_comb_plot, dpi=300, width=13, height=22)
         }
         
         gc()
