@@ -2,7 +2,7 @@
 # Simulation for occuN model
 # Fully simulated experiments with varying Spatial Autocorrelation (SAC)
 # AND Sampling Strategies (Uniform, Positive, Negative, Hotspots)
-# AND Landscape Skew Patterns (Uniform, TopRight, Centers)
+# AND Landscape Skew Patterns (TopRight, Centers)
 # -----------------------------------------------------------------
 
 ###
@@ -31,7 +31,7 @@ set.seed(123)
 
 # --- Simulation repetitions ---
 n_sims <- 100 # Number of full datasets to generate per SAC/Skew level
-n_sims <- 3 # FOR DEBUGGING
+n_sims <- 10 # FOR DEBUGGING
 
 # --- Model fitting repetitions ---
 n_reps <- 30 
@@ -74,10 +74,9 @@ sac_levels <- c("Low", "Medium", "High")
 sac_sigmas <- c(Low = 0, Medium = 10, High = 20)
 
 # --- Skew Patterns (Renamed Back) ---
-# Uniform: Standard SAC (No gradient)
 # TopRight: Gradient Low->High (Visually Top-Right)
 # Centers: High values clustered around seed locations (was "Hotspots"/"Centered")
-skew_levels <- c("Uniform", "TopRight", "Centers")
+skew_levels <- c("TopRight", "Centers")
 
 # --- Cluster Settings for "Hotspots" Strategy ---
 n_clusters <- 3
@@ -174,6 +173,8 @@ results_counter <- 1
 output_dir <- file.path("simulation_experiments", "output")
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
+cat("\n--- Simulation Study Complete ---\n")
+
 cat("\n--- Starting Main Simulation Loop ---\n")
 
 for (skew in skew_levels) {
@@ -211,11 +212,7 @@ for (skew in skew_levels) {
             # --- 6b. Apply Skew / Trend ---
             r_trend <- r_smooth 
             
-            if (skew == "Uniform") {
-                # No change, just the GRF
-                r_trend <- r_smooth 
-                
-            } else if (skew == "TopRight") {
+            if (skew == "TopRight") {
                 # Create coordinate rasters
                 r_x <- terra::init(r_smooth, "x")
                 r_y <- terra::init(r_smooth, "y")
@@ -509,7 +506,7 @@ for (skew in skew_levels) {
 cat("\n--- Simulation Study Complete ---\n")
 
 all_results_df <- do.call(rbind, results_list)
-all_results_df <- all_results_df[!sapply(all_results_df$Parameter, is.null), ]
+# all_results_df <- all_results_df[!sapply(all_results_df$Parameter, is.null), ]
 
 write.csv(all_results_df, file.path(output_dir, "params.csv"), row.names = FALSE)
 
