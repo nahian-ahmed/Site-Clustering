@@ -70,7 +70,7 @@ sampling_strategies <- c("Uniform", "Positive", "Negative", "Hotspots")
 
 # --- Spatial Autocorrelation (SAC) Settings ---
 sac_levels <- c("Low", "Medium", "High")
-sac_sigmas <- c(Low = 0, Medium = 1, High = 3) 
+sac_sigmas <- c(Low = 0, Medium = 5, High = 15) 
 
 # --- Skew Patterns (Renamed Back) ---
 # Uniform: Standard SAC (No gradient)
@@ -79,8 +79,11 @@ sac_sigmas <- c(Low = 0, Medium = 1, High = 3)
 skew_levels <- c("Uniform", "TopRight", "Centers")
 
 # --- Cluster Settings for "Hotspots" Strategy ---
-n_clusters <- 5
+n_clusters <- 3
 cluster_sigma <- 5 # Controls the spread/size of the sampling clusters
+
+# --- Centers for "Centers" Skew ---
+n_centers <- 3
 
 cat("--- Simulation Starting ---\n")
 cat(sprintf("Running %d full simulations per SAC/Skew level.\n", n_sims))
@@ -154,8 +157,8 @@ cat("Pre-generating fixed COVARIATE skew seeds...\n")
 cov_center_seeds <- vector("list", n_sims)
 for(i in 1:n_sims){
   cov_center_seeds[[i]] <- list(
-    x = runif(3, 0, full_grid_dim), # 3 mountains
-    y = runif(3, 0, full_grid_dim)
+    x = runif(n_centers, 0, full_grid_dim), # 3 mountains
+    y = runif(n_centers, 0, full_grid_dim)
   )
 }
 
