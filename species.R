@@ -102,6 +102,8 @@ buffer_m <- 200
 
 PARAM_LOWER <- -10
 PARAM_UPPER <- 10
+INIT_LOWER <- -2
+INIT_UPPER <- 2
 
 # Output Directory
 output_dir <- file.path("species_experiments", "output")
@@ -314,7 +316,8 @@ for (species_name in species_names) {
     fm <- fit_occuN_model(
       umf, state_formula, obs_formula,
       n_reps = n_fit_repeats, stable_reps = n_fit_repeats,
-      optimizer = selected_optimizer, lower = PARAM_LOWER, upper = PARAM_UPPER
+      optimizer = selected_optimizer, lower = PARAM_LOWER, upper = PARAM_UPPER,
+      init_lower = INIT_LOWER, init_upper = INIT_LOWER
     )
     
     if (is.null(fm)) {
