@@ -233,54 +233,6 @@ disjoint_site_geometries <- function(site_geoms_sf, point_data_df, crs_points = 
 }
 
 
-# #' Generate Overlap Matrix (W)
-# #' 
-# #' Calculates the sparse weighting matrix based on finalized geometries.
-# #'
-# generate_overlap_matrix <- function(site_geoms_sf, reference_raster) {
-  
-#   # Ensure IDs are character
-#   site_geoms_sf$site <- as.character(site_geoms_sf$site)
-  
-#   # Convert to SpatVector
-#   site_vect <- terra::vect(site_geoms_sf)
-#   # Project to verify match (though should already match)
-#   site_vect_proj <- terra::project(site_vect, terra::crs(reference_raster))
-  
-#   # Extract coverage
-#   overlap_df <- terra::extract(
-#     reference_raster[[1]], 
-#     site_vect_proj, 
-#     cells = TRUE, 
-#     exact = TRUE, 
-#     ID = TRUE
-#   )
-  
-#   # Get resolution from the raster to calculate cell area in km^2
-#   r_res <- terra::res(reference_raster)
-#   cell_area_km2 <- (r_res[1] / 1000) * (r_res[2] / 1000)
-  
-#   # Multiply fraction by Area to get units of km^2
-#   overlap_df$w_area <- overlap_df$fraction * cell_area_km2
-
-#   # overlap_df$w_area <- overlap_df$fraction
-  
-#   n_sites <- nrow(site_geoms_sf)
-#   n_cells <- terra::ncell(reference_raster)
-  
-#   # The ID returned by extract corresponds to the row index of the vector
-#   w <- Matrix::sparseMatrix(
-#     i = overlap_df$ID,
-#     j = overlap_df$cell,
-#     x = overlap_df$w_area,
-#     dims = c(n_sites, n_cells),
-#     dimnames = list(site_geoms_sf$site, NULL) 
-#   )
-  
-#   return(w)
-# }
-
-
 #' Generate Overlap Matrix (W)
 #' 
 #' Calculates the sparse weighting matrix based on finalized geometries.
@@ -335,98 +287,10 @@ generate_overlap_matrix <- function(site_geoms_sf, reference_raster) {
   return(w)
 }
 
-# #' Prepare Data for occuN Model
-# prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_names, cell_covs) {
-
-#   # DEBUG CHECK
-#   missing_ids <- setdiff(train_data$checklist_id, clustering_df$checklist_id)
-#   if(length(missing_ids) > 0) {
-#      warning(paste("WARNING:", length(missing_ids), "checklists from Train Data are missing in Clustering DF!"))
-#   }
-
-#   train_data_prepped <- train_data %>%
-#     dplyr::left_join(comparison_site_lookup, by = "checklist_id") %>%
-#     dplyr::filter(!is.na(comparison_site)) 
-    
-#   if(nrow(train_data_prepped) < 100) {
-#       stop("CRITICAL ERROR: Almost all training data was dropped during site lookup join. Check checklist_id matching.")
-#   }
-
-
-  
-#   # 1. Join checklists to the specific clustering method's site IDs
-#   comparison_site_lookup <- clustering_df %>%
-#     dplyr::select(checklist_id, comparison_site = site)
-  
-#   train_data_prepped <- train_data %>%
-#     dplyr::left_join(comparison_site_lookup, by = "checklist_id") %>%
-#     dplyr::filter(!is.na(comparison_site)) %>%
-#     dplyr::select(-site) %>%          
-#     dplyr::rename(site = comparison_site) 
-  
-#   # 2. Create numeric site index matching the W matrix rows
-#   M <- nrow(w_matrix)
-#   site_id_lookup <- data.frame(
-#     site_char = rownames(w_matrix),  
-#     site_numeric = 1:M
-#   )
-  
-#   # Ensure character matching
-#   train_data_prepped$site <- as.character(train_data_prepped$site)
-#   site_id_lookup$site_char <- as.character(site_id_lookup$site_char)
-  
-#   # 3. Re-index and create visit IDs
-#   train_data_prepped <- train_data_prepped %>%
-#     dplyr::inner_join(site_id_lookup, by = c("site" = "site_char")) %>%
-#     dplyr::select(-site) %>%
-#     dplyr::rename(site = site_numeric) %>%
-#     dplyr::group_by(site) %>%
-#     dplyr::mutate(visit_id = dplyr::row_number()) %>%
-#     dplyr::ungroup()
-  
-#   # 4. Pivot Observations (y)
-#   y_wide <- train_data_prepped %>% 
-#     tidyr::pivot_wider(
-#       id_cols = site,
-#       names_from = visit_id,
-#       values_from = species_observed,
-#       values_fill = NA 
-#     ) %>%
-#     dplyr::right_join(data.frame(site = 1:M), by = "site") %>%
-#     dplyr::arrange(site) %>%
-#     dplyr::select(-site) %>%
-#     as.matrix()
-  
-#   # 5. Pivot Observation Covariates
-#   obs_covs_wide <- list()
-#   for (cov_name in obs_cov_names) {
-#     obs_covs_wide[[cov_name]] <- train_data_prepped %>% 
-#       tidyr::pivot_wider(
-#         id_cols = site,
-#         names_from = visit_id,
-#         values_from = dplyr::all_of(cov_name),
-#         values_fill = NA
-#       ) %>%
-#       dplyr::right_join(data.frame(site = 1:M), by = "site") %>%
-#       dplyr::arrange(site) %>%
-#       dplyr::select(-site) %>%
-#       as.matrix()
-#   }
-  
-#   # 6. Create Unmarked Frame
-#   umf <- unmarked::unmarkedFrameOccuN(
-#     y = y_wide,
-#     obsCovs = obs_covs_wide,
-#     cellCovs = cell_covs,
-#     w = w_matrix
-#   )
-  
-#   return(umf)
-# }
-
-
-
 #' Prepare Data for occuN Model
+#' 
+#' Updated to handle real data (no existing 'site' column) 
+#' AND simulation data (existing 'site' column) gracefully.
 prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_names, cell_covs) {
 
   # --- 1. DEFINE LOOKUP FIRST ---
@@ -449,12 +313,16 @@ prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_name
       stop("CRITICAL ERROR: Almost all training data was dropped during site lookup join. Check checklist_id matching.")
   }
   
-  # Clean up columns for the model
+  # --- 4. CLEAN UP COLUMNS (ROBUST FIX) ---
+  # If 'site' exists (e.g. simulation truth), remove it so we can use comparison_site
+  if ("site" %in% names(train_data_prepped)) {
+    train_data_prepped <- dplyr::select(train_data_prepped, -site)
+  }
+  
   train_data_prepped <- train_data_prepped %>%
-    dplyr::select(-site) %>%          
     dplyr::rename(site = comparison_site) 
   
-  # --- 4. CREATE NUMERIC SITE INDICES ---
+  # --- 5. CREATE NUMERIC SITE INDICES ---
   M <- nrow(w_matrix)
   site_id_lookup <- data.frame(
     site_char = rownames(w_matrix),  
@@ -465,7 +333,7 @@ prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_name
   train_data_prepped$site <- as.character(train_data_prepped$site)
   site_id_lookup$site_char <- as.character(site_id_lookup$site_char)
   
-  # --- 5. RE-INDEX & CREATE VISIT IDs ---
+  # --- 6. RE-INDEX & CREATE VISIT IDs ---
   train_data_prepped <- train_data_prepped %>%
     dplyr::inner_join(site_id_lookup, by = c("site" = "site_char")) %>%
     dplyr::select(-site) %>%
@@ -474,7 +342,7 @@ prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_name
     dplyr::mutate(visit_id = dplyr::row_number()) %>%
     dplyr::ungroup()
   
-  # --- 6. PIVOT OBSERVATIONS (y) ---
+  # --- 7. PIVOT OBSERVATIONS (y) ---
   y_wide <- train_data_prepped %>% 
     tidyr::pivot_wider(
       id_cols = site,
@@ -487,7 +355,7 @@ prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_name
     dplyr::select(-site) %>%
     as.matrix()
   
-  # --- 7. PIVOT OBSERVATION COVARIATES ---
+  # --- 8. PIVOT OBSERVATION COVARIATES ---
   obs_covs_wide <- list()
   for (cov_name in obs_cov_names) {
     obs_covs_wide[[cov_name]] <- train_data_prepped %>% 
@@ -503,7 +371,7 @@ prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_name
       as.matrix()
   }
   
-  # --- 8. CREATE UNMARKED FRAME ---
+  # --- 9. CREATE UNMARKED FRAME ---
   umf <- unmarked::unmarkedFrameOccuN(
     y = y_wide,
     obsCovs = obs_covs_wide,

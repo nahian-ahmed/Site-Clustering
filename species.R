@@ -54,7 +54,7 @@ method_names <- c(
   "BayesOptClustGeo"
 )
 
-# Methods to plot (you can adjust this subset or use method_names)
+# Methods to plot
 methods_to_plot <- c(
   "1to10", "2to10", "2to10-sameObs", "lat-long", "SVS", "1-per-UL",
   "1-kmSq", "rounded-4", "DBSC", "BayesOptClustGeo"
@@ -132,6 +132,7 @@ for (species_name in species_names) {
   # === 4.1 DATA PREPARATION ===
   cat("--- Preparing Train Data ---\n")
   
+  # New prepare_train_data preserves species_observed.
   train_data_res <- prepare_train_data(
     state_covs = state_cov_names, 
     obs_covs = obs_cov_names, 
@@ -142,17 +143,6 @@ for (species_name in species_names) {
   
   base_train_df <- train_data_res$train_df
   full_standardization_params <- train_data_res$standardization_params
-  
-  # CRITICAL FIX 1: Restore REAL species observations
-  train_filename <- paste0(species_name, "_zf_filtered_region_2017.csv")
-  train_df_og <- read.delim(
-    file.path("checklist_data", "species", species_name, train_filename), 
-    sep = ",", header = TRUE
-  )
-  
-  train_obs_lookup <- train_df_og[, c("checklist_id", "species_observed")]
-  base_train_df$species_observed <- NULL 
-  base_train_df <- inner_join(base_train_df, train_obs_lookup, by = "checklist_id")
   
   cat("--- Preparing Test Data ---\n")
   base_test_df <- prepare_test_data(
@@ -183,7 +173,7 @@ for (species_name in species_names) {
   stats_pre$species <- species_name
   all_clustering_stats_pre[[length(all_clustering_stats_pre) + 1]] <- stats_pre
 
-  # --- PLOTTING PRE-SPLIT (Added) ---
+  # --- PLOTTING PRE-SPLIT ---
   cat("--- Plotting sites (PRE-SPLIT)... ---\n")
   try({
     plot_sites(
@@ -223,7 +213,7 @@ for (species_name in species_names) {
   stats_post$species <- species_name
   all_clustering_stats_post[[length(all_clustering_stats_post) + 1]] <- stats_post
   
-  # --- PLOTTING POST-SPLIT (Added) ---
+  # --- PLOTTING POST-SPLIT ---
   cat("--- Plotting sites (POST-SPLIT)... ---\n")
   try({
     plot_sites(
@@ -283,13 +273,9 @@ for (species_name in species_names) {
        cat(sprintf("    Skipping %s (No W matrix)\n", method_name)); next
     }
     
-    # CRITICAL FIX 2: Add dummy 'site' column for compatibility with prepare_occuN_data
-    # prepare_occuN_data expects an existing 'site' column to drop/replace.
-    train_data_for_model <- base_train_df
-    train_data_for_model$site <- "dummy_site" 
-    
     # Use modular function to prep UMF
-    umf <- prepare_occuN_data(train_data_for_model, current_clustering_df, w_matrix, obs_cov_names, full_raster_covs)
+    # Note: Dummy site column is no longer needed.
+    umf <- prepare_occuN_data(base_train_df, current_clustering_df, w_matrix, obs_cov_names, full_raster_covs)
     
     obs_formula <- as.formula(paste("~", paste(obs_cov_names, collapse = " + ")))
     state_formula <- as.formula(paste("~", paste(state_cov_names, collapse = " + ")))
