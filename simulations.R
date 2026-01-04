@@ -1,3 +1,4 @@
+
 # -----------------------------------------------------------------
 # Simulation for occuN model
 # Fully simulated experiments with varying Spatial Autocorrelation (SAC)
@@ -278,7 +279,8 @@ for (sampling_strat in sampling_strategies) {
         if (sampling_strat == "Positive") {
           # POSITIVE: Favor High Covariate AND Decrease Distance to Center (Pull Closest)
           # We use spatial decay so probability drops as we get further from center.
-          spatial_decay <- exp(-dist_to_skew_center / (full_n_sites_x / 4))
+          # UPDATED: Use a very tight bandwidth (2) to force center selection very close to skew center
+          spatial_decay <- exp(-dist_to_skew_center / 2)
           center_probs <- exp(site_cov_vals) * spatial_decay
           
         } else if (sampling_strat == "Negative") {
