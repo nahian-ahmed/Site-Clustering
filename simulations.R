@@ -2,7 +2,7 @@
 # Simulation for occuN model
 # Fully simulated experiments with varying Spatial Autocorrelation (SAC)
 # Fixed Skew Pattern: Centers
-# Fixed Sampling Strategy: Uniform
+# Variable Sampling Strategies: Uniform, Positive (High Cov), Negative (Low Cov)
 # -----------------------------------------------------------------
 
 ###
@@ -22,6 +22,7 @@ library(ggplot2)
 library(patchwork)
 library(terra) 
 library(Matrix) 
+library(scales) # Helpful for rescaling if needed
 
 ##########
 # 2. Set Simulation Parameters
@@ -30,7 +31,7 @@ library(Matrix)
 set.seed(123) 
 
 # --- Simulation repetitions ---
-n_sims <- 100 # Number of full datasets to generate per SAC level
+n_sims <- 100 # Number of full datasets to generate per SAC level per Strategy
 # n_sims <- 3 # FOR DEBUGGING
 
 # --- Model fitting repetitions ---
@@ -64,13 +65,15 @@ PARAM_UPPER <- 20
 M_values_to_test <- c(100, 200, 400, 800, 1600)
 
 # --- Sampling Strategies ---
-# Fixed to Uniform
-sampling_strat <- "Uniform"
+sampling_strategies <- c("Uniform", "Positive", "Negative")
+
+# --- Weighted Sampling Parameters ---
+n_sampling_clusters <- 5   # Number of hotspots to select
+sampling_sd <- 5           # SD for Gaussian smoothing (in site units, ~25 cells)
 
 # --- Spatial Autocorrelation (SAC) Settings ---
 sac_levels <- c("Low", "Medium", "High") 
 # sac_sigmas <- c(Low = 0, Medium = 5, High = 15)
-# sac_sigmas <- c(Low = 0, Medium = 5, High = 10)
 sac_sigmas <- c(Low = 0, Medium = 10, High = 30) 
 
 # --- Skew Patterns ---
@@ -82,13 +85,16 @@ n_centers <- 1
 centers_scale <- 5
 decay_scale <- 30^2
 
+output_dir <- file.path("simulation_experiments", "output")
+if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
+
 cat("--- Simulation Starting ---\n")
-cat(sprintf("Running %d full simulations per SAC level.\n", n_sims))
+cat(sprintf("Running %d full simulations per SAC level per Strategy.\n", n_sims))
 cat(sprintf("SAC Levels: %s\n", paste(sac_levels, collapse=", ")))
-cat(sprintf("Skew Pattern: %s\n", skew))
-cat(sprintf("Sampling Strategy: %s\n", sampling_strat))
+cat(sprintf("Strategies: %s\n", paste(sampling_strategies, collapse=", ")))
+cat(sprintf("Weighted Sampling: %d clusters, SD=%d\n", n_sampling_clusters, sampling_sd))
 cat(sprintf("TOTAL MODEL FITS: %d\n\n", 
-    length(sac_levels) * n_sims * length(M_values_to_test) * n_reps))
+            length(sampling_strategies) * length(sac_levels) * n_sims * length(M_values_to_test) * n_reps))
 
 
 ##########
@@ -107,22 +113,26 @@ full_site_id_for_cell <- (full_site_row - 1) * full_n_sites_x + full_site_col
 
 # Full weight matrix w (1600 x 40000)
 full_w <- Matrix::sparseMatrix(
-    i = full_site_id_for_cell,
-    j = 1:full_n_cells,
-    x = 1,
-    dims = c(full_M, full_n_cells)
+  i = full_site_id_for_cell,
+  j = 1:full_n_cells,
+  x = 1,
+  dims = c(full_M, full_n_cells)
 )
+
+# Site coordinates (1 to 40)
+site_coords_x <- rep(1:full_n_sites_x, times = full_n_sites_y)
+site_coords_y <- rep(1:full_n_sites_y, each = full_n_sites_x)
 
 # Helper to get site boxes for plotting
 get_site_box <- function(site_id, site_dim, n_sites_x) {
-    s_row <- (site_id - 1) %/% n_sites_x + 1
-    s_col <- (site_id - 1) %% n_sites_x + 1
-    
-    xmin <- (s_col - 1) * site_dim + 0.5
-    xmax <- xmin + site_dim
-    ymin <- (s_row - 1) * site_dim + 0.5
-    ymax <- ymin + site_dim
-    return(c(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax))
+  s_row <- (site_id - 1) %/% n_sites_x + 1
+  s_col <- (site_id - 1) %% n_sites_x + 1
+  
+  xmin <- (s_col - 1) * site_dim + 0.5
+  xmax <- xmin + site_dim
+  ymin <- (s_row - 1) * site_dim + 0.5
+  ymax <- ymin + site_dim
+  return(c(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax))
 }
 
 ##########
@@ -143,326 +153,395 @@ for(i in 1:n_sims){
 # 5. Initialize Loop & Storage
 ##########
 
-total_iterations <- length(sac_levels) * n_sims * length(M_values_to_test)
-results_list <- vector("list", total_iterations)
-results_counter <- 1
-
-output_dir <- file.path("simulation_experiments", "output")
-if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
-
-cat("\n--- Starting Main Simulation Loop ---\n")
-
-
-for (sac_level in sac_levels) {
+# --- OUTER LOOP: SAMPLING STRATEGY ---
+for (sampling_strat in sampling_strategies) {
+  
+  cat(sprintf("\n\n#############################################\n"))
+  cat(sprintf("### STARTING SAMPLING STRATEGY: %s ###\n", sampling_strat))
+  cat(sprintf("#############################################\n"))
+  
+  # Reset results for this strategy
+  total_iterations_strat <- length(sac_levels) * n_sims * length(M_values_to_test)
+  results_list <- vector("list", total_iterations_strat)
+  results_counter <- 1
+  
+  for (sac_level in sac_levels) {
     
     current_sigma <- sac_sigmas[[sac_level]]
     
     for (sim in 1:n_sims) {
-        
-        cat(sprintf("\n=== SAC: %s | Sim %d of %d ===\n", sac_level, sim, n_sims))
-    
-        ##########
-        # 6. Create FULL Landscape
-        ##########
-        
-        # --- 6a. Generate Base Spatial Noise (SAC) ---
-        r_noise <- terra::rast(nrows=full_grid_dim, ncols=full_grid_dim, 
-                              xmin=0, xmax=full_grid_dim, ymin=0, ymax=full_grid_dim,
-                              vals=rnorm(full_n_cells))
-        
-        if (current_sigma > 0) {
-            fw <- terra::focalMat(r_noise, current_sigma, type = "Gauss")
-            r_smooth <- terra::focal(r_noise, w = fw, fun = sum, na.rm = TRUE)
-        } else {
-            r_smooth <- r_noise
+      
+      cat(sprintf("\n=== Strat: %s | SAC: %s | Sim %d of %d ===\n", sampling_strat, sac_level, sim, n_sims))
+      
+      ##########
+      # 6. Create FULL Landscape
+      ##########
+      
+      # --- 6a. Generate Base Spatial Noise (SAC) ---
+      r_noise <- terra::rast(nrows=full_grid_dim, ncols=full_grid_dim, 
+                             xmin=0, xmax=full_grid_dim, ymin=0, ymax=full_grid_dim,
+                             vals=rnorm(full_n_cells))
+      
+      if (current_sigma > 0) {
+        fw <- terra::focalMat(r_noise, current_sigma, type = "Gauss")
+        r_smooth <- terra::focal(r_noise, w = fw, fun = sum, na.rm = TRUE)
+      } else {
+        r_smooth <- r_noise
+      }
+      # Normalize noise to Standard Normal (approx) before adding trend
+      terra::values(r_smooth) <- as.vector(scale(terra::values(r_smooth)))
+      
+      # --- 6b. Apply Skew / Trend (Centers) ---
+      r_trend <- r_smooth 
+      
+      # Centers Logic
+      # Get seeds for this sim
+      seeds <- cov_center_seeds[[sim]]
+      
+      # Initialize trend raster with zeros
+      r_centers <- terra::rast(r_smooth)
+      terra::values(r_centers) <- 0
+      
+      # Add Gaussian mountains
+      rows <- terra::init(r_smooth, "y")
+      cols <- terra::init(r_smooth, "x")
+      
+      for(k in seq_along(seeds$x)) {
+        # Distance from seed
+        d2 <- (cols - seeds$x[k])^2 + (rows - seeds$y[k])^2
+        # Gaussian decay (broad mountains, sigma=30)
+        r_centers <- r_centers + exp(-d2 / (2 * decay_scale))
+      }
+      
+      # Scale centers to be impactful (0 to 3)
+      r_trend <- r_smooth + (r_centers * centers_scale)
+      
+      # --- 6c. Final Standardization ---
+      # Important: Ensure mean=0, sd=1 so betas remain comparable across skews
+      terra::values(r_trend) <- as.vector(scale(terra::values(r_trend)))
+      r_final <- r_trend
+      
+      full_cellCovs <- data.frame(cell_cov1 = terra::values(r_final, mat=FALSE))
+      if(any(is.na(full_cellCovs$cell_cov1))) full_cellCovs$cell_cov1[is.na(full_cellCovs$cell_cov1)] <- 0
+      
+      # True Lambda
+      full_X_cell <- model.matrix(~cell_cov1, data = full_cellCovs)
+      full_lambda_j <- exp(full_X_cell %*% true_betas)
+      
+      # True Site States (for full 1600 sites)
+      full_lambda_tilde_i <- as.numeric(full_w %*% full_lambda_j)
+      full_psi_i <- 1 - exp(-full_lambda_tilde_i)
+      full_Z_i <- rbinom(full_M, 1, full_psi_i)
+      
+      ##########
+      # 8. Simulate Full Observation Data (y) for ALL sites
+      ##########
+      
+      full_obs_cov1 <- matrix(rnorm(full_M * J_obs), full_M, J_obs)
+      full_obsCovs <- list(obs_cov1 = full_obs_cov1)
+      
+      full_y <- matrix(NA, full_M, J_obs)
+      for (i in 1:full_M) {
+        if (full_Z_i[i] == 0) {
+          full_y[i, ] <- 0
+          next
         }
-        # Normalize noise to Standard Normal (approx) before adding trend
-        terra::values(r_smooth) <- as.vector(scale(terra::values(r_smooth)))
+        for (k in 1:J_obs) {
+          logit_p_ik <- true_alphas[1] * 1 + true_alphas[2] * full_obsCovs$obs_cov1[i, k]
+          p_ik <- plogis(logit_p_ik)
+          full_y[i, k] <- rbinom(1, 1, p_ik)
+        }
+      }
+      
+      ##########
+      # 8.5 DETERMINE SAMPLING PROBABILITIES (Per Sim, based on Strat)
+      ##########
+      
+      # Default: Uniform
+      site_sampling_weights <- rep(1, full_M)
+      
+      if (sampling_strat != "Uniform") {
+        # 1. Aggregate Covariate to Site Level (Mean)
+        site_cov_vals <- tapply(full_cellCovs$cell_cov1, full_site_id_for_cell, mean)
         
-        # --- 6b. Apply Skew / Trend (Centers) ---
-        r_trend <- r_smooth 
+        # 2. Select Cluster Centers
+        # "Positive": High Cov -> High Prob. "Negative": Low Cov -> High Prob.
+        # Use exp() to make weights positive.
         
-        # Centers Logic
-        # Get seeds for this sim
-        seeds <- cov_center_seeds[[sim]]
-        
-        # Initialize trend raster with zeros
-        r_centers <- terra::rast(r_smooth)
-        terra::values(r_centers) <- 0
-        
-        # Add Gaussian mountains
-        rows <- terra::init(r_smooth, "y")
-        cols <- terra::init(r_smooth, "x")
-        
-        # --- FIX: Loop over indices, not values ---
-        for(k in seq_along(seeds$x)) {
-            # Distance from seed
-            d2 <- (cols - seeds$x[k])^2 + (rows - seeds$y[k])^2
-            # Gaussian decay (broad mountains, sigma=30)
-            r_centers <- r_centers + exp(-d2 / (2 * decay_scale))
+        if (sampling_strat == "Positive") {
+          center_probs <- exp(site_cov_vals) # Favors high values
+        } else if (sampling_strat == "Negative") {
+          center_probs <- exp(-site_cov_vals) # Favors low values
         }
         
-        # Scale centers to be impactful (0 to 3)
-        r_trend <- r_smooth + (r_centers * centers_scale)
+        # Sample cluster centers
+        cluster_center_ids <- sample(1:full_M, size = n_sampling_clusters, prob = center_probs, replace = FALSE)
         
-        # --- 6c. Final Standardization ---
-        # Important: Ensure mean=0, sd=1 so betas remain comparable across skews
-        terra::values(r_trend) <- as.vector(scale(terra::values(r_trend)))
-        r_final <- r_trend
+        # 3. "Grow" Clusters (Gaussian Smoothing)
+        # Calculate distance from every site to every chosen center
+        # We work in "site coordinates" (1..40)
         
-        full_cellCovs <- data.frame(cell_cov1 = terra::values(r_final, mat=FALSE))
-        if(any(is.na(full_cellCovs$cell_cov1))) full_cellCovs$cell_cov1[is.na(full_cellCovs$cell_cov1)] <- 0
+        # Initialize weights with a small base probability (to avoid 0)
+        # or just 0 if strict. Let's add small epsilon or assume non-sampled areas are rare.
+        # The user said "grow it out", implying areas far away might not be sampled.
         
-        # True Lambda
-        full_X_cell <- model.matrix(~cell_cov1, data = full_cellCovs)
-        full_lambda_j <- exp(full_X_cell %*% true_betas)
+        # Reset weights to 0 accumulator
+        prob_surface <- rep(0, full_M)
         
-        # True Site States (for full 1600 sites)
-        full_lambda_tilde_i <- as.numeric(full_w %*% full_lambda_j)
-        full_psi_i <- 1 - exp(-full_lambda_tilde_i)
-        full_Z_i <- rbinom(full_M, 1, full_psi_i)
+        center_coords <- data.frame(
+          id = cluster_center_ids,
+          x = site_coords_x[cluster_center_ids],
+          y = site_coords_y[cluster_center_ids]
+        )
         
-        ##########
-        # 8. Simulate Full Observation Data (y) for ALL sites
-        #    (Moved outside the M loop)
-        ##########
-        
-        full_obs_cov1 <- matrix(rnorm(full_M * J_obs), full_M, J_obs)
-        full_obsCovs <- list(obs_cov1 = full_obs_cov1)
-        
-        full_y <- matrix(NA, full_M, J_obs)
         for (i in 1:full_M) {
-            if (full_Z_i[i] == 0) {
-                full_y[i, ] <- 0
-                next
-            }
-            for (k in 1:J_obs) {
-                logit_p_ik <- true_alphas[1] * 1 + true_alphas[2] * full_obsCovs$obs_cov1[i, k]
-                p_ik <- plogis(logit_p_ik)
-                full_y[i, k] <- rbinom(1, 1, p_ik)
-            }
+          sx <- site_coords_x[i]
+          sy <- site_coords_y[i]
+          
+          # Sum of kernels from all centers
+          w_sum <- 0
+          for (c_idx in 1:nrow(center_coords)) {
+            cx <- center_coords$x[c_idx]
+            cy <- center_coords$y[c_idx]
+            
+            dist_sq <- (sx - cx)^2 + (sy - cy)^2
+            w_sum <- w_sum + exp(-dist_sq / (2 * sampling_sd^2))
+          }
+          prob_surface[i] <- w_sum
         }
         
-        # --- Weights for Sampling Strategies ---
-        # Fixed to Uniform: No weights needed
-        curr_weights <- NULL
-
-        if(sim == 1) {
-            plots_cov   <- list()
-            plots_abund <- list()
-            plots_occ   <- list()
+        site_sampling_weights <- prob_surface
+      }
+      
+      # Normalize weights for stability (sample function handles this, but good for debugging)
+      # site_sampling_weights <- site_sampling_weights / sum(site_sampling_weights)
+      
+      
+      if(sim == 1) {
+        plots_cov   <- list()
+        plots_abund <- list()
+        plots_occ   <- list()
+      }
+      
+      # --- LOOP OVER M ---
+      for (M_i in M_values_to_test) {
+        
+        # --- 6.1. Select Sites ---
+        # Weighted Sampling based on strategy
+        
+        # Need distinct indices
+        if (sum(site_sampling_weights > 0) < M_i) {
+             # Fallback if weights are too sparse (unlikely with Gaussian)
+             selected_site_indices <- sample(1:full_M, M_i, replace = FALSE)
+        } else {
+             selected_site_indices <- sample(1:full_M, M_i, replace = FALSE, prob = site_sampling_weights)
         }
+
+        selected_site_indices <- sort(selected_site_indices)
+        M <- length(selected_site_indices)
         
-
-        # --- LOOP OVER M ---
-        for (M_i in M_values_to_test) {
-            
-            # --- 6.1. Select Sites ---
-            # Uniform Sampling
-            selected_site_indices <- sample(1:full_M, M_i, replace = FALSE)
-            
-            selected_site_indices <- sort(selected_site_indices)
-            M <- length(selected_site_indices)
-            
-            # --- 6.2. Subset Data ---
-            w_sub <- full_w[selected_site_indices, , drop=FALSE]
-            # Z_sub <- full_Z_i[selected_site_indices] 
-            
-            # Subset Observations (Sliced from the full simulation)
-            y_sub <- full_y[selected_site_indices, , drop=FALSE]
-            obs_cov1_sub <- full_obs_cov1[selected_site_indices, , drop=FALSE]
-            obsCovs_sub <- list(obs_cov1 = obs_cov1_sub)
-
-            
-            ##########
-            # 9. Bundle Data
-            ##########
-            
-            umf <- unmarkedFrameOccuN(
-                y = y_sub,
-                obsCovs = obsCovs_sub,
-                cellCovs = full_cellCovs, 
-                w = w_sub 
-            )
-            
-            ##########
-            # 10. Fit the occuN Model
-            ##########
-            
-            best_fm <- NULL
-            min_nll <- Inf
-            n_params <- length(true_alphas) + length(true_betas)
+        # --- 6.2. Subset Data ---
+        w_sub <- full_w[selected_site_indices, , drop=FALSE]
         
-            for (rep in 1:n_reps) {
-                rand_starts <- runif(n_params, -2, 2) 
-                fm_rep <- try(occuN(
-                    formula = ~obs_cov1 ~ cell_cov1,
-                    data = umf,
-                    starts = rand_starts,
-                    se = TRUE,
-                    method = selected_optimizer,
-                    lower = PARAM_LOWER, 
-                    upper = PARAM_UPPER 
-                ), silent = TRUE)
-                
-                if (inherits(fm_rep, "try-error")) next
-                
-                current_nll <- fm_rep@negLogLike
-                if (current_nll < min_nll) {
-                    min_nll <- current_nll
-                    best_fm <- fm_rep
-                }
-            } 
-            
-            fm <- best_fm
-            
-            # Store Results
-            est_val <- if(is.null(fm)) c(NA,NA,NA,NA) else c(coef(fm, 'det'), coef(fm, 'state'))
-            
-            loop_results <- data.frame(
-                Parameter = c("alpha (det_int)", "alpha (det_cov1)", "beta (state_int)", "beta (state_cov1)"),
-                True_Value = c(true_alphas, true_betas),
-                Estimated_Value = est_val,
-                M = M, 
-                sim_id = sim,
-                SAC_Level = sac_level,
-                Skew = skew,
-                Sampling = sampling_strat
-            )
-            
-            results_list[[results_counter]] <- loop_results
-            results_counter <- results_counter + 1
-            
-            ##########
-            # 12. Plotting (Sim 1 Only)
-            ##########
-            if (sim == 1) {
-                cell_df <- data.frame(
-                    x = full_cell_col,
-                    y = full_cell_row,
-                    covariate = full_cellCovs$cell_cov1
-                )
-                
-                cell_df$site_latent_abundance <- full_lambda_tilde_i[full_site_id_for_cell]
-                cell_df$site_true_occupancy <- as.factor(full_Z_i[full_site_id_for_cell])
-                
-                boxes_list <- lapply(selected_site_indices, function(sid) {
-                    coords <- get_site_box(sid, site_dim, full_n_sites_x)
-                    data.frame(xmin=coords['xmin'], xmax=coords['xmax'], 
-                               ymin=coords['ymin'], ymax=coords['ymax'])
-                })
-                site_boxes <- do.call(rbind, boxes_list)
-                
-                tight_theme <- theme_minimal() + 
-                               theme(
-                                 axis.title = element_blank(),
-                                 plot.margin = margin(t=0, r=0, b=0, l=0, unit="pt")
-                               )
-
-                p_cov <- ggplot(cell_df, aes(x=x, y=y, fill=covariate)) +
-                    geom_raster() +
-                    scale_fill_viridis_c() +
-                    coord_fixed(expand=FALSE) +
-                    geom_rect(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
-                              color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
-                    labs(title=sprintf("Covariate (M=%d)", M), fill="Covariate") +
-                    tight_theme
-
-                p_abund <- ggplot(cell_df, aes(x=x, y=y, fill=site_latent_abundance)) +
-                    geom_raster() +
-                    scale_fill_viridis_c(option = "magma") +
-                    coord_fixed(expand=FALSE) +
-                    geom_rect(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
-                              color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
-                    labs(title=sprintf("Abundance (M=%d)", M), fill="Abundance") +
-                    tight_theme
-
-                p_occ <- ggplot(cell_df, aes(x=x, y=y, fill=site_true_occupancy)) +
-                    geom_raster() +
-                    scale_fill_manual(values=c("0"="navyblue", "1"="yellow")) +
-                    coord_fixed(expand=FALSE) +
-                    geom_rect(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
-                              color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
-                    labs(title=sprintf("Occupancy (M=%d)", M), fill="Occupancy") +
-                    tight_theme
-                    
-                plots_cov[[length(plots_cov)+1]]     <- p_cov
-                plots_abund[[length(plots_abund)+1]] <- p_abund
-                plots_occ[[length(plots_occ)+1]]     <- p_occ
-            }
-            
-        } # End M Loop
+        # Subset Observations
+        y_sub <- full_y[selected_site_indices, , drop=FALSE]
+        obs_cov1_sub <- full_obs_cov1[selected_site_indices, , drop=FALSE]
+        obsCovs_sub <- list(obs_cov1 = obs_cov1_sub)
         
-        # Save Plots for this SAC level
+        ##########
+        # 9. Bundle Data
+        ##########
+        
+        umf <- unmarkedFrameOccuN(
+          y = y_sub,
+          obsCovs = obsCovs_sub,
+          cellCovs = full_cellCovs, 
+          w = w_sub 
+        )
+        
+        ##########
+        # 10. Fit the occuN Model
+        ##########
+        
+        best_fm <- NULL
+        min_nll <- Inf
+        n_params <- length(true_alphas) + length(true_betas)
+        
+        for (rep in 1:n_reps) {
+          rand_starts <- runif(n_params, -2, 2) 
+          fm_rep <- try(occuN(
+            formula = ~obs_cov1 ~ cell_cov1,
+            data = umf,
+            starts = rand_starts,
+            se = TRUE,
+            method = selected_optimizer,
+            lower = PARAM_LOWER, 
+            upper = PARAM_UPPER 
+          ), silent = TRUE)
+          
+          if (inherits(fm_rep, "try-error")) next
+          
+          current_nll <- fm_rep@negLogLike
+          if (current_nll < min_nll) {
+            min_nll <- current_nll
+            best_fm <- fm_rep
+          }
+        } 
+        
+        fm <- best_fm
+        
+        # Store Results
+        est_val <- if(is.null(fm)) c(NA,NA,NA,NA) else c(coef(fm, 'det'), coef(fm, 'state'))
+        
+        loop_results <- data.frame(
+          Parameter = c("alpha (det_int)", "alpha (det_cov1)", "beta (state_int)", "beta (state_cov1)"),
+          True_Value = c(true_alphas, true_betas),
+          Estimated_Value = est_val,
+          M = M, 
+          sim_id = sim,
+          SAC_Level = sac_level,
+          Skew = skew,
+          Sampling = sampling_strat
+        )
+        
+        results_list[[results_counter]] <- loop_results
+        results_counter <- results_counter + 1
+        
+        ##########
+        # 12. Plotting (Sim 1 Only)
+        ##########
         if (sim == 1) {
-            cat(sprintf("\nSaving plots for SAC=%s...\n", sac_level))
-            
-            col_cov <- patchwork::wrap_plots(plots_cov, ncol = 1) + 
-              patchwork::plot_layout(guides = "collect") & 
-              theme(legend.position = "bottom", legend.direction = "horizontal")
-              
-            col_abund <- patchwork::wrap_plots(plots_abund, ncol = 1) + 
-              patchwork::plot_layout(guides = "collect") & 
-              theme(legend.position = "bottom", legend.direction = "horizontal")
-            
-            col_occ <- patchwork::wrap_plots(plots_occ, ncol = 1) + 
-              patchwork::plot_layout(guides = "collect") & 
-              theme(legend.position = "bottom", legend.direction = "horizontal")
-            
-            final_comb_plot <- col_cov | col_abund | col_occ
-            
-            # Updated Filename (No loops for skew/sampling)
-            fname <- sprintf("plot_SAC=%s.png", sac_level)
-            ggsave(file.path(output_dir, fname), plot=final_comb_plot, dpi=300, width=11, height=20)
+          cell_df <- data.frame(
+            x = full_cell_col,
+            y = full_cell_row,
+            covariate = full_cellCovs$cell_cov1
+          )
+          
+          cell_df$site_latent_abundance <- full_lambda_tilde_i[full_site_id_for_cell]
+          cell_df$site_true_occupancy <- as.factor(full_Z_i[full_site_id_for_cell])
+          
+          boxes_list <- lapply(selected_site_indices, function(sid) {
+            coords <- get_site_box(sid, site_dim, full_n_sites_x)
+            data.frame(xmin=coords['xmin'], xmax=coords['xmax'], 
+                       ymin=coords['ymin'], ymax=coords['ymax'])
+          })
+          site_boxes <- do.call(rbind, boxes_list)
+          
+          tight_theme <- theme_minimal() + 
+            theme(
+              axis.title = element_blank(),
+              plot.margin = margin(t=0, r=0, b=0, l=0, unit="pt")
+            )
+          
+          p_cov <- ggplot(cell_df, aes(x=x, y=y, fill=covariate)) +
+            geom_raster() +
+            scale_fill_viridis_c() +
+            coord_fixed(expand=FALSE) +
+            geom_rect(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
+                      color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
+            labs(title=sprintf("Covariate (M=%d)", M), fill="Covariate") +
+            tight_theme
+          
+          p_abund <- ggplot(cell_df, aes(x=x, y=y, fill=site_latent_abundance)) +
+            geom_raster() +
+            scale_fill_viridis_c(option = "magma") +
+            coord_fixed(expand=FALSE) +
+            geom_rect(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
+                      color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
+            labs(title=sprintf("Abundance (M=%d)", M), fill="Abundance") +
+            tight_theme
+          
+          p_occ <- ggplot(cell_df, aes(x=x, y=y, fill=site_true_occupancy)) +
+            geom_raster() +
+            scale_fill_manual(values=c("0"="navyblue", "1"="yellow")) +
+            coord_fixed(expand=FALSE) +
+            geom_rect(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
+                      color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
+            labs(title=sprintf("Occupancy (M=%d)", M), fill="Occupancy") +
+            tight_theme
+          
+          plots_cov[[length(plots_cov)+1]]     <- p_cov
+          plots_abund[[length(plots_abund)+1]] <- p_abund
+          plots_occ[[length(plots_occ)+1]]     <- p_occ
         }
         
-        gc()
+      } # End M Loop
+      
+      # Save Plots for this SAC level AND Sampling Strategy
+      if (sim == 1) {
+        cat(sprintf("\nSaving plots for SAC=%s, Sampling=%s...\n", sac_level, sampling_strat))
         
+        col_cov <- patchwork::wrap_plots(plots_cov, ncol = 1) + 
+          patchwork::plot_layout(guides = "collect") & 
+          theme(legend.position = "bottom", legend.direction = "horizontal")
+        
+        col_abund <- patchwork::wrap_plots(plots_abund, ncol = 1) + 
+          patchwork::plot_layout(guides = "collect") & 
+          theme(legend.position = "bottom", legend.direction = "horizontal")
+        
+        col_occ <- patchwork::wrap_plots(plots_occ, ncol = 1) + 
+          patchwork::plot_layout(guides = "collect") & 
+          theme(legend.position = "bottom", legend.direction = "horizontal")
+        
+        final_comb_plot <- col_cov | col_abund | col_occ
+        
+        # Updated Filename 
+        fname <- sprintf("plot_SAC=%s_sampling=%s.png", sac_level, sampling_strat)
+        ggsave(file.path(output_dir, fname), plot=final_comb_plot, dpi=300, width=11, height=20)
+      }
+      
+      gc()
+      
     } # End Sim Loop
     
-} # End SAC Loop
+  } # End SAC Loop
+  
+  ##########
+  # 14. Save Aggregate Results & Error Boxplots (PER STRATEGY)
+  ##########
+  
+  cat(sprintf("\n--- Strategy %s Complete. Saving results... ---\n", sampling_strat))
+  
+  strat_results_df <- do.call(rbind, results_list)
+  # Remove nulls if any
+  if (!is.null(strat_results_df)) {
+      strat_results_df <- strat_results_df[!sapply(strat_results_df$Parameter, is.null), ]
+      
+      # Save CSV for this strategy
+      csv_name <- sprintf("params_sampling=%s.csv", sampling_strat)
+      write.csv(strat_results_df, file.path(output_dir, csv_name), row.names = FALSE)
+      
+      # --- Boxplots ---
+      strat_df <- strat_results_df
+      if(nrow(strat_df) > 0) {
+        strat_df$Error <- strat_df$True_Value - strat_df$Estimated_Value
+        strat_df$M_factor <- as.factor(strat_df$M)
+        strat_df$SAC_Level <- factor(strat_df$SAC_Level, levels = c("Low", "Medium", "High"))
+        
+        create_error_plot <- function(param_name, title) {
+          ggplot(strat_df[strat_df$Parameter == param_name, ], 
+                 aes(x = M_factor, y = Error, fill = SAC_Level)) +
+            geom_boxplot(outlier.size = 0.5) +
+            geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+            scale_fill_manual(values = c("Low" = "yellow", "Medium" = "orange", "High" = "red")) +
+            labs(title = title, x = "M (Sites)", y = "Error", fill = "Spatial Autocorrelation") +
+            theme_bw() + theme(legend.position = "none")
+        }
+        
+        p1 <- create_error_plot("beta (state_int)", "State Intercept")
+        p2 <- create_error_plot("beta (state_cov1)", "State Slope")
+        p3 <- create_error_plot("alpha (det_int)", "Detection Intercept")
+        p4 <- create_error_plot("alpha (det_cov1)", "Detection Slope")
+        
+        combined_error_plot <- (p1 | p2) / (p3 | p4) +
+          plot_layout(guides = "collect") & theme(legend.position = "bottom")
+        
+        fname_plot <- sprintf("error_boxplots_sampling=%s.png", sampling_strat)
+        ggsave(file.path(output_dir, fname_plot), plot = combined_error_plot, dpi = 300, width = 10, height = 10)
+        cat(sprintf("Saved %s\n", fname_plot))
+      }
+  }
 
+} # End Sampling Strat Loop
 
-##########
-# 14. Save Aggregate Results & Error Boxplots
-##########
-
-cat("\n--- Simulation Study Complete ---\n")
-
-all_results_df <- do.call(rbind, results_list)
-# all_results_df <- all_results_df[!sapply(all_results_df$Parameter, is.null), ]
-
-write.csv(all_results_df, file.path(output_dir, "params.csv"), row.names = FALSE)
-
-# --- Boxplots ---
-
-strat_df <- all_results_df 
-if(nrow(strat_df) > 0) {
-    strat_df$Error <- strat_df$True_Value - strat_df$Estimated_Value
-    strat_df$M_factor <- as.factor(strat_df$M)
-    strat_df$SAC_Level <- factor(strat_df$SAC_Level, levels = c("Low", "Medium", "High"))
-    
-    create_error_plot <- function(param_name, title) {
-      ggplot(strat_df[strat_df$Parameter == param_name, ], 
-             aes(x = M_factor, y = Error, fill = SAC_Level)) +
-        geom_boxplot(outlier.size = 0.5) +
-        geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
-        scale_fill_manual(values = c("Low" = "yellow", "Medium" = "orange", "High" = "red")) +
-        labs(title = title, x = "M (Sites)", y = "Error", fill = "Spatial Autocorrelation") +
-        theme_bw() + theme(legend.position = "none")
-    }
-    
-    p1 <- create_error_plot("beta (state_int)", "State Intercept")
-    p2 <- create_error_plot("beta (state_cov1)", "State Slope")
-    p3 <- create_error_plot("alpha (det_int)", "Detection Intercept")
-    p4 <- create_error_plot("alpha (det_cov1)", "Detection Slope")
-    
-    combined_error_plot <- (p1 | p2) / (p3 | p4) +
-      plot_layout(guides = "collect") & theme(legend.position = "bottom")
-    
-    fname <- "error_boxplots.png"
-    ggsave(file.path(output_dir, fname), plot = combined_error_plot, dpi = 300, width = 10, height = 10)
-    cat(sprintf("Saved %s\n", fname))
-}
-
-cat("--- Script Finished ---\n")
+cat("\n--- All Simulation Studies Complete ---\n")
