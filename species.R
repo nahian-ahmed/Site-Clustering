@@ -71,10 +71,14 @@ method_names <- c(
 # Methods to plot
 methods_to_plot <- c(
     "1to10", "2to10", "2to10-sameObs", "lat-long", "SVS", "1-per-UL",
-    "clustGeo-25-60", "clustGeo-50-60", "clustGeo-75-60", "clustGeo-25-70", "clustGeo-50-70", "clustGeo-75-70",
-    "clustGeo-25-80", "clustGeo-50-80", "clustGeo-75-80", "clustGeo-25-90", "clustGeo-50-90", "clustGeo-75-90",
     "1-kmSq", "rounded-4", "DBSC", "BayesOptClustGeo"
 )
+
+methods_to_plot_clustGeo <- c(
+    "clustGeo-25-60", "clustGeo-50-60", "clustGeo-75-60", "clustGeo-25-70", "clustGeo-50-70", "clustGeo-75-70",
+    "clustGeo-25-80", "clustGeo-50-80", "clustGeo-75-80", "clustGeo-25-90", "clustGeo-50-90", "clustGeo-75-90"
+)
+
 
 # Covariates
 state_cov_names <- c("elevation", "TCB", "TCG", "TCW", "TCA")
