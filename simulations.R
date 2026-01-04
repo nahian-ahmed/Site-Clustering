@@ -68,7 +68,7 @@ M_values_to_test <- c(100, 200, 400, 800, 1600)
 sampling_strategies <- c("Uniform", "Positive", "Negative")
 
 # --- Weighted Sampling Parameters ---
-n_sampling_clusters <- 1   # Number of hotspots to select
+n_sampling_clusters <- 5   # Number of hotspots to select
 sampling_sd <- 5           # SD for Gaussian smoothing (in site units, ~25 cells)
 
 # --- Spatial Autocorrelation (SAC) Settings ---
@@ -264,14 +264,27 @@ for (sampling_strat in sampling_strategies) {
         # 1. Aggregate Covariate to Site Level (Mean)
         site_cov_vals <- tapply(full_cellCovs$cell_cov1, full_site_id_for_cell, mean)
         
+        # --- NEW: Calculate Distance to Skew Center ---
+        # Convert seed grid coords (0-200) to site coords (0-40) for distance calc
+        # Assuming n_centers=1 for this logic, as defined in setup
+        center_x_site <- seeds$x[1] / site_dim
+        center_y_site <- seeds$y[1] / site_dim
+        
+        dist_to_skew_center <- sqrt((site_coords_x - center_x_site)^2 + (site_coords_y - center_y_site)^2)
+        
         # 2. Select Cluster Centers
-        # "Positive": High Cov -> High Prob. "Negative": Low Cov -> High Prob.
-        # Use exp() to make weights positive.
+        # "Positive": High Cov. "Negative": Low Cov.
         
         if (sampling_strat == "Positive") {
-          center_probs <- exp(site_cov_vals) # Favors high values
+          # POSITIVE: Favor High Covariate AND Decrease Distance to Center (Pull Closest)
+          # We use spatial decay so probability drops as we get further from center.
+          spatial_decay <- exp(-dist_to_skew_center / (full_n_sites_x / 4))
+          center_probs <- exp(site_cov_vals) * spatial_decay
+          
         } else if (sampling_strat == "Negative") {
-          center_probs <- exp(-site_cov_vals) # Favors low values
+          # NEGATIVE: Favor Low Covariate AND Increase Distance from Center (Push Away)
+          # We multiply by distance so probability increases as we get further away.
+          center_probs <- exp(-site_cov_vals) * (dist_to_skew_center + 1e-6)
         }
         
         # Sample cluster centers
@@ -279,11 +292,6 @@ for (sampling_strat in sampling_strategies) {
         
         # 3. "Grow" Clusters (Gaussian Smoothing)
         # Calculate distance from every site to every chosen center
-        # We work in "site coordinates" (1..40)
-        
-        # Initialize weights with a small base probability (to avoid 0)
-        # or just 0 if strict. Let's add small epsilon or assume non-sampled areas are rare.
-        # The user said "grow it out", implying areas far away might not be sampled.
         
         # Reset weights to 0 accumulator
         prob_surface <- rep(0, full_M)
