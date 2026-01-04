@@ -41,18 +41,6 @@ species_names <- c(
 )
 
 # Comparison methods
-method_names <- c(
-  "1to10", 
-  "2to10", 
-  "2to10-sameObs", 
-  "1-kmSq",
-  "lat-long", 
-  "rounded-4", 
-  "SVS", 
-  "1-per-UL",
-  "DBSC", 
-  "BayesOptClustGeo"
-)
 
 
 method_names <- c(
