@@ -250,7 +250,7 @@ for (sac_level in sac_levels) {
         # 1. Aggregate Covariate to Site Level
         site_cov_vals <- tapply(full_cellCovs$cell_cov1, full_site_id_for_cell, mean)
         
-        # 2. Calculate Distance to Skew Centers (Used as information to verify location logic)
+        # 2. Calculate Distance to Skew Centers (Used as verification/info)
         seed_x_site <- seeds$x / site_dim
         seed_y_site <- seeds$y / site_dim
         
@@ -265,15 +265,17 @@ for (sac_level in sac_levels) {
         
         if (sampling_strat == "Positive") {
           # POSITIVE: Probabilistic sampling weighted by Covariate Value.
-          # High Covariate = Higher Probability (Correlated with being close to Skew Center)
-          # We use exp() to make the preference for high values strong but probabilistic.
-          sampling_probs <- exp(site_cov_vals)
+          # ** UPDATED **: We scale the covariate by 5 inside exp() to sharpen the probability 
+          # peak. This makes the selection much more likely to pick the absolute highest 
+          # covariate values (closest to the skew center).
+          sampling_probs <- exp(site_cov_vals * 5)
           cluster_center_ids <- sample(1:full_M, size = n_sampling_clusters, prob = sampling_probs, replace = FALSE)
           
         } else if (sampling_strat == "Negative") {
           # NEGATIVE: Probabilistic sampling weighted by Inverse/Negative Covariate Value.
-          # Low Covariate = Higher Probability (Correlated with being far from Skew Center)
-          sampling_probs <- exp(-site_cov_vals)
+          # ** UPDATED **: We also scale the negative covariate by 5 inside exp() to sharpen 
+          # the probability peak for LOW covariate values (furthest from skew center).
+          sampling_probs <- exp(-site_cov_vals * 5)
           cluster_center_ids <- sample(1:full_M, size = n_sampling_clusters, prob = sampling_probs, replace = FALSE)
         }
         
