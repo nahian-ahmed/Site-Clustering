@@ -54,10 +54,38 @@ method_names <- c(
   "BayesOptClustGeo"
 )
 
+
+method_names <- c(
+    "1to10", 
+    "2to10", 
+    "2to10-sameObs", 
+    "1-kmSq",
+    "lat-long", 
+    "rounded-4", 
+    "SVS", 
+    "1-per-UL",
+    "clustGeo-25-60",
+    "clustGeo-50-60",
+    "clustGeo-75-60",
+    "clustGeo-25-70",
+    "clustGeo-50-70",
+    "clustGeo-75-70",
+    "clustGeo-25-80",
+    "clustGeo-50-80",
+    "clustGeo-75-80",
+    "clustGeo-25-90",
+    "clustGeo-50-90",
+    "clustGeo-75-90",
+    "DBSC",
+    "BayesOptClustGeo"
+)
+
 # Methods to plot
 methods_to_plot <- c(
-  "1to10", "2to10", "2to10-sameObs", "lat-long", "SVS", "1-per-UL",
-  "1-kmSq", "rounded-4", "DBSC", "BayesOptClustGeo"
+    "1to10", "2to10", "2to10-sameObs", "lat-long", "SVS", "1-per-UL",
+    "clustGeo-25-60", "clustGeo-50-60", "clustGeo-75-60", "clustGeo-25-70", "clustGeo-50-70", "clustGeo-75-70",
+    "clustGeo-25-80", "clustGeo-50-80", "clustGeo-75-80", "clustGeo-25-90", "clustGeo-50-90", "clustGeo-75-90",
+    "1-kmSq", "rounded-4", "DBSC", "BayesOptClustGeo"
 )
 
 # Covariates
@@ -66,7 +94,7 @@ obs_cov_names <- c("day_of_year", "time_observations_started", "duration_minutes
 
 # Optimization & Simulation Settings
 selected_optimizer <- "nlminb"
-n_fit_repeats <- 25
+n_fit_repeats <- 100
 n_test_repeats <- 25
 
 res_m <- 100 
