@@ -40,6 +40,10 @@ species_names <- c(
     "WAVI", "WEPE", "WETA", "WIWA", "WRENTI", "YEBCHA", "YEWA"
 )
 
+species_names <- c(
+    "AMCR"
+)
+
 # Comparison methods
 method_names <- c(
   "1to10", 
