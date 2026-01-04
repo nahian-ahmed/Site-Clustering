@@ -197,19 +197,27 @@ for (species_name in species_names) {
 
   # --- PLOTTING PRE-SPLIT ---
   cat("--- Plotting sites (PRE-SPLIT)... ---\n")
-  try({
-    plot_sites(
-      base_train_df = base_train_df,
-      all_clusterings = all_clusterings,
-      all_site_geometries = all_site_geometries,
-      elevation_raster = cov_tif_albers_raw, 
-      methods_to_plot = methods_to_plot,
-      boundary_shp_path = boundary_shapefile_path,
-      output_path = file.path(output_dir, paste0(species_name, "_site_visualization_PRE.png")),
-      cluster_labels = TRUE
-    )
-  })
-  
+
+  plot_sites(
+    base_train_df = base_train_df,
+    all_clusterings = all_clusterings,
+    all_site_geometries = all_site_geometries,
+    elevation_raster = cov_tif_albers_raw, 
+    methods_to_plot = methods_to_plot,
+    boundary_shp_path = boundary_shapefile_path,
+    output_path = file.path(output_dir, paste0(species_name, "_sites_PRE.png")),
+    cluster_labels = TRUE
+  )
+  plot_sites(
+    base_train_df = base_train_df,
+    all_clusterings = all_clusterings,
+    all_site_geometries = all_site_geometries,
+    elevation_raster = cov_tif_albers_raw, 
+    methods_to_plot = methods_to_plot_clustGeo,
+    boundary_shp_path = boundary_shapefile_path,
+    output_path = file.path(output_dir, paste0(species_name, "_sites_clustGeo_PRE.png")),
+    cluster_labels = TRUE
+  )
   
   # === 4.3 SPLIT DISJOINT SITES ===
   cat("--- Post-processing: Splitting disjoint geometries... ---\n")
@@ -237,19 +245,28 @@ for (species_name in species_names) {
   
   # --- PLOTTING POST-SPLIT ---
   cat("--- Plotting sites (POST-SPLIT)... ---\n")
-  try({
-    plot_sites(
-      base_train_df = base_train_df,
-      all_clusterings = all_clusterings,
-      all_site_geometries = all_site_geometries,
-      elevation_raster = cov_tif_albers_raw, 
-      methods_to_plot = methods_to_plot,
-      boundary_shp_path = boundary_shapefile_path,
-      output_path = file.path(output_dir, paste0(species_name, "_site_visualization_POST.png")),
-      cluster_labels = TRUE
-    )
-  })
-  
+
+  plot_sites(
+    base_train_df = base_train_df,
+    all_clusterings = all_clusterings,
+    all_site_geometries = all_site_geometries,
+    elevation_raster = cov_tif_albers_raw, 
+    methods_to_plot = methods_to_plot,
+    boundary_shp_path = boundary_shapefile_path,
+    output_path = file.path(output_dir, paste0(species_name, "_sites_POST.png")),
+    cluster_labels = TRUE
+  )
+  plot_sites(
+    base_train_df = base_train_df,
+    all_clusterings = all_clusterings,
+    all_site_geometries = all_site_geometries,
+    elevation_raster = cov_tif_albers_raw, 
+    methods_to_plot = methods_to_plot_clustGeo,
+    boundary_shp_path = boundary_shapefile_path,
+    output_path = file.path(output_dir, paste0(species_name, "_sites_clustGeo_POST.png")),
+    cluster_labels = TRUE
+  )
+
   # === 4.4 W MATRICES ===
   cat("--- Generating W matrices... ---\n")
   all_w_matrices <- list()
