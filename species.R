@@ -20,7 +20,7 @@ library(PRROC)
 library(terra)
 
 source(file.path("R", "utils.R"))
-source(file.path("R", "simulation_helpers.R"))
+source(file.path("R", "data_helpers.R"))
 source(file.path("R", "clustering_helpers.R"))
 source(file.path("R", "model_helpers.R"))
 source(file.path("R", "analysis_helpers.R"))
@@ -32,16 +32,12 @@ set.seed(123)
 # 2. CONFIGS
 ###
 
-# Species list from OLD_code/run_species_experiments.R
+# Species list
 species_names <- c(
     "AMCR", "AMRO", "BAEA", "BKHGRO", "BRCR", "BUTI", "CASC", "CHBCHI", 
     "COHA", "HAFL", "HAWO", "HEWA", "MAWA", "MOQU", "NOFL", "NOOW", 
     "OLFL", "PAFL", "PAWR", "PIWO", "REHA", "SOSP", "SPTO", "SWTH", 
     "WAVI", "WEPE", "WETA", "WIWA", "WRENTI", "YEBCHA", "YEWA"
-)
-
-species_names <- c(
-    "AMCR"
 )
 
 # Comparison methods
@@ -56,6 +52,12 @@ method_names <- c(
   "1-per-UL",
   "DBSC", 
   "BayesOptClustGeo"
+)
+
+# Methods to plot (you can adjust this subset or use method_names)
+methods_to_plot <- c(
+  "1to10", "2to10", "2to10-sameObs", "lat-long", "SVS", "1-per-UL",
+  "1-kmSq", "rounded-4", "DBSC", "BayesOptClustGeo"
 )
 
 # Covariates
@@ -95,7 +97,6 @@ names(state_cov_raster_raw) <- state_cov_names
 cov_tif_albers_raw <- terra::project(state_cov_raster_raw, albers_crs_str, method="bilinear", res = res_m)
 
 # 4. STANDARDIZE RASTER
-#    Get the standardized raster AND the global parameters
 standardization_results <- standardize_state_covs(cov_tif_albers_raw)
 cov_tif_albers <- standardization_results$raster
 state_cov_params <- standardization_results$params
@@ -109,7 +110,7 @@ names(area_j_raster) <- "area"
 full_raster_covs <- as.data.frame(terra::values(cov_tif_albers))[, state_cov_names, drop = FALSE]
 full_raster_covs[is.na(full_raster_covs)] <- 0
 
-# Boundary for plotting (optional)
+# Boundary for plotting
 boundary_shapefile_path <- file.path("state_covariate_raster", "boundary", "boundary.shp")
 
 
@@ -131,8 +132,6 @@ for (species_name in species_names) {
   # === 4.1 DATA PREPARATION ===
   cat("--- Preparing Train Data ---\n")
   
-  # Note: prepare_train_data uses 'placeholder_spec_name' to find files.
-  # It calculates standardization based on the raw raster we pass + the training data.
   train_data_res <- prepare_train_data(
     state_covs = state_cov_names, 
     obs_covs = obs_cov_names, 
@@ -144,20 +143,16 @@ for (species_name in species_names) {
   base_train_df <- train_data_res$train_df
   full_standardization_params <- train_data_res$standardization_params
   
-  # CRITICAL FIX: prepare_train_data sets species_observed to -1 for simulation.
-  # We must restore the REAL species observations from the file.
+  # CRITICAL FIX 1: Restore REAL species observations
   train_filename <- paste0(species_name, "_zf_filtered_region_2017.csv")
   train_df_og <- read.delim(
     file.path("checklist_data", "species", species_name, train_filename), 
     sep = ",", header = TRUE
   )
   
-  # Join real observation back to base_train_df
-  # Assumes checklist_id is unique and present
   train_obs_lookup <- train_df_og[, c("checklist_id", "species_observed")]
-  base_train_df$species_observed <- NULL # Remove the -1 column
+  base_train_df$species_observed <- NULL 
   base_train_df <- inner_join(base_train_df, train_obs_lookup, by = "checklist_id")
-  
   
   cat("--- Preparing Test Data ---\n")
   base_test_df <- prepare_test_data(
@@ -187,6 +182,21 @@ for (species_name in species_names) {
   stats_pre <- summarize_clusterings(all_clusterings, all_site_geometries, units = "km")
   stats_pre$species <- species_name
   all_clustering_stats_pre[[length(all_clustering_stats_pre) + 1]] <- stats_pre
+
+  # --- PLOTTING PRE-SPLIT (Added) ---
+  cat("--- Plotting sites (PRE-SPLIT)... ---\n")
+  try({
+    plot_sites(
+      base_train_df = base_train_df,
+      all_clusterings = all_clusterings,
+      all_site_geometries = all_site_geometries,
+      elevation_raster = cov_tif_albers_raw, 
+      methods_to_plot = methods_to_plot,
+      boundary_shp_path = boundary_shapefile_path,
+      output_path = file.path(output_dir, paste0(species_name, "_site_visualization_PRE.png")),
+      cluster_labels = TRUE
+    )
+  })
   
   
   # === 4.3 SPLIT DISJOINT SITES ===
@@ -213,6 +223,20 @@ for (species_name in species_names) {
   stats_post$species <- species_name
   all_clustering_stats_post[[length(all_clustering_stats_post) + 1]] <- stats_post
   
+  # --- PLOTTING POST-SPLIT (Added) ---
+  cat("--- Plotting sites (POST-SPLIT)... ---\n")
+  try({
+    plot_sites(
+      base_train_df = base_train_df,
+      all_clusterings = all_clusterings,
+      all_site_geometries = all_site_geometries,
+      elevation_raster = cov_tif_albers_raw, 
+      methods_to_plot = methods_to_plot,
+      boundary_shp_path = boundary_shapefile_path,
+      output_path = file.path(output_dir, paste0(species_name, "_site_visualization_POST.png")),
+      cluster_labels = TRUE
+    )
+  })
   
   # === 4.4 W MATRICES ===
   cat("--- Generating W matrices... ---\n")
@@ -259,9 +283,13 @@ for (species_name in species_names) {
        cat(sprintf("    Skipping %s (No W matrix)\n", method_name)); next
     }
     
+    # CRITICAL FIX 2: Add dummy 'site' column for compatibility with prepare_occuN_data
+    # prepare_occuN_data expects an existing 'site' column to drop/replace.
+    train_data_for_model <- base_train_df
+    train_data_for_model$site <- "dummy_site" 
+    
     # Use modular function to prep UMF
-    # Note: base_train_df now has the correct 'species_observed'
-    umf <- prepare_occuN_data(base_train_df, current_clustering_df, w_matrix, obs_cov_names, full_raster_covs)
+    umf <- prepare_occuN_data(train_data_for_model, current_clustering_df, w_matrix, obs_cov_names, full_raster_covs)
     
     obs_formula <- as.formula(paste("~", paste(obs_cov_names, collapse = " + ")))
     state_formula <- as.formula(paste("~", paste(state_cov_names, collapse = " + ")))
