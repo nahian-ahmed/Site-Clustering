@@ -32,7 +32,7 @@ set.seed(123)
 
 # --- Simulation repetitions ---
 n_sims <- 100 
-# n_sims <- 3 # FOR DEBUGGING
+n_sims <- 3 # FOR DEBUGGING
 
 # --- Model fitting repetitions ---
 n_reps <- 30 
