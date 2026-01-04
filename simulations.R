@@ -74,7 +74,7 @@ sampling_sd <- 5           # SD for Gaussian smoothing (in site units, ~25 cells
 # --- Spatial Autocorrelation (SAC) Settings ---
 sac_levels <- c("Low", "Medium", "High") 
 # sac_sigmas <- c(Low = 0, Medium = 5, High = 15)
-sac_sigmas <- c(Low = 0, Medium = 5, High = 15) 
+sac_sigmas <- c(Low = 0, Medium = 5, High = 10) 
 
 # --- Skew Patterns ---
 # Fixed to Centers
@@ -293,7 +293,7 @@ for (sac_level in sac_levels) {
           sy <- site_coords_y[i]
           
           w_sum <- 0
-          for (c_idx in 1:nrow(center_coords_df)) {
+          for (c_idx in seq_len(nrow(center_coords_df))) {
             cx <- center_coords_df$x[c_idx]
             cy <- center_coords_df$y[c_idx]
             dist_sq <- (sx - cx)^2 + (sy - cy)^2
