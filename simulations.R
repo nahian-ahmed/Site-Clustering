@@ -250,7 +250,7 @@ for (sac_level in sac_levels) {
         # 1. Aggregate Covariate to Site Level
         site_cov_vals <- tapply(full_cellCovs$cell_cov1, full_site_id_for_cell, mean)
         
-        # 2. Calculate Distance to Skew Centers
+        # 2. Calculate Distance to Skew Centers (Used as information to verify location logic)
         seed_x_site <- seeds$x / site_dim
         seed_y_site <- seeds$y / site_dim
         
@@ -260,18 +260,21 @@ for (sac_level in sac_levels) {
             dist_to_nearest_center <- pmin(dist_to_nearest_center, d)
         }
         
-        # 3. Determine Cluster Centers
+        # 3. Determine Cluster Centers (Probabilistic)
         cluster_center_ids <- NULL
         
         if (sampling_strat == "Positive") {
-          # POSITIVE: Force selection of sites CLOSEST to the Skew Center
-          sorted_indices <- order(dist_to_nearest_center)
-          cluster_center_ids <- sorted_indices[1:n_sampling_clusters]
+          # POSITIVE: Probabilistic sampling weighted by Covariate Value.
+          # High Covariate = Higher Probability (Correlated with being close to Skew Center)
+          # We use exp() to make the preference for high values strong but probabilistic.
+          sampling_probs <- exp(site_cov_vals)
+          cluster_center_ids <- sample(1:full_M, size = n_sampling_clusters, prob = sampling_probs, replace = FALSE)
           
         } else if (sampling_strat == "Negative") {
-          # NEGATIVE: Probabilistic, favoring Low Covariate & Far Distance
-          center_probs <- exp(-site_cov_vals) * (dist_to_nearest_center + 1e-6)
-          cluster_center_ids <- sample(1:full_M, size = n_sampling_clusters, prob = center_probs, replace = FALSE)
+          # NEGATIVE: Probabilistic sampling weighted by Inverse/Negative Covariate Value.
+          # Low Covariate = Higher Probability (Correlated with being far from Skew Center)
+          sampling_probs <- exp(-site_cov_vals)
+          cluster_center_ids <- sample(1:full_M, size = n_sampling_clusters, prob = sampling_probs, replace = FALSE)
         }
         
         # 4. Grow Clusters (Gaussian Smoothing)
