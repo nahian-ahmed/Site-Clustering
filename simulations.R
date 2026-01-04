@@ -68,7 +68,7 @@ M_values_to_test <- c(100, 200, 400, 800, 1600)
 sampling_strategies <- c("Uniform", "Positive", "Negative")
 
 # --- Weighted Sampling Parameters ---
-n_sampling_clusters <- 5   # Number of hotspots to select
+n_sampling_clusters <- 1   # Number of hotspots to select
 sampling_sd <- 5           # SD for Gaussian smoothing (in site units, ~25 cells)
 
 # --- Spatial Autocorrelation (SAC) Settings ---
