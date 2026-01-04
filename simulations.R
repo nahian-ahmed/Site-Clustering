@@ -238,7 +238,6 @@ for (sac_level in sac_levels) {
     ##########
     # 8. INNER LOOP: SAMPLING STRATEGIES
     ##########
-    # Slice the *same* landscape/observations using different strategies
     
     for (sampling_strat in sampling_strategies) {
       
@@ -252,15 +251,10 @@ for (sac_level in sac_levels) {
         site_cov_vals <- tapply(full_cellCovs$cell_cov1, full_site_id_for_cell, mean)
         
         # 2. Calculate Distance to Skew Centers
-        # Convert seed coordinates (grid units 0-200) to site units (0-40)
-        # Note: Site coordinates are indices 1..40
         seed_x_site <- seeds$x / site_dim
         seed_y_site <- seeds$y / site_dim
         
-        # For simplicity with multiple centers, we take distance to the closest center
-        # (Though simulation uses n_centers=1 usually)
         dist_to_nearest_center <- rep(Inf, full_M)
-        
         for(k in seq_along(seed_x_site)) {
             d <- sqrt((site_coords_x - seed_x_site[k])^2 + (site_coords_y - seed_y_site[k])^2)
             dist_to_nearest_center <- pmin(dist_to_nearest_center, d)
@@ -271,11 +265,7 @@ for (sac_level in sac_levels) {
         
         if (sampling_strat == "Positive") {
           # POSITIVE: Force selection of sites CLOSEST to the Skew Center
-          # "On top of each other" -> Deterministic selection based on distance
-          
-          # Sort sites by distance to skew center
           sorted_indices <- order(dist_to_nearest_center)
-          # Pick top N closest sites
           cluster_center_ids <- sorted_indices[1:n_sampling_clusters]
           
         } else if (sampling_strat == "Negative") {
@@ -310,73 +300,14 @@ for (sac_level in sac_levels) {
         site_sampling_weights <- prob_surface
       }
       
-      # --- 8b. Generate Plots (Sim 1 Only) ---
+      # Initialize plotting lists for this strategy (only used if sim==1)
       if (sim == 1) {
-          # Select sites for M=max just for visualization context, or M=400
-          vis_M <- 400
-          if (sum(site_sampling_weights > 0) < vis_M) {
-               vis_indices <- sample(1:full_M, vis_M, replace = FALSE)
-          } else {
-               vis_indices <- sample(1:full_M, vis_M, replace = FALSE, prob = site_sampling_weights)
-          }
-          
-          # Prepare Plot Data
-          cell_df <- data.frame(
-            x = full_cell_col,
-            y = full_cell_row,
-            covariate = full_cellCovs$cell_cov1
-          )
-          cell_df$site_latent_abundance <- full_lambda_tilde_i[full_site_id_for_cell]
-          cell_df$site_true_occupancy <- as.factor(full_Z_i[full_site_id_for_cell])
-          
-          boxes_list <- lapply(vis_indices, function(sid) {
-            coords <- get_site_box(sid, site_dim, full_n_sites_x)
-            data.frame(xmin=coords['xmin'], xmax=coords['xmax'], 
-                       ymin=coords['ymin'], ymax=coords['ymax'])
-          })
-          site_boxes <- do.call(rbind, boxes_list)
-          
-          tight_theme <- theme_minimal() + 
-            theme(
-              axis.title = element_blank(),
-              plot.margin = margin(t=0, r=0, b=0, l=0, unit="pt")
-            )
-          
-          p_cov <- ggplot(cell_df, aes(x=x, y=y, fill=covariate)) +
-            geom_raster() +
-            scale_fill_viridis_c() +
-            coord_fixed(expand=FALSE) +
-            geom_rect(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
-                      color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
-            labs(title=sprintf("Covariate (Vis M=%d)", vis_M), fill="Covariate") +
-            tight_theme
-          
-          p_abund <- ggplot(cell_df, aes(x=x, y=y, fill=site_latent_abundance)) +
-            geom_raster() +
-            scale_fill_viridis_c(option = "magma") +
-            coord_fixed(expand=FALSE) +
-            geom_rect(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
-                      color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
-            labs(title="Abundance", fill="Abundance") +
-            tight_theme
-          
-          p_occ <- ggplot(cell_df, aes(x=x, y=y, fill=site_true_occupancy)) +
-            geom_raster() +
-            scale_fill_manual(values=c("0"="navyblue", "1"="yellow")) +
-            coord_fixed(expand=FALSE) +
-            geom_rect(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
-                      color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
-            labs(title="Occupancy", fill="Occupancy") +
-            tight_theme
-          
-          final_comb_plot <- p_cov | p_abund | p_occ
-          
-          # Plot Filename: Include SAC and Strategy
-          fname <- sprintf("plot_SAC=%s_sampling=%s.png", sac_level, sampling_strat)
-          ggsave(file.path(output_dir, fname), plot=final_comb_plot, dpi=300, width=11, height=6)
+        plots_cov   <- list()
+        plots_abund <- list()
+        plots_occ   <- list()
       }
       
-      # --- 8c. Loop Over M (Sample Size) ---
+      # --- 8b. Loop Over M (Sample Size) ---
       for (M_i in M_values_to_test) {
         
         # Select Sites
@@ -443,10 +374,87 @@ for (sac_level in sac_levels) {
         )
         
         # Append to strategy specific list
-        # (This is more efficient than growing a huge dataframe inside the inner loop)
         results_storage[[sampling_strat]][[length(results_storage[[sampling_strat]]) + 1]] <- loop_results
         
+        # --- PLOTTING LOGIC (Inside M loop) ---
+        if (sim == 1) {
+          # Plot data for this specific M
+          cell_df <- data.frame(
+            x = full_cell_col,
+            y = full_cell_row,
+            covariate = full_cellCovs$cell_cov1
+          )
+          cell_df$site_latent_abundance <- full_lambda_tilde_i[full_site_id_for_cell]
+          cell_df$site_true_occupancy <- as.factor(full_Z_i[full_site_id_for_cell])
+          
+          boxes_list <- lapply(selected_site_indices, function(sid) {
+            coords <- get_site_box(sid, site_dim, full_n_sites_x)
+            data.frame(xmin=coords['xmin'], xmax=coords['xmax'], 
+                       ymin=coords['ymin'], ymax=coords['ymax'])
+          })
+          site_boxes <- do.call(rbind, boxes_list)
+          
+          tight_theme <- theme_minimal() + 
+            theme(
+              axis.title = element_blank(),
+              plot.margin = margin(t=0, r=0, b=0, l=0, unit="pt")
+            )
+          
+          p_cov <- ggplot(cell_df, aes(x=x, y=y, fill=covariate)) +
+            geom_raster() +
+            scale_fill_viridis_c() +
+            coord_fixed(expand=FALSE) +
+            geom_rect(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
+                      color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
+            labs(title=sprintf("Covariate (M=%d)", M), fill="Covariate") +
+            tight_theme
+          
+          p_abund <- ggplot(cell_df, aes(x=x, y=y, fill=site_latent_abundance)) +
+            geom_raster() +
+            scale_fill_viridis_c(option = "magma") +
+            coord_fixed(expand=FALSE) +
+            geom_rect(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
+                      color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
+            labs(title=sprintf("Abundance (M=%d)", M), fill="Abundance") +
+            tight_theme
+          
+          p_occ <- ggplot(cell_df, aes(x=x, y=y, fill=site_true_occupancy)) +
+            geom_raster() +
+            scale_fill_manual(values=c("0"="navyblue", "1"="yellow")) +
+            coord_fixed(expand=FALSE) +
+            geom_rect(data=site_boxes, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
+                      color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
+            labs(title=sprintf("Occupancy (M=%d)", M), fill="Occupancy") +
+            tight_theme
+            
+          plots_cov[[length(plots_cov)+1]]     <- p_cov
+          plots_abund[[length(plots_abund)+1]] <- p_abund
+          plots_occ[[length(plots_occ)+1]]     <- p_occ
+        }
+        
       } # End M Loop
+      
+      # --- SAVE PLOTS (After M loop, for this Strategy) ---
+      if (sim == 1) {
+        cat(sprintf("\nSaving plots for SAC=%s, Sampling=%s...\n", sac_level, sampling_strat))
+        
+        col_cov <- patchwork::wrap_plots(plots_cov, ncol = 1) + 
+          patchwork::plot_layout(guides = "collect") & 
+          theme(legend.position = "bottom", legend.direction = "horizontal")
+        
+        col_abund <- patchwork::wrap_plots(plots_abund, ncol = 1) + 
+          patchwork::plot_layout(guides = "collect") & 
+          theme(legend.position = "bottom", legend.direction = "horizontal")
+        
+        col_occ <- patchwork::wrap_plots(plots_occ, ncol = 1) + 
+          patchwork::plot_layout(guides = "collect") & 
+          theme(legend.position = "bottom", legend.direction = "horizontal")
+        
+        final_comb_plot <- col_cov | col_abund | col_occ
+        
+        fname <- sprintf("plot_SAC=%s_sampling=%s.png", sac_level, sampling_strat)
+        ggsave(file.path(output_dir, fname), plot=final_comb_plot, dpi=300, width=11, height=20)
+      }
       
     } # End Strategy Loop (Inner)
     
