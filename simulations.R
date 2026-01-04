@@ -32,7 +32,7 @@ set.seed(123)
 
 # --- Simulation repetitions ---
 n_sims <- 100 # Number of full datasets to generate per SAC level per Strategy
-# n_sims <- 3 # FOR DEBUGGING
+n_sims <- 3 # FOR DEBUGGING
 
 # --- Model fitting repetitions ---
 n_reps <- 30 
@@ -68,7 +68,7 @@ M_values_to_test <- c(100, 200, 400, 800, 1600)
 sampling_strategies <- c("Uniform", "Positive", "Negative")
 
 # --- Weighted Sampling Parameters ---
-n_sampling_clusters <- 5   # Number of hotspots to select
+n_sampling_clusters <- 1   # Number of hotspots to select
 sampling_sd <- 5           # SD for Gaussian smoothing (in site units, ~25 cells)
 
 # --- Spatial Autocorrelation (SAC) Settings ---
