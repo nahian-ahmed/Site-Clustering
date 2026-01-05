@@ -34,10 +34,10 @@ set.seed(123)
 
 # Species list
 species_names <- c(
-    "AMCR", "AMRO", "BAEA", "BKHGRO", "BRCR", "BUTI", "CASC", "CHBCHI", 
-    "COHA", "HAFL", "HAWO", "HEWA", "MAWA", "MOQU", "NOFL", "NOOW", 
-    "OLFL", "PAFL", "PAWR", "PIWO", "REHA", "SOSP", "SPTO", "SWTH", 
-    "WAVI", "WEPE", "WETA", "WIWA", "WRENTI", "YEBCHA", "YEWA"
+  "AMCR", "AMRO", "BAEA", "BKHGRO", "BRCR", "BUTI", "CASC", "CHBCHI", 
+  "COHA", "HAFL", "HAWO", "HEWA", "MAWA", "MOQU", "NOFL", "NOOW", 
+  "OLFL", "PAFL", "PAWR", "PIWO", "REHA", "SOSP", "SPTO", "SWTH", 
+  "WAVI", "WEPE", "WETA", "WIWA", "WRENTI", "YEBCHA", "YEWA"
 )
 
 # species_names <- c(
@@ -46,36 +46,32 @@ species_names <- c(
 
 # Comparison methods
 method_names <- c(
-    "1to10", 
-    "2to10", 
-    "2to10-sameObs", 
-    "1-kmSq",
-    "lat-long", 
-    "rounded-4", 
-    "SVS", 
-    "1-per-UL",
-    "clustGeo-50-10",
-    "clustGeo-50-20",
-    "clustGeo-50-30",
-    "clustGeo-50-40",
-    "clustGeo-50-50",
-    "clustGeo-50-60",
-    "clustGeo-50-70",
-    "clustGeo-50-80",
-    "clustGeo-50-90",
-    "DBSC",
-    "BayesOptClustGeo"
+  "1to10", 
+  "2to10", 
+  "2to10-sameObs", 
+  "1-kmSq",
+  "lat-long", 
+  "rounded-4", 
+  "SVS", 
+  "1-per-UL",
+  "clustGeo-50-30",
+  "clustGeo-50-40",
+  "clustGeo-50-50",
+  "clustGeo-50-60",
+  "clustGeo-50-70",
+  "clustGeo-50-80",
+  "DBSC",
+  "BayesOptClustGeo"
 )
 
 # Methods to plot
 methods_to_plot <- c(
-    "1to10", "2to10", "2to10-sameObs", "lat-long", "SVS", "1-per-UL",
-    "1-kmSq", "rounded-4", "DBSC", "BayesOptClustGeo"
+  "1to10", "2to10", "2to10-sameObs", "lat-long", "SVS", "1-per-UL",
+  "1-kmSq", "rounded-4", "DBSC", "BayesOptClustGeo"
 )
 
 methods_to_plot_clustGeo <- c(
-    "clustGeo-50-10", "clustGeo-50-20", "clustGeo-50-30", "clustGeo-50-40", "clustGeo-50-50", "clustGeo-50-60",
-    "clustGeo-50-70", "clustGeo-50-80", "clustGeo-50-90"
+  "clustGeo-50-30", "clustGeo-50-40", "clustGeo-50-50", "clustGeo-50-60", "clustGeo-50-70", "clustGeo-50-80"
 )
 
 # Covariates
