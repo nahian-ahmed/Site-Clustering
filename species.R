@@ -54,18 +54,15 @@ method_names <- c(
     "rounded-4", 
     "SVS", 
     "1-per-UL",
-    "clustGeo-25-60",
+    "clustGeo-50-10",
+    "clustGeo-50-20",
+    "clustGeo-50-30",
+    "clustGeo-50-40",
+    "clustGeo-50-50",
     "clustGeo-50-60",
-    "clustGeo-75-60",
-    "clustGeo-25-70",
     "clustGeo-50-70",
-    "clustGeo-75-70",
-    "clustGeo-25-80",
     "clustGeo-50-80",
-    "clustGeo-75-80",
-    "clustGeo-25-90",
     "clustGeo-50-90",
-    "clustGeo-75-90",
     "DBSC",
     "BayesOptClustGeo"
 )
@@ -77,8 +74,8 @@ methods_to_plot <- c(
 )
 
 methods_to_plot_clustGeo <- c(
-    "clustGeo-25-60", "clustGeo-50-60", "clustGeo-75-60", "clustGeo-25-70", "clustGeo-50-70", "clustGeo-75-70",
-    "clustGeo-25-80", "clustGeo-50-80", "clustGeo-75-80", "clustGeo-25-90", "clustGeo-50-90", "clustGeo-75-90"
+    "clustGeo-50-10", "clustGeo-50-20", "clustGeo-50-30", "clustGeo-50-40", "clustGeo-50-50", "clustGeo-50-60",
+    "clustGeo-50-70", "clustGeo-50-80", "clustGeo-50-90"
 )
 
 # Covariates
