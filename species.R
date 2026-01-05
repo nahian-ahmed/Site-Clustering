@@ -40,6 +40,10 @@ species_names <- c(
     "WAVI", "WEPE", "WETA", "WIWA", "WRENTI", "YEBCHA", "YEWA"
 )
 
+species_names <- c(
+    "AMCR", "AMRO"
+)
+
 # Comparison methods
 method_names <- c(
     "1to10", 
@@ -238,7 +242,7 @@ plot_sites(
     elevation_raster = cov_tif_albers_raw, 
     methods_to_plot = methods_to_plot,
     boundary_shp_path = boundary_shapefile_path,
-    output_path = file.path(output_dir, "GLOBAL_sites_PRE.png"),
+    output_path = file.path(output_dir, "sites_PRE.png"),
     cluster_labels = TRUE
 )
 plot_sites(
@@ -248,7 +252,7 @@ plot_sites(
     elevation_raster = cov_tif_albers_raw, 
     methods_to_plot = methods_to_plot_clustGeo,
     boundary_shp_path = boundary_shapefile_path,
-    output_path = file.path(output_dir, "GLOBAL_sites_clustGeo_PRE.png"),
+    output_path = file.path(output_dir, "sites_clustGeo_PRE.png"),
     cluster_labels = TRUE
 )
 
@@ -287,7 +291,7 @@ plot_sites(
     elevation_raster = cov_tif_albers_raw, 
     methods_to_plot = methods_to_plot,
     boundary_shp_path = boundary_shapefile_path,
-    output_path = file.path(output_dir, "GLOBAL_sites_POST.png"),
+    output_path = file.path(output_dir, "sites_POST.png"),
     cluster_labels = TRUE
 )
 plot_sites(
@@ -297,7 +301,7 @@ plot_sites(
     elevation_raster = cov_tif_albers_raw, 
     methods_to_plot = methods_to_plot_clustGeo,
     boundary_shp_path = boundary_shapefile_path,
-    output_path = file.path(output_dir, "GLOBAL_sites_clustGeo_POST.png"),
+    output_path = file.path(output_dir, "sites_clustGeo_POST.png"),
     cluster_labels = TRUE
 )
 
@@ -378,7 +382,7 @@ for (species_name in species_names) {
   
   
   cat(sprintf("Training Points: %d; Test Points: %d\n", nrow(spec_train_obs), nrow(spec_test_obs)))
-  
+
   # --- Regenerate Test Splits (Fast) ---
   # Test splits are just subsamples of rows. We must regenerate them because
   # the 'species_observed' column in the source (current_test_df) has changed.
