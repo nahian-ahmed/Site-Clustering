@@ -104,10 +104,10 @@ if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 
 ###
-# 3. PREPROCESS RASTER (Global)
+# 3. PREPROCESS RASTER
 ###
 
-cat("--- Pre-processing global raster data... ---\n")
+cat("--- Pre-processing raster data... ---\n")
 
 # 1. Define CRS
 albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
@@ -178,10 +178,10 @@ cat("SUCCESS: All species share identical checklist_ids for Train (2017) and Tes
 
 
 ###
-# 5. GLOBAL SPATIAL PROCESSING (RUN ONCE)
+# 5. SPATIAL PROCESSING
 ###
 cat("\n###############################################\n")
-cat("RUNNING GLOBAL SPATIAL PROCESSING\n")
+cat("RUNNING SPATIAL PROCESSING\n")
 cat("Using template species:", species_names[1], "\n")
 cat("###############################################\n")
 
@@ -211,11 +211,11 @@ master_test_df <- prepare_test_data(
     placeholder_spec_name = template_species
 )
 
-# === 5.2 CLUSTERING (Run Once) ===
-cat("--- Computing clusterings (Global) ---\n")
+# === 5.2 CLUSTERING ===
+cat("--- Computing clusterings ---\n")
 all_clusterings <- get_clusterings(method_names, master_train_df, state_cov_names, NULL)
 
-cat("--- Computing initial site geometries (Global) ---\n")
+cat("--- Computing initial site geometries ---\n")
 all_site_geometries <- list()
 for (method_name in method_names) {
     cluster_data <- all_clusterings[[method_name]]
@@ -233,8 +233,8 @@ stats_pre <- summarize_clusterings(all_clusterings, all_site_geometries, units =
 stats_pre$species <- "GLOBAL_TEMPLATE" # Marked as template
 all_clustering_stats_pre[[1]] <- stats_pre
 
-# --- PLOTTING PRE-SPLIT (Run Once) ---
-cat("--- Plotting sites (Global PRE-SPLIT) ---\n")
+# --- PLOTTING PRE-SPLIT ---
+cat("--- Plotting sites (PRE-SPLIT) ---\n")
 plot_sites(
     base_train_df = master_train_df,
     all_clusterings = all_clusterings,
@@ -256,8 +256,8 @@ plot_sites(
     cluster_labels = TRUE
 )
 
-# === 5.3 SPLIT DISJOINT SITES (Run Once) ===
-cat("--- Splitting disjoint geometries (Global) ---\n")
+# === 5.3 SPLIT DISJOINT SITES ===
+cat("--- Splitting disjoint geometries ---\n")
 for (method_name in names(all_site_geometries)) {
     curr_geoms <- all_site_geometries[[method_name]]
     curr_data_obj <- all_clusterings[[method_name]]
@@ -283,7 +283,7 @@ stats_post$species <- "GLOBAL_TEMPLATE"
 all_clustering_stats_post[[1]] <- stats_post
 
 # --- PLOTTING POST-SPLIT (Run Once) ---
-cat("--- Plotting sites (Global POST-SPLIT) ---\n")
+cat("--- Plotting sites (POST-SPLIT) ---\n")
 plot_sites(
     base_train_df = master_train_df,
     all_clusterings = all_clusterings,
@@ -305,8 +305,8 @@ plot_sites(
     cluster_labels = TRUE
 )
 
-# === 5.4 W MATRICES (Run Once) ===
-cat("--- Generating W matrices (Global) ---\n")
+# === 5.4 W MATRICES ===
+cat("--- Generating W matrices ---\n")
 all_w_matrices <- list()
 for (m_name in names(all_site_geometries)) {
     if (!is.null(all_site_geometries[[m_name]])) {
@@ -314,8 +314,8 @@ for (m_name in names(all_site_geometries)) {
     }
 }
 
-# === 5.5 TEST SPATIAL STRUCTURES (Run Once) ===
-cat("--- Preparing Test Structures (Global) ---\n")
+# === 5.5 TEST SPATIAL STRUCTURES ===
+cat("--- Preparing Test Structures ---\n")
 test_structures <- prepare_test_spatial_structures(
     test_df = master_test_df,
     albers_crs = albers_crs_str,
