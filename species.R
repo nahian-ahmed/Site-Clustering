@@ -41,7 +41,7 @@ species_names <- c(
 )
 
 species_names <- c(
-    "AMCR", "AMRO"
+    "AMCR"
 )
 
 # Comparison methods

@@ -198,7 +198,8 @@ disjoint_site_geometries <- function(site_geoms_sf, point_data_df, crs_points = 
 
   # Check if we lost rows relative to input
   if (nrow(join_res) < nrow(point_data_df)) {
-      warning("disjoint_site_geometries: Rows were lost during st_join!")
+    print("rows lost")
+    warning("disjoint_site_geometries: Rows were lost during st_join!")
   }
   
   # HANDLE DUPLICATES: If a point touches a boundary between two split parts, 
