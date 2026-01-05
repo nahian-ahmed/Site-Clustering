@@ -87,7 +87,7 @@ obs_cov_names <- c("day_of_year", "time_observations_started", "duration_minutes
 
 # Optimization & Simulation Settings
 selected_optimizer <- "nlminb"
-n_fit_repeats <- 100
+n_fit_repeats <- 50
 n_test_repeats <- 25
 
 res_m <- 100 
