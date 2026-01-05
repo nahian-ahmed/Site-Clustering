@@ -196,12 +196,7 @@ disjoint_site_geometries <- function(site_geoms_sf, point_data_df, crs_points = 
   # left=TRUE keeps all points.
   join_res <- sf::st_join(points_sf, sites_split["new_site_id"], join = sf::st_intersects, left = TRUE)
 
-  # Check if we lost rows relative to input
-  if (nrow(join_res) < nrow(point_data_df)) {
-    print("rows lost")
-    warning("disjoint_site_geometries: Rows were lost during st_join!")
-  }
-  
+
   # HANDLE DUPLICATES: If a point touches a boundary between two split parts, 
   # st_join might create duplicate rows. We must deduplicate to keep point count correct.
   # We group by the unique checklist/observation identifier (assuming 'checklist_id' exists)
