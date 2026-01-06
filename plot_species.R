@@ -14,18 +14,25 @@ if (!dir.exists(output_plot_dir)) dir.create(output_plot_dir, recursive = TRUE)
 # 1. Load Data
 data <- read.delim(file.path(output_dir, "predictive_performance.csv"), sep = ",", header = T)
 
-# Ensure test_repeat is a factor if needed, though for aggregation strictly it's numeric
-# The unique methods are:
-# "1to10", "2to10", "2to10-sameObs", "1-kmSq", "lat-long", "rounded-4", 
-# "SVS", "1-per-UL", "DBSC", "BayesOptClustGeo", and various "clustGeo-X-Y"
+# --- Load species descriptions and replace abbreviations with full names ---
+species_map <- read.csv("./species_descr_ext.csv")
 
-# Define the manual color scale from your old script
-# Note: I added "best-clustGeo" to the colors mapping
+# Join to get full names. 
+# We match data$species (abbreviations) with species_map$Abbreviation
+data <- data %>%
+  left_join(species_map %>% select(Species, Abbreviation), by = c("species" = "Abbreviation")) %>%
+  # If a match is found, replace 'species' with the full name 'Species'
+  mutate(species = ifelse(!is.na(Species), Species, species)) %>%
+  select(-Species)
+# -------------------------------------------------------------------------
+
+# Define the manual color scale
 colors <- c("forestgreen", "darkgrey", "red", "blue", "yellow", "orange", 
             "green", "pink", "cyan", "navy", "brown")
 
 names(colors) <- c("BayesOptClustGeo", "DBSC", "best-clustGeo", "1-per-UL", "SVS", "rounded-4",
                    "1-kmSq", "2to10-sameObs", "2to10", "1to10", "lat-long")
+
 # -------------------------------------------------------------------------
 # (1) Define best-clustGeo
 # -------------------------------------------------------------------------
@@ -73,18 +80,15 @@ best_cg_data_auprc <- cg_data %>%
   select(-best_method_auprc)
 
 # Combine with other data
-# We need two master datasets because best-clustGeo differs for AUC vs AUPRC
 final_data_auc <- bind_rows(other_data, best_cg_data_auc)
 final_data_auprc <- bind_rows(other_data, best_cg_data_auprc)
 
 # -------------------------------------------------------------------------
-# (2) Plot Raw AUC and AUPRC over 25 test repeats
+# (2) Plot Raw AUC and AUPRC
 # -------------------------------------------------------------------------
 
-# Helper function to plot raw performance
 plot_raw_performance <- function(df, metric_col, y_label, output_filename) {
   
-  # Calculate species ordering by mean median performance
   species_order <- df %>%
     group_by(species) %>%
     summarise(metric_mean = mean(.data[[metric_col]], na.rm = TRUE)) %>%
@@ -93,10 +97,8 @@ plot_raw_performance <- function(df, metric_col, y_label, output_filename) {
   
   df$species <- factor(df$species, levels = species_order)
   
-  # Standard algorithm ordering
   alg_order <- c("2to10", "2to10-sameObs", "1to10", "1-kmSq", "lat-long", 
                  "rounded-4", "SVS", "1-per-UL", "best-clustGeo", "DBSC", "BayesOptClustGeo")
-  # Filter to only keep methods in our list to avoid color errors if new ones exist
   df <- df %>% filter(method %in% alg_order)
   df$method <- factor(df$method, levels = alg_order)
   
@@ -112,58 +114,74 @@ plot_raw_performance <- function(df, metric_col, y_label, output_filename) {
     ) +
     labs(x = "Species", y = y_label)
   
-  ggsave(output_filename, plot = p, width = 6, height = 12, dpi = 300)
+  ggsave(output_filename, plot = p, width = 7, height = 12, dpi = 300)
 }
 
-# Plot AUC
 plot_raw_performance(final_data_auc, "auc", "AUC", 
                      file.path(output_plot_dir, "auc.png"))
 
-# Plot AUPRC
 plot_raw_performance(final_data_auprc, "auprc", "AUPRC", 
                      file.path(output_plot_dir, "auprc.png"))
 
 
 # -------------------------------------------------------------------------
-# (3) Calculate Percentage Improvement over lat-long
+# (3) Calculate Percentage Improvement
 # -------------------------------------------------------------------------
 
-calculate_improvement <- function(df, metric_col) {
-  # Pivot to have methods as columns to easily subtract lat-long
+# Helper to prepare the diff dataframe
+prepare_diff_data <- function(df, metric_col) {
+  # Pivot to wide
   df_wide <- df %>%
     select(species, test_repeat, method, all_of(metric_col)) %>%
     tidyr::pivot_wider(names_from = method, values_from = all_of(metric_col))
   
-  # Check if lat-long exists
   if(!"lat-long" %in% colnames(df_wide)) stop("lat-long method missing from data")
   
-  # Calculate % diff for each method vs lat-long
-  # Formula: ((Method - LatLong) / LatLong) * 100
-  methods_to_compare <- setdiff(names(df_wide), c("species", "test_repeat", "lat-long"))
+  # Store baseline 
+  baseline_values <- df_wide[["lat-long"]]
+  
+  methods_to_compare <- setdiff(names(df_wide), c("species", "test_repeat"))
   
   df_diff <- df_wide
   for(m in methods_to_compare) {
-    df_diff[[m]] <- ((df_diff[[m]] - df_diff[["lat-long"]]) / df_diff[["lat-long"]]) * 100
+    # Calculate % diff
+    df_diff[[m]] <- ((df_diff[[m]] - baseline_values) / baseline_values) * 100
   }
   
-  # Remove lat-long column (diff is 0) and pivot back to long
+  # Pivot back to long
   df_diff_long <- df_diff %>%
-    select(-`lat-long`) %>%
     tidyr::pivot_longer(cols = all_of(methods_to_compare), 
                         names_to = "method", 
                         values_to = "perc_diff")
   
-  # AVERAGE OVER REPEATS (The "Right Way")
-  # Result: One value per species per method
-  df_species_avg <- df_diff_long %>%
-    group_by(species, method) %>%
-    summarise(mean_perc_diff = mean(perc_diff, na.rm = TRUE), .groups = "drop")
-  
-  return(df_species_avg)
+  return(df_diff_long)
 }
 
-auc_diff_df <- calculate_improvement(final_data_auc, "auc")
-auprc_diff_df <- calculate_improvement(final_data_auprc, "auprc")
+# --- Aggregation Strategy 1: Average 25 repeats per Species (31 points per method) ---
+aggregate_by_species <- function(df_long) {
+  df_long %>%
+    group_by(species, method) %>%
+    summarise(mean_perc_diff = mean(perc_diff, na.rm = TRUE), .groups = "drop")
+}
+
+# --- Aggregation Strategy 2: Average 31 species per Repeat (25 points per method) ---
+aggregate_by_repeat <- function(df_long) {
+  df_long %>%
+    group_by(test_repeat, method) %>%
+    summarise(mean_perc_diff = mean(perc_diff, na.rm = TRUE), .groups = "drop")
+}
+
+# Prepare base diff data
+auc_diff_raw   <- prepare_diff_data(final_data_auc, "auc")
+auprc_diff_raw <- prepare_diff_data(final_data_auprc, "auprc")
+
+# Create the two aggregated datasets for AUC
+auc_by_species <- aggregate_by_species(auc_diff_raw)
+auc_by_repeat  <- aggregate_by_repeat(auc_diff_raw)
+
+# Create the two aggregated datasets for AUPRC
+auprc_by_species <- aggregate_by_species(auprc_diff_raw)
+auprc_by_repeat  <- aggregate_by_repeat(auprc_diff_raw)
 
 # -------------------------------------------------------------------------
 # (4) Plot Percentage Improvement
@@ -171,7 +189,7 @@ auprc_diff_df <- calculate_improvement(final_data_auprc, "auprc")
 
 plot_improvement <- function(df, y_label, output_filename) {
   
-  # Order methods by median improvement across species
+  # Order methods by median improvement
   method_order <- df %>%
     group_by(method) %>%
     summarise(median_diff = median(mean_perc_diff, na.rm = TRUE)) %>%
@@ -196,15 +214,25 @@ plot_improvement <- function(df, y_label, output_filename) {
       x = "Algorithm"
     )
   
-  ggsave(output_filename, plot = p, width = 10, height = 8, dpi = 300)
+  ggsave(output_filename, plot = p, width = 6, height = 7, dpi = 300)
 }
 
-plot_improvement(auc_diff_df, 
-                 paste0("Average % AUC Improvement (over ", length(unique(auc_diff_df$species)), " Species)"),
-                 file.path(output_plot_dir, "auc_perc_diff.png"))
+# --- PLOT SET 1: Distribution over Species (averaged over repeats) ---
+plot_improvement(auc_by_species, 
+                 "Average % AUC Improvement (Average over 25 Repeats per Species)",
+                 file.path(output_plot_dir, "auc_perc_diff_species.png"))
 
-plot_improvement(auprc_diff_df, 
-                 paste0("Average % AUPRC Improvement (over ", length(unique(auprc_diff_df$species)), " Species)"),
-                 file.path(output_plot_dir, "auprc_perc_diff.png"))
+plot_improvement(auprc_by_species, 
+                 "Average % AUPRC Improvement (Average over 25 Repeats per Species)",
+                 file.path(output_plot_dir, "auprc_perc_diff_species.png"))
+
+# --- PLOT SET 2: Distribution over Repeats (averaged over species) ---
+plot_improvement(auc_by_repeat, 
+                 "Average % AUC Improvement (Average over 31 Species per Repeat)",
+                 file.path(output_plot_dir, "auc_perc_diff_repeats.png"))
+
+plot_improvement(auprc_by_repeat, 
+                 "Average % AUPRC Improvement (Average over 31 Species per Repeat)",
+                 file.path(output_plot_dir, "auprc_perc_diff_repeats.png"))
 
 print("Plots generated successfully in simulation_experiments/output/plots/")
