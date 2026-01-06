@@ -22,11 +22,10 @@ data <- read.delim(file.path(output_dir, "predictive_performance.csv"), sep = ",
 # Define the manual color scale from your old script
 # Note: I added "best-clustGeo" to the colors mapping
 colors <- c("forestgreen", "darkgrey", "red", "blue", "yellow", "orange", 
-            "purple", "green", "brown", "pink", "cyan", "black")
-names(colors) <- c("2to10", "2to10-sameObs", "1to10", "1-kmSq", "lat-long", 
-                   "rounded-4", "SVS", "1-per-UL", "DBSC", "BayesOptClustGeo", 
-                   "clustGeo", "best-clustGeo")
+            "green", "pink", "cyan", "navy", "brown")
 
+names(colors) <- c("BayesOptClustGeo", "DBSC", "best-clustGeo", "1-per-UL", "SVS", "rounded-4",
+                   "1-kmSq", "2to10-sameObs", "2to10", "1to10", "lat-long")
 # -------------------------------------------------------------------------
 # (1) Define best-clustGeo
 # -------------------------------------------------------------------------
@@ -89,7 +88,7 @@ plot_raw_performance <- function(df, metric_col, y_label, output_filename) {
   species_order <- df %>%
     group_by(species) %>%
     summarise(metric_mean = mean(.data[[metric_col]], na.rm = TRUE)) %>%
-    arrange(desc(metric_mean)) %>%
+    arrange(metric_mean) %>%
     pull(species)
   
   df$species <- factor(df$species, levels = species_order)
@@ -104,6 +103,7 @@ plot_raw_performance <- function(df, metric_col, y_label, output_filename) {
   p <- ggplot(df, aes(x = species, y = .data[[metric_col]], fill = method)) +
     geom_boxplot(outlier.size = 0.5, lwd = 0.3) +
     theme_classic() +
+    coord_flip()+
     scale_fill_manual(values = colors) +
     theme(
       axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 10),
@@ -112,7 +112,7 @@ plot_raw_performance <- function(df, metric_col, y_label, output_filename) {
     ) +
     labs(x = "Species", y = y_label)
   
-  ggsave(output_filename, plot = p, width = 14, height = 8, dpi = 400)
+  ggsave(output_filename, plot = p, width = 6, height = 12, dpi = 300)
 }
 
 # Plot AUC
@@ -196,7 +196,7 @@ plot_improvement <- function(df, y_label, output_filename) {
       x = "Algorithm"
     )
   
-  ggsave(output_filename, plot = p, width = 10, height = 8, dpi = 400)
+  ggsave(output_filename, plot = p, width = 10, height = 8, dpi = 300)
 }
 
 plot_improvement(auc_diff_df, 
