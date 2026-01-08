@@ -77,12 +77,15 @@ get_slic_seeds <- function(r, zeta, checklists_sf, buffer_dist_m = 50000) {
 #' @return Dataframe of valid raster cells with columns: x, y, [covs], site
 perform_slic_clustering <- function(cov_raster, seeds_sf, eta, zeta) {
   
-  state_cov_names <- names(cov_raster)
-  
   # 1. Convert Raster to Dataframe (Valid Pixels Only)
   df_pixels <- as.data.frame(cov_raster, xy = TRUE, na.rm = TRUE)
   
   if (nrow(df_pixels) == 0) stop("Raster contains no valid pixels.")
+  
+  # FIX: Derive covariate names from the dataframe itself.
+  # terra::as.data.frame() can sanitize names (e.g. "Layer 1" -> "Layer.1"),
+  # causing a mismatch if we use names(cov_raster).
+  state_cov_names <- setdiff(names(df_pixels), c("x", "y"))
   
   # 2. Extract Features for Initial Seeds
   # Extract raster values at seed locations
@@ -90,8 +93,8 @@ perform_slic_clustering <- function(cov_raster, seeds_sf, eta, zeta) {
   seed_coords <- st_coordinates(seeds_sf)
   
   # Combine features and coords
-  # Note: terra::extract may return an ID column depending on version, 
-  # but usually returns values. We bind carefully.
+  # Note: terra::extract may return an ID column depending on version/data.
+  # We construct seed_data and then strictly select state_cov_names.
   seed_data <- cbind(as.data.frame(seed_vals), as.data.frame(seed_coords))
   
   # Remove seeds that fall on NA pixels (outside mask)
@@ -101,7 +104,6 @@ perform_slic_clustering <- function(cov_raster, seeds_sf, eta, zeta) {
   
   # 3. Scaling for SLIC Distance Metric
   # Distance D^2 = d_feat^2 + (eta/S)^2 * d_xy^2
-  # This is equivalent to Euclidean distance if we scale XY by (eta / S).
   
   ex <- ext(cov_raster)
   area_domain <- (ex$xmax - ex$xmin) * (ex$ymax - ex$ymin)
@@ -112,13 +114,16 @@ perform_slic_clustering <- function(cov_raster, seeds_sf, eta, zeta) {
   # 4. Prepare Matrices for Lloyd's Algorithm (K-Means)
   
   # -- Data Matrix (Pixels) --
-  feat_cols <- as.matrix(df_pixels[, state_cov_names])
+  # Use drop=FALSE to ensure matrix structure even if only 1 covariate
+  feat_cols <- as.matrix(df_pixels[, state_cov_names, drop = FALSE])
   xy_cols <- as.matrix(df_pixels[, c("x", "y")]) * spatial_scale
   data_matrix <- cbind(feat_cols, xy_cols)
   
   # -- Centers Matrix (Seeds) --
-  # Must match column order of data_matrix
-  seed_feat <- as.matrix(seed_data[, state_cov_names])
+  # Must match column order of data_matrix. 
+  # Note: extract() usually matches the naming convention of as.data.frame().
+  # If seed_data has an 'ID' column, this selection effectively drops it.
+  seed_feat <- as.matrix(seed_data[, state_cov_names, drop = FALSE])
   seed_xy <- as.matrix(seed_data[, c("x", "y")]) * spatial_scale
   centers_matrix <- cbind(seed_feat, seed_xy)
   
@@ -143,7 +148,7 @@ perform_slic_clustering <- function(cov_raster, seeds_sf, eta, zeta) {
 #' Main entry point for the pipeline. Generates sites and assigns checklists.
 #' 
 #' @param checklists Dataframe of observations (must have latitude, longitude)
-#' @param state_covs Vector of covariate names
+#' @param state_covs Vector of covariate names (Used for verification if needed, but logic uses raster)
 #' @param cov_raster terra SpatRaster object (must be standardized)
 #' @param eta Compactness
 #' @param zeta Number of initial seeds
