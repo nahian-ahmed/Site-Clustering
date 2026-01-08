@@ -118,6 +118,7 @@ create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15
   
   # Check Method Type
   is_kmsq <- !is.null(method_name) && grepl("kmSq", method_name, ignore.case = TRUE)
+  is_slic <- !is.null(method_name) && grepl("SLIC", method_name, ignore.case = TRUE)
   
   if (is_kmsq) {
     # --- Grid Logic ---
@@ -142,6 +143,36 @@ create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15
     
     present_sites <- unique(as.character(site_data_sf$site))
     site_geoms_sf <- grid_sf[grid_sf$site %in% present_sites, ]
+    
+  } else if (is_slic) {
+    # --- SLIC Logic (Reconstruct Polygons from Raster) ---
+    parts <- unlist(strsplit(method_name, "-"))
+    eta <- as.numeric(parts[2])
+    zeta <- as.numeric(parts[3])
+    
+    # 1. Regenerate Seeds (Same buffer logic as slicSites)
+    seeds <- get_slic_seeds(reference_raster, zeta, points_proj, buffer_dist_m = 50000)
+    
+    # 2. Run SLIC on the reference raster to get pixel assignments
+    pixel_df <- perform_slic_clustering(reference_raster, seeds, eta, zeta)
+    
+    # 3. Create a temporary raster with site IDs
+    r_temp <- terra::rast(reference_raster, nlyrs = 1)
+    # Efficient fill:
+    cells <- terra::cellFromXY(r_temp, as.matrix(pixel_df[, c("x", "y")]))
+    r_temp[cells] <- pixel_df$site
+    
+    # 4. Convert Raster Clusters to Polygons
+    polys <- terra::as.polygons(r_temp, dissolve = TRUE)
+    site_geoms_sf <- sf::st_as_sf(polys)
+    
+    # Rename value column to 'site'
+    colnames(site_geoms_sf)[1] <- "site"
+    site_geoms_sf$site <- as.character(site_geoms_sf$site)
+    
+    # 5. Filter to only include sites present in the data
+    present_sites <- unique(as.character(site_data_sf$site))
+    site_geoms_sf <- site_geoms_sf[site_geoms_sf$site %in% present_sites, ]
     
   } else {
     # --- Voronoi Logic ---
@@ -500,4 +531,3 @@ get_occu_map_diff <- function(occu_map_gt, occu_map) {
   return(occu_map_diff)
 }
 ########
-

@@ -1,7 +1,7 @@
 ##############################################
 # Clustering Helpers
 #
-# November 09, 2025
+# Updated: January 08, 2026
 ##############################################
 
 # 1. SOURCE MODULAR CLUSTERING LOGIC
@@ -9,6 +9,7 @@ source("R/clustering/kmsq.R")
 source("R/clustering/dbsc.R")
 source("R/clustering/clustgeo.R")
 source("R/clustering/bayesopt.R")
+source("R/clustering/slic.R") # Added SLIC
 
 
 # Load required libraries
@@ -49,7 +50,8 @@ library(dplyr)
 
 
 # 3. DISPATCHER FUNCTION
-run_clustering_method <- function(method_name, og_data, state_covs, truth_df = NULL) {
+# Updated to accept cov_raster for SLIC methods
+run_clustering_method <- function(method_name, og_data, state_covs, truth_df = NULL, cov_raster = NULL) {
   
   set.seed(1) # Ensure reproducibility for each method
   
@@ -57,7 +59,7 @@ run_clustering_method <- function(method_name, og_data, state_covs, truth_df = N
   base_method <- parts[1]
   
   # ---
-  # A. Parameter-based methods (kmSq, rounded, clustGeo)
+  # A. Parameter-based methods (kmSq, rounded, clustGeo, SLIC)
   # ---
   
   if (base_method == "kmSq") {
@@ -72,16 +74,13 @@ run_clustering_method <- function(method_name, og_data, state_covs, truth_df = N
     return(list(name = canonical_name, data = result_df))
     
   } else if (length(parts) == 2 && parts[2] == "kmSq") {
-    # *** NEW BLOCK ***
-    # Handles "area-style" names like "2-kmSq" from your config
+    # Handles "area-style" names like "2-kmSq"
     area_kmSq <- as.numeric(base_method)
     rad_m <- as.integer(sqrt(area_kmSq) * 1000) # Translate area to radius
     
     message(paste("Translating reference method", method_name, "to radius:", rad_m, "m"))
     
     result_df <- kmsq_sites(og_data, rad_m = rad_m)
-    
-    # Return with the *original* name as the key
     return(list(name = method_name, data = result_df))
     
   } else if (base_method == "rounded") {
@@ -101,13 +100,20 @@ run_clustering_method <- function(method_name, og_data, state_covs, truth_df = N
     result_df <- .run_clustgeo_internal(og_data, rho, percent, state_covs)
     return(list(name = method_name, data = result_df))
   
+  } else if (base_method == "SLIC") {
+    # Format: SLIC-[eta]-[zeta]
+    if (is.null(cov_raster)) stop("SLIC method requires 'cov_raster' argument.")
+    
+    eta <- as.numeric(parts[2])
+    zeta <- as.numeric(parts[3])
+    
+    result_df <- slicSites(og_data, state_covs, cov_raster, eta, zeta)
+    return(list(name = method_name, data = result_df))
+
   # ---
   # B. Complex, self-contained methods (DBSC, BayesOpt)
   # ---
   } else if (method_name == "DBSC") {
-    # DBSC uses *both* state and obs covs in its old implementation, 
-    # but the new one seems to only use state_covs inside formatVert.
-    # We pass state_covs to its 'occ_covs' param to match dbsc.R
     result_df <- runDBSC(og_data, state_covs)
     return(list(name = "DBSC", data = result_df))
     
@@ -127,8 +133,6 @@ run_clustering_method <- function(method_name, og_data, state_covs, truth_df = N
   # C. Simple, flag-based methods (auk filters, svs, etc.)
   # ---
   } else {
-    # UPDATED: Added aliases (e.g., "1to10") and a 'canonical' field
-    # to return the name matching run_simulations.R
     auk_params <- switch(method_name,
       "one_to_10" = list(min_obs = 1, max_obs = 10, site_vars = c("locality_id"), canonical = "1to10"),
       "1to10" = list(min_obs = 1, max_obs = 10, site_vars = c("locality_id"), canonical = "1to10"),
@@ -154,19 +158,15 @@ run_clustering_method <- function(method_name, og_data, state_covs, truth_df = N
         date_var = "formatted_date",
         site_vars = auk_params$site_vars
       )
-      # UPDATED: Return the canonical name
       return(list(name = auk_params$canonical, data = result_df))
     }
     
-    # Handle non-auk simple methods
-    # UPDATED: Handle both "svs" and "SVS"
     if (method_name == "svs" || method_name == "SVS") {
       result_df <- og_data
       result_df$site <- result_df$checklist_id
-      return(list(name = "SVS", data = result_df)) # Return canonical "SVS"
+      return(list(name = "SVS", data = result_df)) 
     }
     
-    # UPDATED: Handle both "one_UL" and "1-per-UL"
     if (method_name == "one_UL" || method_name == "1-per-UL") {
       df_1_UL_t <- auk::filter_repeat_visits(
         og_data,
@@ -177,7 +177,7 @@ run_clustering_method <- function(method_name, og_data, state_covs, truth_df = N
         group_by(site) %>% 
         filter(row_number() == 1) %>%
         ungroup() 
-      return(list(name = "1-per-UL", data = result_df)) # Return canonical "1-per-UL"
+      return(list(name = "1-per-UL", data = result_df)) 
     }
     
     if (method_name == "reference_clustering" && !is.null(truth_df)) {
@@ -185,13 +185,13 @@ run_clustering_method <- function(method_name, og_data, state_covs, truth_df = N
     }
   }
   
-  # If we got here, the method wasn't found
   warning(paste("No implementation found for method:", method_name))
   return(NULL)
 }
 
 # 4. THE NEW, CLEAN getClusterings FUNCTION
-get_clusterings <- function(method_names, og_data, state_covs, truth_df = data.frame()) {
+# Updated to accept cov_raster
+get_clusterings <- function(method_names, og_data, state_covs, truth_df = data.frame(), cov_raster = NULL) {
   
   results <- list()
   
@@ -203,7 +203,8 @@ get_clusterings <- function(method_names, og_data, state_covs, truth_df = data.f
       method_config_name,
       og_data,
       state_covs,
-      truth_df
+      truth_df,
+      cov_raster
     )
     
     if (!is.null(clustering_result)) {

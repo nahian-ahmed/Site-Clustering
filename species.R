@@ -25,6 +25,8 @@ source(file.path("R", "clustering_helpers.R"))
 source(file.path("R", "model_helpers.R"))
 source(file.path("R", "analysis_helpers.R"))
 source(file.path("R", "plotting_helpers.R"))
+# Added SLIC source
+source(file.path("R", "clustering", "slic.R"))
 
 set.seed(123) 
 
@@ -39,10 +41,6 @@ species_names <- c(
   "OLFL", "PAFL", "PAWR", "PIWO", "REHA", "SOSP", "SPTO", "SWTH", 
   "WAVI", "WEPE", "WETA", "WIWA", "WRENTI", "YEBCHA", "YEWA"
 )
-
-# species_names <- c(
-#     "AMCR", "AMRO"
-# )
 
 # Comparison methods
 method_names <- c(
@@ -62,6 +60,9 @@ method_names <- c(
   "clustGeo-50-80",
   "DBSC",
   "BayesOptClustGeo",
+  "SLIC-0.5-25",
+  "SLIC-0.5-50",
+  "SLIC-0.5-100",
   "SLIC-1.0-25",
   "SLIC-1.0-50",
   "SLIC-1.0-100",
@@ -70,7 +71,7 @@ method_names <- c(
   "SLIC-2.0-100",
   "SLIC-3.0-25",
   "SLIC-3.0-50",
-  "SLIC-3.0-100",
+  "SLIC-3.0-100"
 )
 
 # Methods to plot
@@ -81,6 +82,11 @@ methods_to_plot <- c(
 
 methods_to_plot_clustGeo <- c(
   "clustGeo-50-30", "clustGeo-50-40", "clustGeo-50-50", "clustGeo-50-60", "clustGeo-50-70", "clustGeo-50-80"
+)
+
+methods_to_plot_slic <- c(
+  "SLIC-0.5-25", "SLIC-0.5-50", "SLIC-0.5-100", "SLIC-1.0-25", "SLIC-1.0-50", "SLIC-1.0-100",
+  "SLIC-2.0-25", "SLIC-2.0-50", "SLIC-2.0-100", "SLIC-3.0-25", "SLIC-3.0-50", "SLIC-3.0-100"
 )
 
 # Covariates
@@ -215,7 +221,8 @@ master_test_df <- prepare_test_data(
 
 # === 5.2 CLUSTERING ===
 cat("--- Computing clusterings ---\n")
-all_clusterings <- get_clusterings(method_names, master_train_df, state_cov_names, NULL)
+# UPDATED: Passing cov_tif_albers (standardized) which is required for SLIC
+all_clusterings <- get_clusterings(method_names, master_train_df, state_cov_names, NULL, cov_tif_albers)
 
 cat("--- Computing initial site geometries ---\n")
 all_site_geometries <- list()
@@ -224,6 +231,7 @@ for (method_name in method_names) {
     if (is.list(cluster_data) && "result_df" %in% names(cluster_data)) cluster_data <- cluster_data$result_df
     
     if (!is.null(cluster_data)) {
+        # Note: We pass cov_tif_albers here as well, which create_site_geometries now uses for SLIC reconstruction
         all_site_geometries[[method_name]] <- create_site_geometries(cluster_data, cov_tif_albers, buffer_m, method_name)
     }
 }
@@ -257,6 +265,8 @@ plot_sites(
     output_path = file.path(output_dir, "sites_clustGeo_PRE.png"),
     cluster_labels = TRUE
 )
+
+
 
 # === 5.3 SPLIT DISJOINT SITES ===
 cat("--- Splitting disjoint geometries ---\n")
@@ -304,6 +314,17 @@ plot_sites(
     methods_to_plot = methods_to_plot_clustGeo,
     boundary_shp_path = boundary_shapefile_path,
     output_path = file.path(output_dir, "sites_clustGeo_POST.png"),
+    cluster_labels = TRUE
+)
+
+plot_sites(
+    base_train_df = master_train_df,
+    all_clusterings = all_clusterings,
+    all_site_geometries = all_site_geometries,
+    elevation_raster = cov_tif_albers_raw, 
+    methods_to_plot = methods_to_plot_slic,
+    boundary_shp_path = boundary_shapefile_path,
+    output_path = file.path(output_dir, "sites_SLIC.png"),
     cluster_labels = TRUE
 )
 
