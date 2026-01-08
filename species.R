@@ -61,7 +61,16 @@ method_names <- c(
   "clustGeo-50-70",
   "clustGeo-50-80",
   "DBSC",
-  "BayesOptClustGeo"
+  "BayesOptClustGeo",
+  "SLIC-1.0-25",
+  "SLIC-1.0-50",
+  "SLIC-1.0-100",
+  "SLIC-2.0-25",
+  "SLIC-2.0-50",
+  "SLIC-2.0-100",
+  "SLIC-3.0-25",
+  "SLIC-3.0-50",
+  "SLIC-3.0-100",
 )
 
 # Methods to plot
