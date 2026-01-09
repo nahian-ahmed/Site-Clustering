@@ -83,15 +83,13 @@ perform_slic_clustering <- function(cov_raster, seeds_sf, eta, zeta) {
   if (nrow(df_pixels) == 0) stop("Raster contains no valid pixels.")
   
   # Identify covariate names from the dataframe itself (to handle sanitization)
+  # terra::as.data.frame(xy=TRUE) guarantees columns are named "x" and "y"
   state_cov_names <- setdiff(names(df_pixels), c("x", "y"))
   
   # 2. Extract Features for Initial Seeds
   seed_vals <- terra::extract(cov_raster, seeds_sf)
   
-  # --- ROBUST NAME ALIGNMENT START ---
-  # terra::extract() often returns an 'ID' column and might not sanitize names 
-  # exactly the same way as.data.frame() does. We fix this here.
-  
+  # --- ROBUST NAME ALIGNMENT ---
   # Remove 'ID' column if present
   if("ID" %in% names(seed_vals)) {
     seed_vals <- seed_vals[, setdiff(names(seed_vals), "ID"), drop = FALSE]
@@ -103,14 +101,17 @@ perform_slic_clustering <- function(cov_raster, seeds_sf, eta, zeta) {
                "covariates, but extracted seeds have", ncol(seed_vals)))
   }
   
-  # Force names to match df_pixels (Order is preserved by terra)
+  # Force covariate names to match df_pixels
   names(seed_vals) <- state_cov_names
-  # --- ROBUST NAME ALIGNMENT END ---
   
-  seed_coords <- st_coordinates(seeds_sf)
+  # --- ROBUST COORDINATE EXTRACTION ---
+  # st_coordinates usually returns "X" and "Y" (uppercase).
+  # We force them to lowercase "x" and "y" to match df_pixels.
+  seed_coords <- as.data.frame(st_coordinates(seeds_sf))
+  colnames(seed_coords) <- c("x", "y")
   
   # Combine features and coords
-  seed_data <- cbind(seed_vals, as.data.frame(seed_coords))
+  seed_data <- cbind(seed_vals, seed_coords)
   
   # Remove seeds that fall on NA pixels (outside mask)
   seed_data <- na.omit(seed_data)
@@ -129,6 +130,7 @@ perform_slic_clustering <- function(cov_raster, seeds_sf, eta, zeta) {
   # 4. Prepare Matrices for Lloyd's Algorithm (K-Means)
   
   # -- Data Matrix (Pixels) --
+  # Use drop=FALSE to ensure matrix structure even if only 1 covariate
   feat_cols <- as.matrix(df_pixels[, state_cov_names, drop = FALSE])
   xy_cols <- as.matrix(df_pixels[, c("x", "y")]) * spatial_scale
   data_matrix <- cbind(feat_cols, xy_cols)
@@ -136,7 +138,10 @@ perform_slic_clustering <- function(cov_raster, seeds_sf, eta, zeta) {
   # -- Centers Matrix (Seeds) --
   # Must match column order of data_matrix
   seed_feat <- as.matrix(seed_data[, state_cov_names, drop = FALSE])
+  
+  # Now this will work because we renamed columns to lowercase x, y
   seed_xy <- as.matrix(seed_data[, c("x", "y")]) * spatial_scale
+  
   centers_matrix <- cbind(seed_feat, seed_xy)
   
   # 5. Run Clustering
