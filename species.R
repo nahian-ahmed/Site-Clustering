@@ -267,7 +267,16 @@ plot_sites(
     output_path = file.path(output_dir, "sites_clustGeo_PRE.png"),
     cluster_labels = TRUE
 )
-
+plot_sites(
+    base_train_df = master_train_df,
+    all_clusterings = all_clusterings,
+    all_site_geometries = all_site_geometries,
+    elevation_raster = cov_tif_albers_raw, 
+    methods_to_plot = methods_to_plot_slic,
+    boundary_shp_path = boundary_shapefile_path,
+    output_path = file.path(output_dir, "sites_SLIC_PRE.png"),
+    cluster_labels = TRUE
+)
 
 
 # === 5.3 SPLIT DISJOINT SITES ===
@@ -326,7 +335,7 @@ plot_sites(
     elevation_raster = cov_tif_albers_raw, 
     methods_to_plot = methods_to_plot_slic,
     boundary_shp_path = boundary_shapefile_path,
-    output_path = file.path(output_dir, "sites_SLIC.png"),
+    output_path = file.path(output_dir, "sites_SLIC_POST.png"),
     cluster_labels = TRUE
 )
 
