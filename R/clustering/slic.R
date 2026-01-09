@@ -181,7 +181,7 @@ slicSites <- function(checklists, state_covs, cov_raster, eta, zeta) {
   
   # 1. Generate Filtered Seeds
   # buffer_dist_m can be tuned; 50km covers most eBird data gaps efficiently
-  seeds <- get_slic_seeds(cov_raster, zeta, checklists_sf, buffer_dist_m = 50000)
+  seeds <- get_slic_seeds(cov_raster, zeta, checklists_sf, buffer_dist_m = 5000)
   
   if (nrow(seeds) == 0) {
     warning("No seeds found near checklists. Assigning all to site -1.")

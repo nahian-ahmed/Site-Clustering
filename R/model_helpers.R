@@ -145,35 +145,42 @@ create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15
     site_geoms_sf <- grid_sf[grid_sf$site %in% present_sites, ]
     
   } else if (is_slic) {
-    # --- SLIC Logic (Reconstruct Polygons from Raster) ---
+    # --- SLIC Logic (Optimized) ---
     parts <- unlist(strsplit(method_name, "-"))
     eta <- as.numeric(parts[2])
     zeta <- as.numeric(parts[3])
     
-    # 1. Regenerate Seeds (Same buffer logic as slicSites)
+    # 1. Regenerate Seeds
     seeds <- get_slic_seeds(reference_raster, zeta, points_proj, buffer_dist_m = 50000)
     
-    # 2. Run SLIC on the reference raster to get pixel assignments
+    # 2. Run SLIC
     pixel_df <- perform_slic_clustering(reference_raster, seeds, eta, zeta)
     
-    # 3. Create a temporary raster with site IDs
+    # 3. Create Raster
     r_temp <- terra::rast(reference_raster, nlyrs = 1)
-    # Efficient fill:
     cells <- terra::cellFromXY(r_temp, as.matrix(pixel_df[, c("x", "y")]))
     r_temp[cells] <- pixel_df$site
     
-    # 4. Convert Raster Clusters to Polygons
+    # --- OPTIMIZATION START ---
+    # Identify sites present in the data
+    present_sites <- unique(as.character(site_data_sf$site))
+    present_sites_num <- as.numeric(present_sites)
+    
+    # Mask the raster: Set any cell NOT in a present site to NA
+    # This prevents creating polygons for empty areas
+    r_temp[!r_temp %in% present_sites_num] <- NA
+    # --- OPTIMIZATION END ---
+
+    # 4. Convert ONLY valid clusters to Polygons
     polys <- terra::as.polygons(r_temp, dissolve = TRUE)
     site_geoms_sf <- sf::st_as_sf(polys)
     
-    # Rename value column to 'site'
+    # Rename and Final Filter
     colnames(site_geoms_sf)[1] <- "site"
     site_geoms_sf$site <- as.character(site_geoms_sf$site)
     
-    # 5. Filter to only include sites present in the data
-    present_sites <- unique(as.character(site_data_sf$site))
+    # (Double check filter just in case)
     site_geoms_sf <- site_geoms_sf[site_geoms_sf$site %in% present_sites, ]
-    
   } else {
     # --- Voronoi Logic ---
     site_geoms_sf <- voronoi_clipped_buffers(points_proj, buffer_m)
@@ -265,52 +272,121 @@ disjoint_site_geometries <- function(site_geoms_sf, point_data_df, crs_points = 
 }
 
 
-#' Generate Overlap Matrix (W)
-#' 
-#' Calculates the sparse weighting matrix based on finalized geometries.
-#' NOW FILTERS OUT NA CELLS (e.g. Water/Outside Boundary) to prevent model contamination.
-#'
+# #' Generate Overlap Matrix (W)
+# #' 
+# #' Calculates the sparse weighting matrix based on finalized geometries.
+# #' NOW FILTERS OUT NA CELLS (e.g. Water/Outside Boundary) to prevent model contamination.
+# #'
+# generate_overlap_matrix <- function(site_geoms_sf, reference_raster) {
+  
+#   # Ensure IDs are character
+#   site_geoms_sf$site <- as.character(site_geoms_sf$site)
+  
+#   # Convert to SpatVector
+#   site_vect <- terra::vect(site_geoms_sf)
+#   # Project to verify match
+#   site_vect_proj <- terra::project(site_vect, terra::crs(reference_raster))
+  
+#   # Extract coverage
+#   # returns dataframe with: [ID, value_of_raster, cell_index, fraction]
+#   overlap_df <- terra::extract(
+#     reference_raster[[1]], 
+#     site_vect_proj, 
+#     cells = TRUE, 
+#     exact = TRUE, 
+#     ID = TRUE
+#   )
+  
+#   # --- CRITICAL FIX: REMOVE NA CELLS ---
+#   # If the raster value (column 2) is NA, this cell is not habitat.
+#   # We must remove it from W so the model doesn't calculate density for it.
+#   val_col_name <- names(reference_raster)[1]
+#   # Filter rows where the raster value is NOT NA
+#   overlap_df <- overlap_df[!is.na(overlap_df[[val_col_name]]), ]
+  
+#   # Get resolution for Area
+#   r_res <- terra::res(reference_raster)
+#   cell_area_km2 <- (r_res[1] / 1000) * (r_res[2] / 1000)
+  
+#   # Multiply fraction by Area to get units of km^2
+#   overlap_df$w_area <- overlap_df$fraction * cell_area_km2
+
+#   n_sites <- nrow(site_geoms_sf)
+#   n_cells <- terra::ncell(reference_raster)
+  
+#   # Create Sparse Matrix
+#   w <- Matrix::sparseMatrix(
+#     i = overlap_df$ID,
+#     j = overlap_df$cell,
+#     x = overlap_df$w_area,
+#     dims = c(n_sites, n_cells),
+#     dimnames = list(site_geoms_sf$site, NULL) 
+#   )
+  
+#   return(w)
+# }
+
+
 generate_overlap_matrix <- function(site_geoms_sf, reference_raster) {
   
-  # Ensure IDs are character
+  # Check if we can use the Fast Raster Path (for SLIC)
+  # If the geometry looks like it came from a raster (perfect fit), we could optimize.
+  # But the safest way is to check if we can reconstruct it or just optimize the extract.
+  
+  # Standard Approach (Optimized for NA removal)
   site_geoms_sf$site <- as.character(site_geoms_sf$site)
-  
-  # Convert to SpatVector
   site_vect <- terra::vect(site_geoms_sf)
-  # Project to verify match
-  site_vect_proj <- terra::project(site_vect, terra::crs(reference_raster))
   
-  # Extract coverage
-  # returns dataframe with: [ID, value_of_raster, cell_index, fraction]
+  # Check CRS
+  if (!identical(crs(site_vect), crs(reference_raster))) {
+    site_vect <- terra::project(site_vect, terra::crs(reference_raster))
+  }
+
+  # --- OPTIMIZATION FOR SLIC/GRID POLYGONS ---
+  # terra::extract on polygons is slow. 
+  # If we are memory constrained, we can process in chunks or using 'cells' method carefully.
+  # But for SLIC, exact=TRUE is heavy. 
+  # Since SLIC aligns with pixels, exact=FALSE (default) is sufficient and much faster
+  # because a pixel is either fully in the site or not.
+  
   overlap_df <- terra::extract(
     reference_raster[[1]], 
-    site_vect_proj, 
+    site_vect, 
     cells = TRUE, 
-    exact = TRUE, 
+    exact = FALSE, # Change to FALSE for SLIC/Grid (huge speedup)
     ID = TRUE
   )
   
-  # --- CRITICAL FIX: REMOVE NA CELLS ---
-  # If the raster value (column 2) is NA, this cell is not habitat.
-  # We must remove it from W so the model doesn't calculate density for it.
+  # Remove NA cells (water/outside boundary)
   val_col_name <- names(reference_raster)[1]
-  # Filter rows where the raster value is NOT NA
   overlap_df <- overlap_df[!is.na(overlap_df[[val_col_name]]), ]
   
-  # Get resolution for Area
+  # Calculate Area
   r_res <- terra::res(reference_raster)
   cell_area_km2 <- (r_res[1] / 1000) * (r_res[2] / 1000)
   
-  # Multiply fraction by Area to get units of km^2
+  # If exact=FALSE, we assume fraction is 1.0 for included cells
+  if (!("fraction" %in% names(overlap_df))) {
+    overlap_df$fraction <- 1.0
+  }
+  
   overlap_df$w_area <- overlap_df$fraction * cell_area_km2
-
+  
+  # Map IDs back to Site Names
+  # extract returns ID as 1,2,3... corresponding to row order of site_vect
+  site_indices <- overlap_df$ID
+  site_names <- site_geoms_sf$site[site_indices]
+  
+  # Build Matrix
   n_sites <- nrow(site_geoms_sf)
   n_cells <- terra::ncell(reference_raster)
   
-  # Create Sparse Matrix
+  # We need to map site_names to row indices in the final matrix
+  # Let's trust the input order of site_geoms_sf for the rows
+  
   w <- Matrix::sparseMatrix(
-    i = overlap_df$ID,
-    j = overlap_df$cell,
+    i = overlap_df$ID,     # Row index (matches site_geoms_sf order)
+    j = overlap_df$cell,   # Column index (raster cell ID)
     x = overlap_df$w_area,
     dims = c(n_sites, n_cells),
     dimnames = list(site_geoms_sf$site, NULL) 
