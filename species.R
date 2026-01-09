@@ -133,6 +133,8 @@ standardization_results <- standardize_state_covs(cov_tif_albers_raw)
 cov_tif_albers <- standardization_results$raster
 state_cov_params <- standardization_results$params
 
+names(cov_tif_albers) <- names(cov_tif_albers_raw)
+
 # 5. Area Raster
 cell_area_km2 <- (res_m / 1000) * (res_m / 1000)
 area_j_raster <- cov_tif_albers[[1]] * 0 + cell_area_km2
