@@ -147,7 +147,7 @@ perform_slic_clustering <- function(cov_raster, seeds_sf, eta, zeta) {
   # 5. Run Clustering
   # Using iter.max=20 is standard for SLIC as it converges quickly.
   # algorithm="Lloyd" ensures standard iterative refinement.
-  km_res <- kmeans(data_matrix, centers = centers_matrix, iter.max = 100, algorithm = "Lloyd")
+  km_res <- kmeans(data_matrix, centers = centers_matrix, iter.max = 500, algorithm = "Lloyd")
   
   # 6. Attach Labels
   df_pixels$site <- km_res$cluster
