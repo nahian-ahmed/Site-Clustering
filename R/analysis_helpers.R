@@ -49,6 +49,11 @@ summarize_clusterings <- function(all_clusterings, all_site_geometries, units = 
     # Geometries are in Albers (meters), so st_area() returns m^2
     geom_data$area_m2 <- as.numeric(sf::st_area(geom_data))
     
+
+    if("site" %in% names(geom_data)) {
+        geom_data$site <- as.character(geom_data$site)
+    }
+    
     # --- 6. Join all stats by site ---
     # We use geom_data as the base, as it represents the definitive list of sites
     site_summary <- geom_data %>%
