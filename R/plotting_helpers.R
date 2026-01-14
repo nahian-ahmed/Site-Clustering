@@ -195,7 +195,7 @@ plot_sites <- function(
                 geom_sf(
                     data = geom_sf_zoom,
                     aes(fill = site),
-                    alpha = 0.4,
+                    alpha = 0.6,
                     color = "black",
                     linewidth = 0.25,
                     show.legend = FALSE,
