@@ -195,8 +195,6 @@ create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15
 disjoint_site_geometries <- function(site_geoms_sf, point_data_df, crs_points = 4326) {
   
   # 1. Force Cast to MULTIPOLYGON first, then POLYGON
-  # This ensures uniform handling whether input is POLYGON or MULTIPOLYGON
-  # and guarantees separation of disjoint parts.
   sites_split <- site_geoms_sf %>%
     sf::st_make_valid() %>%
     sf::st_cast("MULTIPOLYGON") %>% 
@@ -221,7 +219,6 @@ disjoint_site_geometries <- function(site_geoms_sf, point_data_df, crs_points = 
     dplyr::ungroup()
   
   # 3. Robust Point Reassignment
-  # Convert points to sf
   points_sf <- sf::st_as_sf(
     point_data_df, 
     coords = c("longitude", "latitude"), 
@@ -231,46 +228,41 @@ disjoint_site_geometries <- function(site_geoms_sf, point_data_df, crs_points = 
     sf::st_transform(sf::st_crs(sites_split))
   
   # Spatial join to find the NEW polygon for each point
-  # left=TRUE keeps all points.
   join_res <- sf::st_join(points_sf, sites_split["new_site_id"], join = sf::st_intersects, left = TRUE)
-
-
-  # HANDLE DUPLICATES: If a point touches a boundary between two split parts, 
-  # st_join might create duplicate rows. We must deduplicate to keep point count correct.
-  # We group by the unique checklist/observation identifier (assuming 'checklist_id' exists)
-  # or row number if no ID exists.
+  
+  # Deduplicate if points touch boundaries
   if ("checklist_id" %in% names(join_res)) {
      join_res <- join_res[!duplicated(join_res$checklist_id), ]
   } else {
-     # Fallback if no unique ID exists (less robust but functional)
      join_res <- join_res[!duplicated(geometry), ]
   }
   
-  # 4. Update the Dataframe Safely
-  # We merge the new IDs back to the original dataframe structure
+  # 4. Update the Dataframe
   point_data_updated <- point_data_df
   
-  # Use match to ensure alignment (robust against reordering or row mismatches)
-  # If new_site_id is NA (point fell outside), keep original site (or handle as error)
   if ("checklist_id" %in% names(point_data_updated)) {
     match_idx <- match(point_data_updated$checklist_id, join_res$checklist_id)
     new_ids <- join_res$new_site_id[match_idx]
   } else {
-    # If no ID, assume row order was preserved (risky but necessary fallback)
     new_ids <- join_res$new_site_id
   }
   
   point_data_updated$site <- ifelse(!is.na(new_ids), new_ids, as.character(point_data_updated$site))
   
-  # 5. Finalize Geometries
+  # 5. Finalize Geometries (FILTERING ADDED)
+  # Identify which new sites actually contain points
+  occupied_new_ids <- unique(na.omit(new_ids))
+  
   sites_final <- sites_split %>%
+    dplyr::filter(new_site_id %in% occupied_new_ids) %>% # <--- DROPS EMPTY ISLANDS
     dplyr::select(-site, -sub_id) %>%
     dplyr::rename(site = new_site_id) %>%
     dplyr::select(site, geometry)
   
+  message(sprintf("  - Filtered empty islands: Reduced to %d occupied sites.", nrow(sites_final)))
+
   return(list(geoms = sites_final, data = point_data_updated))
 }
-
 
 # #' Generate Overlap Matrix (W)
 # #' 
