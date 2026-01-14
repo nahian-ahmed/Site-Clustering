@@ -236,6 +236,7 @@ cat("--- Computing clusterings ---\n")
 # UPDATED: Passing cov_tif_albers (standardized) which is required for SLIC
 all_clusterings <- get_clusterings(method_names, master_train_df, state_cov_names, NULL, cov_tif_albers)
 
+
 cat("--- Computing initial site geometries ---\n")
 all_site_geometries <- list()
 for (method_name in method_names) {
@@ -243,8 +244,15 @@ for (method_name in method_names) {
     if (is.list(cluster_data) && "result_df" %in% names(cluster_data)) cluster_data <- cluster_data$result_df
     
     if (!is.null(cluster_data)) {
-        # Note: We pass cov_tif_albers here as well, which create_site_geometries now uses for SLIC reconstruction
-        all_site_geometries[[method_name]] <- create_site_geometries(cluster_data, cov_tif_albers, buffer_m, method_name)
+        if (grepl("SLIC", method_name)) {
+            # --- SPECIAL HANDLING FOR SLIC ---
+            # Reconstruct the actual superpixel polygons
+            cat(sprintf("Reconstructing SLIC polygons for %s...\n", method_name))
+            all_site_geometries[[method_name]] <- reconstruct_slic_polygons(method_name, master_train_df, cov_tif_albers)
+        } else {
+            # Standard handling for other methods
+            all_site_geometries[[method_name]] <- create_site_geometries(cluster_data, cov_tif_albers, buffer_m, method_name)
+        }
     }
 }
 

@@ -219,3 +219,39 @@ round_lat_long <- function(df, rounding_degree){
   
   return(df)
 }
+
+
+
+# Helper to reconstruct SLIC polygons from the raster
+reconstruct_slic_polygons <- function(method_name, train_df, cov_raster) {
+  # Parse params from string "SLIC-eta-zeta"
+  parts <- strsplit(method_name, "-")[[1]]
+  eta <- as.numeric(parts[2])
+  zeta <- as.numeric(parts[3])
+  
+  # Prepare checklist data (needed to generate the exact same seeds)
+  checklists_sf <- sf::st_as_sf(train_df, coords = c("longitude", "latitude"), crs = 4326)
+  checklists_sf <- sf::st_transform(checklists_sf, terra::crs(cov_raster))
+  
+  # 1. Generate Seeds (Must match buffer_dist_m=5000 used in slicSites)
+  seeds <- get_slic_seeds(cov_raster, zeta, checklists_sf, buffer_dist_m = 5000)
+  
+  if (nrow(seeds) == 0) return(NULL)
+  
+  # 2. Re-run Clustering to get pixel map
+  # (Deterministic because seeds are fixed)
+  pixel_df <- perform_slic_clustering(cov_raster, seeds, eta, zeta)
+  
+  # 3. Convert to Polygons
+  r_temp <- terra::rast(cov_raster, nlyrs=1)
+  cell_ids <- terra::cellFromXY(r_temp, as.matrix(pixel_df[, c("x", "y")]))
+  r_temp[cell_ids] <- pixel_df$site
+  
+  # Polygonize
+  polys <- terra::as.polygons(r_temp, dissolve=TRUE)
+  sf_polys <- sf::st_as_sf(polys)
+  colnames(sf_polys)[1] <- "site"
+  sf::st_crs(sf_polys) <- terra::crs(cov_raster)
+  
+  return(sf_polys)
+}

@@ -30,8 +30,6 @@ plot_sites <- function(
     wgs84_crs_str <- "EPSG:4326"                   
 
     # --- 1. Prepare Rasters ---
-    
-    # A. Prepare ALBERS Raster
     valid_boundary <- terra::vect(boundary_shp_path)
     valid_boundary_albers <- terra::project(valid_boundary, albers_crs_str)
     
@@ -47,7 +45,6 @@ plot_sites <- function(
     base_rast_df_wgs84 <- as.data.frame(region_wgs84, xy = TRUE)
     bbox_full <- terra::ext(region_wgs84) 
 
-    
     # --- 2. Create Left Plot (Observations in WGS84) ---
     obs_plot <- ggplot() +
         geom_raster(
@@ -99,21 +96,14 @@ plot_sites <- function(
         ) +
         theme(
             plot.title = element_text(
-                size = 12,
-                hjust = 0.5,
-                face = "bold",
-                vjust = -1.5, 
-                margin = margin(b = -10)
+                size = 12, hjust = 0.5, face = "bold",
+                vjust = -1.5, margin = margin(b = -10)
             ),
             legend.position = "bottom",
             legend.direction = "horizontal",
             legend.margin = margin(t = -50),
-            legend.box.margin = margin(0, 0, 0, 0),
-            legend.key.width = unit(0.75, "cm"),
-            legend.key.height = unit(0.5, "cm"),
             legend.title = element_text(size = 10, vjust = 1),
-            legend.text = element_text(size = 8),
-            axis.title = element_text(size = 10)
+            legend.text = element_text(size = 8)
         )
 
     # --- 3. Create Right Plots (Zoomed Clusters in ALBERS) ---
@@ -130,17 +120,15 @@ plot_sites <- function(
 
     for (method_name in methods_to_plot) {
 
-        # --- Get Point Data & Transform to Albers ---
+        # A. Prepare Points
         if (!method_name %in% names(all_clusterings)) next
         pts_df <- all_clusterings[[method_name]]
         if (is.list(pts_df) && "result_df" %in% names(pts_df)) pts_df <- pts_df$result_df
         
-        # Project points to Albers
         pts_sf <- sf::st_as_sf(pts_df, coords = c("longitude", "latitude"), crs = wgs84_crs_sf)
         pts_sf_albers <- sf::st_transform(pts_sf, albers_crs_str)
-        
-        # Extract coordinates for plotting
         pts_coords <- sf::st_coordinates(pts_sf_albers)
+        
         pts_df_albers <- pts_df
         pts_df_albers$x <- pts_coords[,1]
         pts_df_albers$y <- pts_coords[,2]
@@ -154,44 +142,41 @@ plot_sites <- function(
             (pts_df_albers$y < zoom_bbox_albers["ymax"]), 
         ]
         
-        # --- Pre-calculate Labels (Deduped for SVS) ---
+        # B. Prepare Labels (Deduped)
         pts_labels <- data.frame()
-        
         if (cluster_labels && nrow(pts_df_zoom) > 0) {
-            # 1. Map Site IDs to sequential 1..N based on factor order
             visible_sites <- levels(droplevels(pts_df_zoom$site))
             site_map <- seq_along(visible_sites)
             names(site_map) <- visible_sites
-            
             pts_df_zoom$plot_label <- site_map[as.character(pts_df_zoom$site)]
-            
-            # 2. DEDUPLICATION:
-            # For methods like SVS, multiple sites (checklists) exist at the exact same x,y.
-            # We keep only the FIRST record per unique (x, y) coordinate for labeling.
-            # This ensures we label the "location" with one representative ID, preventing overlap.
             pts_labels <- pts_df_zoom[!duplicated(pts_df_zoom[, c("x", "y")]), ]
         }
 
-        # --- Get Geometry Data (Already Albers) ---
-        if (!method_name %in% names(all_site_geometries)) next
-        geom_sf <- all_site_geometries[[method_name]]
-        if (is.null(geom_sf)) next
-        
-        if (is.na(sf::st_crs(geom_sf))) sf::st_crs(geom_sf) <- albers_crs_str
-        geom_sf$site <- as.factor(geom_sf$site)
+        # C. Prepare Polygons
+        has_polys <- FALSE
+        if (method_name %in% names(all_site_geometries)) {
+            geom_sf <- all_site_geometries[[method_name]]
+            
+            if (!is.null(geom_sf)) {
+                if (is.na(sf::st_crs(geom_sf))) sf::st_crs(geom_sf) <- albers_crs_str
+                geom_sf$site <- as.factor(geom_sf$site)
 
-        # Crop geometries
-        geom_sf_zoom <- suppressWarnings(sf::st_crop(geom_sf, zoom_bbox_albers))
-        
-        if (nrow(geom_sf_zoom) > 0) {
-             if (any(grepl("COLLECTION", sf::st_geometry_type(geom_sf_zoom)))) {
-                 geom_sf_zoom <- sf::st_collection_extract(geom_sf_zoom, "POLYGON")
-             }
+                # Crop safely
+                geom_sf_zoom <- suppressWarnings(sf::st_crop(geom_sf, zoom_bbox_albers))
+                
+                # Ensure we only have polygons
+                if (nrow(geom_sf_zoom) > 0) {
+                     if (any(grepl("COLLECTION", sf::st_geometry_type(geom_sf_zoom)))) {
+                         geom_sf_zoom <- sf::st_collection_extract(geom_sf_zoom, "POLYGON")
+                     }
+                     if (nrow(geom_sf_zoom) > 0) has_polys <- TRUE
+                }
+            }
         }
 
-        # --- Plotting (Albers) ---
+        # D. Construct Plot
         p_zoom <- ggplot() +
-            # Use Albers raster dataframe
+            # Base Raster
             geom_raster(
                 data = base_rast_df_albers,
                 aes(x = x, y = y, fill = .data[[elev_col_name]]),
@@ -202,10 +187,11 @@ plot_sites <- function(
                 limits = c(base_rast_min, base_rast_max),
                 aesthetics = "fill"
             ) +
-            new_scale_fill() +
+            new_scale_fill() # Reset fill scale for clusters
 
-            # Site Geometries (Albers)
-            {if (nrow(geom_sf_zoom) > 0)
+        # Add Polygons (if they exist)
+        if (has_polys) {
+            p_zoom <- p_zoom + 
                 geom_sf(
                     data = geom_sf_zoom,
                     aes(fill = site),
@@ -215,9 +201,10 @@ plot_sites <- function(
                     show.legend = FALSE,
                     inherit.aes = FALSE
                 )
-            } +
+        }
 
-            # Clustered points (Albers)
+        # Add Points and Labels
+        p_zoom <- p_zoom +
             geom_point(
                 data = pts_df_zoom,
                 aes(x = x, y = y, fill = site),
@@ -225,28 +212,16 @@ plot_sites <- function(
                 color = "black",
                 show.legend = FALSE
             ) +
-            
-            # --- NEW: Centered Labels (Using Deduped pts_labels) ---
             {if (cluster_labels && nrow(pts_labels) > 0)
                 geom_text(
-                    data = pts_labels, # <--- Use the filtered dataframe
-                    aes(
-                        x = x, 
-                        y = y, 
-                        label = plot_label
-                    ),
-                    hjust = 0.5,   
-                    vjust = -0.5, 
-                    size = 2.5,    
-                    fontface = "bold",
-                    color = "black",
+                    data = pts_labels,
+                    aes(x = x, y = y, label = plot_label),
+                    hjust = 0.5, vjust = -0.5, 
+                    size = 2.5, fontface = "bold", color = "black",
                     inherit.aes = FALSE
                 )
             } +
-            
             scale_fill_discrete() +
-            
-            # Enforce Albers Coordinates
             coord_sf(
                 xlim = c(zoom_bbox_albers["xmin"], zoom_bbox_albers["xmax"]),
                 ylim = c(zoom_bbox_albers["ymin"], zoom_bbox_albers["ymax"]),
@@ -256,12 +231,9 @@ plot_sites <- function(
             theme_bw() +
             labs(title = method_name) +
             theme(
-                axis.title = element_blank(),
-                axis.text = element_blank(),
-                axis.ticks = element_blank(),
-                plot.title = element_text(size = 10, hjust = 0.5),
-                panel.grid.major = element_blank(),
-                panel.grid.minor = element_blank()
+                axis.title = element_blank(), axis.text = element_blank(),
+                axis.ticks = element_blank(), plot.title = element_text(size = 10, hjust = 0.5),
+                panel.grid.major = element_blank(), panel.grid.minor = element_blank()
             )
 
         zoom_plots[[method_name]] <- p_zoom
@@ -272,13 +244,6 @@ plot_sites <- function(
     final_plot <- obs_plot + plot_clust +
         plot_layout(nrow = 1, widths = c(1, 4))
 
-    ggsave(
-        output_path,
-        plot = final_plot,
-        width = 14,
-        height = 6, 
-        dpi = 300
-    )
-
+    ggsave(output_path, plot = final_plot, width = 14, height = 6, dpi = 300)
     cat(sprintf("--- Site cluster plot saved to %s ---\n", output_path))
 }
