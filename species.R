@@ -77,12 +77,12 @@ methods_to_plot_clustGeo <- c(
 )
 
 methods_to_plot_slic <- c(
-  "SLIC-1.0-200",
-  "SLIC-2.0-200",
-  "SLIC-3.0-200",
-  "SLIC-4.0-200",
-  "SLIC-5.0-200",
-  "SLIC-6.0-200"
+  "SLIC-0.25-400",
+  "SLIC-0.25-800",
+  "SLIC-0.5-400",
+  "SLIC-0.5.0-800",
+  "SLIC-1.0-400",
+  "SLIC-1.0-800"
 )
 
 # Covariates
