@@ -27,7 +27,7 @@ library(stats)
 #' @param buffer_dist_m Distance buffer to valid seeds (default 50km)
 #' 
 #' @return sf object of valid seed points
-get_slic_seeds <- function(r, zeta, checklists_sf, buffer_dist_m = 50000) {
+get_slic_seeds <- function(r, zeta, checklists_sf, buffer_dist_m = 5000) {
   
   # --- A. Define Regular Grid ---
   ext_r <- ext(r)
