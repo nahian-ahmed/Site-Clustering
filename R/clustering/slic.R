@@ -211,5 +211,15 @@ slicSites <- function(checklists, state_covs, cov_raster, eta, zeta) {
   # Handle checklists falling outside valid raster pixels
   checklists$site[is.na(checklists$site)] <- -1
   
-  return(checklists)
+
+  # Convert the label raster to polygons immediately
+  cat("Generating SLIC polygons...\n")
+  site_polys <- terra::as.polygons(label_raster, dissolve = TRUE)
+  site_polys_sf <- sf::st_as_sf(site_polys)
+  
+  # Return a list containing BOTH the dataframe and the geometry
+  return(list(
+    result_df = checklists,
+    site_geoms = site_polys_sf
+  ))
 }

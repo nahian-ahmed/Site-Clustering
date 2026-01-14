@@ -225,19 +225,28 @@ all_clusterings <- get_clusterings(method_names, master_train_df, state_cov_name
 
 cat("--- Computing initial site geometries ---\n")
 all_site_geometries <- list()
+
 for (method_name in method_names) {
-    cluster_data <- all_clusterings[[method_name]]
-    if (is.list(cluster_data) && "result_df" %in% names(cluster_data)) cluster_data <- cluster_data$result_df
+    # Retrieve the raw output from get_clusterings
+    cluster_obj <- all_clusterings[[method_name]]
     
-    if (!is.null(cluster_data)) {
-        if (grepl("SLIC", method_name)) {
-            # --- SPECIAL HANDLING FOR SLIC ---
-            # Reconstruct the actual superpixel polygons
-            cat(sprintf("Reconstructing SLIC polygons for %s...\n", method_name))
-            all_site_geometries[[method_name]] <- reconstruct_slic_polygons(method_name, master_train_df, cov_tif_albers)
+    # 1. Handle SLIC (Pre-calculated geometries)
+    if (grepl("SLIC", method_name) && is.list(cluster_obj) && "site_geoms" %in% names(cluster_obj)) {
+        
+        cat(sprintf("Using pre-calculated polygons for %s...\n", method_name))
+        all_site_geometries[[method_name]] <- cluster_obj$site_geoms
+        
+    # 2. Handle Standard Methods (Buffer points)
+    } else {
+        # Extract just the dataframe if it's wrapped in a list (like BayesOpt or the new SLIC structure)
+        if (is.list(cluster_obj) && "result_df" %in% names(cluster_obj)) {
+            cluster_df <- cluster_obj$result_df
         } else {
-            # Standard handling for other methods
-            all_site_geometries[[method_name]] <- create_site_geometries(cluster_data, cov_tif_albers, buffer_m, method_name)
+            cluster_df <- cluster_obj
+        }
+        
+        if (!is.null(cluster_df)) {
+            all_site_geometries[[method_name]] <- create_site_geometries(cluster_df, cov_tif_albers, buffer_m, method_name)
         }
     }
 }
