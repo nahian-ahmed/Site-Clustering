@@ -50,8 +50,6 @@ method_names <- c(
   "1-kmSq",
   "lat-long", 
   "rounded-4", 
-  "SVS", 
-  "1-per-UL",
   "clustGeo-50-30",
   "clustGeo-50-40",
   "clustGeo-50-50",
@@ -63,15 +61,9 @@ method_names <- c(
   "SLIC-0.5-50",
   "SLIC-0.5-100",
   "SLIC-0.5-200",
-  "SLIC-0.5-400",
   "SLIC-1.0-50",
   "SLIC-1.0-100",
-  "SLIC-1.0-200",
-  "SLIC-1.0-400",
-  "SLIC-2.0-50",
-  "SLIC-2.0-100",
-  "SLIC-2.0-200",
-  "SLIC-2.0-400"
+  "SLIC-1.0-200"
 )
 
 # Methods to plot
@@ -88,15 +80,9 @@ methods_to_plot_slic <- c(
   "SLIC-0.5-50",
   "SLIC-0.5-100",
   "SLIC-0.5-200",
-  "SLIC-0.5-400",
   "SLIC-1.0-50",
   "SLIC-1.0-100",
-  "SLIC-1.0-200",
-  "SLIC-1.0-400",
-  "SLIC-2.0-50",
-  "SLIC-2.0-100",
-  "SLIC-2.0-200",
-  "SLIC-2.0-400"
+  "SLIC-1.0-200"
 )
 
 # Covariates
