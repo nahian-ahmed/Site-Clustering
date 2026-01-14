@@ -58,12 +58,12 @@ method_names <- c(
   "clustGeo-50-80",
   "DBSC",
   "BayesOptClustGeo",
-  "SLIC-0.25-400",
   "SLIC-0.25-800",
-  "SLIC-0.5-400",
+  "SLIC-0.25-1600",
+  "SLIC-0.25-3200",
   "SLIC-0.5-800",
-  "SLIC-1.0-400",
-  "SLIC-1.0-800"
+  "SLIC-0.5-1600",
+  "SLIC-0.5-3200"
 )
 
 # Methods to plot
@@ -77,12 +77,12 @@ methods_to_plot_clustGeo <- c(
 )
 
 methods_to_plot_slic <- c(
-  "SLIC-0.25-400",
   "SLIC-0.25-800",
-  "SLIC-0.5-400",
+  "SLIC-0.25-1600",
+  "SLIC-0.25-3200",
   "SLIC-0.5-800",
-  "SLIC-1.0-400",
-  "SLIC-1.0-800"
+  "SLIC-0.5-1600",
+  "SLIC-0.5-3200"
 )
 
 # Covariates
