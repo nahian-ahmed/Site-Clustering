@@ -50,20 +50,26 @@ method_names <- c(
   "1-kmSq",
   "lat-long", 
   "rounded-4", 
+  "clustGeo-50-10",
+  "clustGeo-50-20",
   "clustGeo-50-30",
   "clustGeo-50-40",
   "clustGeo-50-50",
   "clustGeo-50-60",
   "clustGeo-50-70",
   "clustGeo-50-80",
+  "clustGeo-50-90",
   "DBSC",
   "BayesOptClustGeo",
+  "SLIC-0.025-3200",
   "SLIC-0.05-3200",
+  "SLIC-0.075-3200",
   "SLIC-0.1-3200",
+  "SLIC-0.125-3200",
   "SLIC-0.15-3200",
+  "SLIC-0.175-3200",
   "SLIC-0.2-3200",
-  "SLIC-0.25-3200",
-  "SLIC-0.3-3200"
+  "SLIC-0.225-3200"
 )
 
 # Methods to plot
@@ -73,16 +79,27 @@ methods_to_plot <- c(
 )
 
 methods_to_plot_clustGeo <- c(
-  "clustGeo-50-30", "clustGeo-50-40", "clustGeo-50-50", "clustGeo-50-60", "clustGeo-50-70", "clustGeo-50-80"
+  "clustGeo-50-10",
+  "clustGeo-50-20",
+  "clustGeo-50-30",
+  "clustGeo-50-40",
+  "clustGeo-50-50",
+  "clustGeo-50-60",
+  "clustGeo-50-70",
+  "clustGeo-50-80",
+  "clustGeo-50-90",
 )
 
 methods_to_plot_slic <- c(
+  "SLIC-0.025-3200",
   "SLIC-0.05-3200",
+  "SLIC-0.075-3200",
   "SLIC-0.1-3200",
+  "SLIC-0.125-3200",
   "SLIC-0.15-3200",
+  "SLIC-0.175-3200",
   "SLIC-0.2-3200",
-  "SLIC-0.25-3200",
-  "SLIC-0.3-3200"
+  "SLIC-0.225-3200"
 )
 
 # Covariates
@@ -102,6 +119,8 @@ PARAM_LOWER <- -10
 PARAM_UPPER <- 10
 INIT_LOWER <- -2
 INIT_UPPER <- 2
+
+max_uniloc_points <- "all" # Options: 1, 3, 10, "all"
 
 # Output Directory
 output_dir <- file.path("species_experiments", "output")
@@ -222,6 +241,39 @@ master_test_df <- prepare_test_data(
 cat("--- Computing clusterings ---\n")
 # UPDATED: Passing cov_tif_albers (standardized) which is required for SLIC
 all_clusterings <- get_clusterings(method_names, master_train_df, state_cov_names, NULL, cov_tif_albers)
+
+# === DOWNSAMPLING CAP ===
+if (max_uniloc_points != "all") {
+  cat(sprintf("--- Applying Downsampling Cap (Max %s points/site) ---\n", max_uniloc_points))
+  
+  # Only apply to specific methods as requested
+  target_methods_pattern <- "clustGeo|DBSC|SLIC"
+  limit_n <- as.numeric(max_uniloc_points)
+  
+  for (m_name in names(all_clusterings)) {
+    if (grepl(target_methods_pattern, m_name)) {
+      
+      # Handle structure: List (SLIC) vs Dataframe (Others)
+      is_list_obj <- is.list(all_clusterings[[m_name]]) && "result_df" %in% names(all_clusterings[[m_name]])
+      curr_df <- if (is_list_obj) all_clusterings[[m_name]]$result_df else all_clusterings[[m_name]]
+      
+      # Perform Downsampling
+      # group_by site -> random sample -> ungroup
+      curr_df_mod <- curr_df %>%
+        group_by(site) %>%
+        slice_sample(n = limit_n) %>% # slice_sample is safe (keeps all if n < rows)
+        ungroup()
+      
+      # Save back to object
+      if (is_list_obj) {
+        all_clusterings[[m_name]]$result_df <- curr_df_mod
+      } else {
+        all_clusterings[[m_name]] <- curr_df_mod
+      }
+      cat(sprintf("   - %s: Downsampled to max %s points per site.\n", m_name, max_uniloc_points))
+    }
+  }
+}
 
 
 cat("--- Computing initial site geometries ---\n")
