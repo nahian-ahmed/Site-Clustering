@@ -532,7 +532,7 @@ for (species_name in species_names) {
       umf, state_formula, obs_formula,
       n_reps = n_fit_repeats, stable_reps = n_fit_repeats,
       optimizer = selected_optimizer, lower = PARAM_LOWER, upper = PARAM_UPPER,
-      init_lower = INIT_LOWER, init_upper = INIT_LOWER
+      init_lower = INIT_LOWER, init_upper = INIT_UPPER
     )
     
     if (is.null(fm)) {
