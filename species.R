@@ -243,8 +243,9 @@ cat("--- Computing clusterings ---\n")
 all_clusterings <- get_clusterings(method_names, master_train_df, state_cov_names, NULL, cov_tif_albers)
 
 # === DOWNSAMPLING CAP ===
+# === INSERT START: DOWNSAMPLING CAP (PER UNIQUE LOCATION) ===
 if (max_uniloc_points != "all") {
-  cat(sprintf("--- Applying Downsampling Cap (Max %s points/site) ---\n", max_uniloc_points))
+  cat(sprintf("--- Applying Downsampling Cap (Max %s points/unique location) ---\n", max_uniloc_points))
   
   # Only apply to specific methods as requested
   target_methods_pattern <- "clustGeo|DBSC|SLIC"
@@ -258,10 +259,11 @@ if (max_uniloc_points != "all") {
       curr_df <- if (is_list_obj) all_clusterings[[m_name]]$result_df else all_clusterings[[m_name]]
       
       # Perform Downsampling
-      # group_by site -> random sample -> ungroup
+      # We group by 'locality_id' to mimic the behavior of '1to10'
+      # This removes 'hotspot bias' while keeping the spatial extent of the cluster
       curr_df_mod <- curr_df %>%
-        group_by(site) %>%
-        slice_sample(n = limit_n) %>% # slice_sample is safe (keeps all if n < rows)
+        group_by(locality_id) %>%
+        slice_sample(n = limit_n) %>% # Randomly keep 'limit_n' checks per unique location
         ungroup()
       
       # Save back to object
@@ -270,10 +272,11 @@ if (max_uniloc_points != "all") {
       } else {
         all_clusterings[[m_name]] <- curr_df_mod
       }
-      cat(sprintf("   - %s: Downsampled to max %s points per site.\n", m_name, max_uniloc_points))
+      cat(sprintf("   - %s: Downsampled to max %s points per locality.\n", m_name, max_uniloc_points))
     }
   }
 }
+# === INSERT END ===
 
 
 cat("--- Computing initial site geometries ---\n")
