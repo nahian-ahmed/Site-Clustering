@@ -50,15 +50,12 @@ method_names <- c(
   "1-kmSq",
   "lat-long", 
   "rounded-4", 
-  "clustGeo-50-10",
-  "clustGeo-50-20",
   "clustGeo-50-30",
   "clustGeo-50-40",
   "clustGeo-50-50",
   "clustGeo-50-60",
   "clustGeo-50-70",
   "clustGeo-50-80",
-  "clustGeo-50-90",
   "DBSC",
   "BayesOptClustGeo",
   "SLIC-0.025-3200",
@@ -66,28 +63,21 @@ method_names <- c(
   "SLIC-0.075-3200",
   "SLIC-0.1-3200",
   "SLIC-0.125-3200",
-  "SLIC-0.15-3200",
-  "SLIC-0.175-3200",
-  "SLIC-0.2-3200",
-  "SLIC-0.225-3200"
+  "SLIC-0.15-3200"
 )
 
 # Methods to plot
 methods_to_plot <- c(
-  "1to10", "2to10", "2to10-sameObs", "lat-long", "SVS", "1-per-UL",
-  "1-kmSq", "rounded-4", "DBSC", "BayesOptClustGeo"
+  "1to10", "2to10", "2to10-sameObs", "lat-long", "1-kmSq", "rounded-4", "DBSC", "BayesOptClustGeo"
 )
 
 methods_to_plot_clustGeo <- c(
-  "clustGeo-50-10",
-  "clustGeo-50-20",
   "clustGeo-50-30",
   "clustGeo-50-40",
   "clustGeo-50-50",
   "clustGeo-50-60",
   "clustGeo-50-70",
-  "clustGeo-50-80",
-  "clustGeo-50-90"
+  "clustGeo-50-80"
 )
 
 methods_to_plot_slic <- c(
@@ -96,10 +86,7 @@ methods_to_plot_slic <- c(
   "SLIC-0.075-3200",
   "SLIC-0.1-3200",
   "SLIC-0.125-3200",
-  "SLIC-0.15-3200",
-  "SLIC-0.175-3200",
-  "SLIC-0.2-3200",
-  "SLIC-0.225-3200"
+  "SLIC-0.15-3200"
 )
 
 # Covariates
@@ -120,7 +107,7 @@ PARAM_UPPER <- 10
 INIT_LOWER <- -2
 INIT_UPPER <- 2
 
-max_uniloc_points <- "all" # Options: 1, 3, 10, "all"
+max_uniloc_points <- 10 # Options: 1, 3, 10, "all"
 
 # Output Directory
 output_dir <- file.path("species_experiments", "output")
