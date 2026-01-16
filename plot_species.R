@@ -30,7 +30,7 @@ data <- data %>%
 colors <- c("forestgreen", "darkgrey", "red", "blue", "yellow", "orange", 
             "green", "pink", "cyan", "navy", "brown")
 
-names(colors) <- c("BayesOptClustGeo", "DBSC", "best-clustGeo", "1-per-UL", "SVS", "rounded-4",
+names(colors) <- c("BayesOptClustGeo", "DBSC", "best-clustGeo", "best-SLIC", "rounded-4",
                    "1-kmSq", "2to10-sameObs", "2to10", "1to10", "lat-long")
 
 # -------------------------------------------------------------------------
@@ -98,7 +98,7 @@ plot_raw_performance <- function(df, metric_col, y_label, output_filename) {
   df$species <- factor(df$species, levels = species_order)
   
   alg_order <- c("2to10", "2to10-sameObs", "1to10", "1-kmSq", "lat-long", 
-                 "rounded-4", "SVS", "1-per-UL", "best-clustGeo", "DBSC", "BayesOptClustGeo")
+                 "rounded-4", "best-clustGeo", "best-SLIC", "DBSC", "BayesOptClustGeo")
   df <- df %>% filter(method %in% alg_order)
   df$method <- factor(df$method, levels = alg_order)
   
