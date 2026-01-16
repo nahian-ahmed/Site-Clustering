@@ -34,16 +34,23 @@ names(colors) <- c("BayesOptClustGeo", "DBSC", "best-clustGeo", "best-SLIC", "ro
                    "1-kmSq", "2to10-sameObs", "2to10", "1to10", "lat-long")
 
 # -------------------------------------------------------------------------
-# (1) Define best-clustGeo
+# (1) Define best-clustGeo AND best-SLIC
 # -------------------------------------------------------------------------
 
-# Separate clustGeo variants (excluding BayesOpt) from the rest
+# 1. Separate clustGeo variants (excluding BayesOpt)
 cg_data <- data %>% 
   filter(grepl("^clustGeo", method) & method != "BayesOptClustGeo")
 
-other_data <- data %>% 
-  filter(!grepl("^clustGeo", method) | method == "BayesOptClustGeo")
+# 2. Separate SLIC variants
+slic_data <- data %>% 
+  filter(grepl("^SLIC", method))
 
+# 3. Get the "other" data (everything else)
+# We exclude clustGeo variants and SLIC variants from this set
+other_data <- data %>% 
+  filter((!grepl("^clustGeo", method) | method == "BayesOptClustGeo") & !grepl("^SLIC", method))
+
+# --- Process ClustGeo ---
 # Calculate mean performance over repeats for each clustGeo variant per species
 cg_summary <- cg_data %>%
   group_by(species, method) %>%
@@ -79,9 +86,45 @@ best_cg_data_auprc <- cg_data %>%
   mutate(method = "best-clustGeo") %>%
   select(-best_method_auprc)
 
-# Combine with other data
-final_data_auc <- bind_rows(other_data, best_cg_data_auc)
-final_data_auprc <- bind_rows(other_data, best_cg_data_auprc)
+# --- Process SLIC ---
+# Calculate mean performance over repeats for each SLIC variant per species
+slic_summary <- slic_data %>%
+  group_by(species, method) %>%
+  summarise(
+    mean_auc = mean(auc, na.rm = TRUE),
+    mean_auprc = mean(auprc, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Pick best SLIC for AUC
+best_slic_auc_methods <- slic_summary %>%
+  group_by(species) %>%
+  slice_max(mean_auc, n = 1, with_ties = FALSE) %>%
+  select(species, best_method_auc = method)
+
+# Pick best SLIC for AUPRC
+best_slic_auprc_methods <- slic_summary %>%
+  group_by(species) %>%
+  slice_max(mean_auprc, n = 1, with_ties = FALSE) %>%
+  select(species, best_method_auprc = method)
+
+# Create "best-SLIC" rows for AUC dataset
+best_slic_data_auc <- slic_data %>%
+  inner_join(best_slic_auc_methods, by = c("species")) %>%
+  filter(method == best_method_auc) %>%
+  mutate(method = "best-SLIC") %>%
+  select(-best_method_auc)
+
+# Create "best-SLIC" rows for AUPRC dataset
+best_slic_data_auprc <- slic_data %>%
+  inner_join(best_slic_auprc_methods, by = c("species")) %>%
+  filter(method == best_method_auprc) %>%
+  mutate(method = "best-SLIC") %>%
+  select(-best_method_auprc)
+
+# --- Combine all data ---
+final_data_auc <- bind_rows(other_data, best_cg_data_auc, best_slic_data_auc)
+final_data_auprc <- bind_rows(other_data, best_cg_data_auprc, best_slic_data_auprc)
 
 # -------------------------------------------------------------------------
 # (2) Plot Raw AUC and AUPRC
@@ -189,11 +232,10 @@ auprc_by_repeat  <- aggregate_by_repeat(auprc_diff_raw)
 
 plot_improvement <- function(df, y_label, output_filename) {
   
-  # Order methods by median improvement
   method_order <- df %>%
     group_by(method) %>%
-    summarise(median_diff = median(mean_perc_diff, na.rm = TRUE)) %>%
-    arrange(median_diff) %>%
+    summarise(mean_val = mean(mean_perc_diff, na.rm = TRUE)) %>%
+    arrange(mean_val) %>%
     pull(method)
   
   df$method <- factor(df$method, levels = method_order)

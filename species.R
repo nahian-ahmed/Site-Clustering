@@ -96,6 +96,7 @@ n_test_repeats <- 25
 
 res_m <- 100 
 buffer_m <- 200
+hex_m <- 250
 
 PARAM_LOWER <- -10
 PARAM_UPPER <- 10
@@ -435,7 +436,7 @@ for (species_name in species_names) {
   # the 'species_observed' column in the source (current_test_df) has changed.
   test_splits_list <- list()
   for (r in 1:n_test_repeats) {
-    test_splits_list[[r]] <- spatial_subsample_dataset(current_test_df, res_m/1000, r)
+    test_splits_list[[r]] <- spatial_subsample_dataset(current_test_df, hex_m/1000, r)
   }
 
   
