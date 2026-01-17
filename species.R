@@ -50,20 +50,26 @@ method_names <- c(
   "1-kmSq",
   "lat-long", 
   "rounded-4", 
+  "clustGeo-50-10",
+  "clustGeo-50-20",
   "clustGeo-50-30",
   "clustGeo-50-40",
   "clustGeo-50-50",
   "clustGeo-50-60",
   "clustGeo-50-70",
   "clustGeo-50-80",
+  "clustGeo-50-90",
   "DBSC",
   "BayesOptClustGeo",
-  "SLIC-0.025-3200",
-  "SLIC-0.05-3200",
-  "SLIC-0.075-3200",
   "SLIC-0.1-3200",
-  "SLIC-0.125-3200",
-  "SLIC-0.15-3200"
+  "SLIC-0.15-3200",
+  "SLIC-0.2-3200",
+  "SLIC-0.25-3200",
+  "SLIC-0.3-3200",
+  "SLIC-0.35-3200",
+  "SLIC-0.4-3200",
+  "SLIC-0.45-3200",
+  "SLIC-0.5-3200"
 )
 
 # Methods to plot
@@ -72,21 +78,27 @@ methods_to_plot <- c(
 )
 
 methods_to_plot_clustGeo <- c(
+  "clustGeo-50-10",
+  "clustGeo-50-20",
   "clustGeo-50-30",
   "clustGeo-50-40",
   "clustGeo-50-50",
   "clustGeo-50-60",
   "clustGeo-50-70",
-  "clustGeo-50-80"
+  "clustGeo-50-80",
+  "clustGeo-50-90"
 )
 
 methods_to_plot_slic <- c(
-  "SLIC-0.025-3200",
-  "SLIC-0.05-3200",
-  "SLIC-0.075-3200",
   "SLIC-0.1-3200",
-  "SLIC-0.125-3200",
-  "SLIC-0.15-3200"
+  "SLIC-0.15-3200",
+  "SLIC-0.2-3200",
+  "SLIC-0.25-3200",
+  "SLIC-0.3-3200",
+  "SLIC-0.35-3200",
+  "SLIC-0.4-3200",
+  "SLIC-0.45-3200",
+  "SLIC-0.5-3200"
 )
 
 # Covariates
@@ -100,7 +112,7 @@ n_test_repeats <- 25
 
 res_m <- 100 
 buffer_m <- 200
-hex_m <- 250
+hex_m <- 1000
 
 PARAM_LOWER <- -10
 PARAM_UPPER <- 10
