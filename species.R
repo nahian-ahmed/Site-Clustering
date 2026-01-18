@@ -60,16 +60,16 @@ method_names <- c(
   "clustGeo-50-80",
   "clustGeo-50-90",
   "DBSC",
-  "BayesOptClustGeo",
-  "SLIC-0.05-3200",
-  "SLIC-0.1-3200",
-  "SLIC-0.15-3200",
-  "SLIC-0.2-3200",
-  "SLIC-0.25-3200",
-  "SLIC-0.3-3200",
-  "SLIC-0.35-3200",
-  "SLIC-0.4-3200",
-  "SLIC-0.45-3200"
+  "BayesOptClustGeo"
+  # "SLIC-0.05-3200",
+  # "SLIC-0.1-3200",
+  # "SLIC-0.15-3200",
+  # "SLIC-0.2-3200",
+  # "SLIC-0.25-3200",
+  # "SLIC-0.3-3200",
+  # "SLIC-0.35-3200",
+  # "SLIC-0.4-3200",
+  # "SLIC-0.45-3200"
 )
 
 # Methods to plot
@@ -335,16 +335,16 @@ plot_sites(
     output_path = file.path(output_dir, "sites_clustGeo_PRE.png"),
     cluster_labels = TRUE
 )
-plot_sites(
-    base_train_df = master_train_df,
-    all_clusterings = all_clusterings,
-    all_site_geometries = all_site_geometries,
-    elevation_raster = cov_tif_albers_raw, 
-    methods_to_plot = methods_to_plot_slic,
-    boundary_shp_path = boundary_shapefile_path,
-    output_path = file.path(output_dir, "sites_SLIC_PRE.png"),
-    cluster_labels = TRUE
-)
+# plot_sites(
+#     base_train_df = master_train_df,
+#     all_clusterings = all_clusterings,
+#     all_site_geometries = all_site_geometries,
+#     elevation_raster = cov_tif_albers_raw, 
+#     methods_to_plot = methods_to_plot_slic,
+#     boundary_shp_path = boundary_shapefile_path,
+#     output_path = file.path(output_dir, "sites_SLIC_PRE.png"),
+#     cluster_labels = TRUE
+# )
 
 
 # === 5.3 SPLIT DISJOINT SITES ===
@@ -396,16 +396,16 @@ plot_sites(
     cluster_labels = TRUE
 )
 
-plot_sites(
-    base_train_df = master_train_df,
-    all_clusterings = all_clusterings,
-    all_site_geometries = all_site_geometries,
-    elevation_raster = cov_tif_albers_raw, 
-    methods_to_plot = methods_to_plot_slic,
-    boundary_shp_path = boundary_shapefile_path,
-    output_path = file.path(output_dir, "sites_SLIC_POST.png"),
-    cluster_labels = TRUE
-)
+# plot_sites(
+#     base_train_df = master_train_df,
+#     all_clusterings = all_clusterings,
+#     all_site_geometries = all_site_geometries,
+#     elevation_raster = cov_tif_albers_raw, 
+#     methods_to_plot = methods_to_plot_slic,
+#     boundary_shp_path = boundary_shapefile_path,
+#     output_path = file.path(output_dir, "sites_SLIC_POST.png"),
+#     cluster_labels = TRUE
+# )
 
 # === 5.4 W MATRICES ===
 cat("--- Generating W matrices ---\n")
