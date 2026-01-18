@@ -126,6 +126,33 @@ best_slic_data_auprc <- slic_data %>%
 final_data_auc <- bind_rows(other_data, best_cg_data_auc, best_slic_data_auc)
 final_data_auprc <- bind_rows(other_data, best_cg_data_auprc, best_slic_data_auprc)
 
+
+# -------------------------------------------------------------------------
+# (1.5) Save Best clustGeo Parameters to CSV
+# -------------------------------------------------------------------------
+
+# Combine the best methods identified for AUC and AUPRC
+best_params_auc <- best_cg_auc_methods %>%
+  mutate(metric = "AUC") %>%
+  rename(method = best_method_auc)
+
+best_params_auprc <- best_cg_auprc_methods %>%
+  mutate(metric = "AUPRC") %>%
+  rename(method = best_method_auprc)
+
+best_params_combined <- bind_rows(best_params_auc, best_params_auprc) %>%
+  # Parse the method string "clustGeo-rho-kappa"
+  # Removes "clustGeo-" and splits the remaining numbers
+  mutate(params_str = sub("^clustGeo-", "", method)) %>%
+  separate(params_str, c("rho", "kappa"), sep = "-") %>%
+  # Select and reorder final columns
+  select(species, metric, method, rho, kappa)
+
+# Save to the plots directory
+write.csv(best_params_combined, file.path(output_plot_dir, "best-clustGeo_params.csv"), row.names = FALSE)
+
+cat("Best clustGeo parameters saved to:", file.path(output_plot_dir, "best-clustGeo_params.csv"), "\n")
+
 # -------------------------------------------------------------------------
 # (2) Plot Raw AUC and AUPRC
 # -------------------------------------------------------------------------
