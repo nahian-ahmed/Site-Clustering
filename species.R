@@ -50,15 +50,25 @@ method_names <- c(
   "1-kmSq",
   "lat-long", 
   "rounded-4", 
+  "clustGeo-50-5",
   "clustGeo-50-10",
+  "clustGeo-50-15",
   "clustGeo-50-20",
+  "clustGeo-50-25",
   "clustGeo-50-30",
+  "clustGeo-50-35",
   "clustGeo-50-40",
+  "clustGeo-50-45",
   "clustGeo-50-50",
+  "clustGeo-50-55",
   "clustGeo-50-60",
+  "clustGeo-50-65",
   "clustGeo-50-70",
+  "clustGeo-50-75",
   "clustGeo-50-80",
+  "clustGeo-50-85",
   "clustGeo-50-90",
+  "clustGeo-50-95",
   "DBSC",
   "BayesOptClustGeo"
   # "SLIC-0.05-3200",
@@ -78,15 +88,25 @@ methods_to_plot <- c(
 )
 
 methods_to_plot_clustGeo <- c(
+  "clustGeo-50-5",
   "clustGeo-50-10",
+  "clustGeo-50-15",
   "clustGeo-50-20",
+  "clustGeo-50-25",
   "clustGeo-50-30",
+  "clustGeo-50-35",
   "clustGeo-50-40",
+  "clustGeo-50-45",
   "clustGeo-50-50",
+  "clustGeo-50-55",
   "clustGeo-50-60",
+  "clustGeo-50-65",
   "clustGeo-50-70",
+  "clustGeo-50-75",
   "clustGeo-50-80",
-  "clustGeo-50-90"
+  "clustGeo-50-85",
+  "clustGeo-50-90",
+  "clustGeo-50-95"
 )
 
 methods_to_plot_slic <- c(
