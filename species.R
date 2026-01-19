@@ -119,7 +119,9 @@ PARAM_UPPER <- 10
 INIT_LOWER <- -2
 INIT_UPPER <- 2
 
-max_uniloc_points <- 10 # Options: 1, 3, 10, "all"
+
+min_uniloc_points <- 2 # Options: 1, 2, 3, ...
+max_uniloc_points <- 10 # Options: 1, 3, ... 10, ... "all"
 
 # Output Directory
 output_dir <- file.path("species_experiments", "output")
@@ -260,8 +262,8 @@ cat("--- Creating Filtered Input for Spatial Clustering (Min 2, Max 10 per Loc) 
 
 train_df_spatial_input <- master_train_df %>%
   group_by(locality_id) %>%
-  filter(n() >= 2) %>%       # STEP A: Remove single-visit locations
-  slice_sample(n = 10) %>%   # STEP B: Downsample to max 10 (like 2to10)
+  filter(n() >= min_uniloc_points) %>%       # STEP A: Remove single-visit locations
+  slice_sample(n = max_uniloc_points) %>%   # STEP B: Downsample to max 10 (like 2to10)
   ungroup()
 
 # 3. Run Clustering in Two Batches
