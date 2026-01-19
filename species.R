@@ -88,7 +88,6 @@ methods_to_plot <- c(
 )
 
 methods_to_plot_clustGeo <- c(
-  "clustGeo-50-5",
   "clustGeo-50-10",
   "clustGeo-50-15",
   "clustGeo-50-20",
@@ -105,8 +104,7 @@ methods_to_plot_clustGeo <- c(
   "clustGeo-50-75",
   "clustGeo-50-80",
   "clustGeo-50-85",
-  "clustGeo-50-90",
-  "clustGeo-50-95"
+  "clustGeo-50-90"
 )
 
 methods_to_plot_slic <- c(
