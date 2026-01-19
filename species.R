@@ -235,48 +235,47 @@ master_test_df <- prepare_test_data(
     standardization_params = full_standardization_params,
     placeholder_spec_name = template_species
 )
-
-# === 5.2 CLUSTERING ===
+# === 5.2 CLUSTERING (Modified for Option ii) ===
 cat("--- Computing clusterings ---\n")
-# UPDATED: Passing cov_tif_albers (standardized) which is required for SLIC
-all_clusterings <- get_clusterings(method_names, master_train_df, state_cov_names, NULL, cov_tif_albers)
 
-# === DOWNSAMPLING CAP ===
-# === INSERT START: DOWNSAMPLING CAP (PER UNIQUE LOCATION) ===
-if (max_uniloc_points != "all") {
-  cat(sprintf("--- Applying Downsampling Cap (Max %s points/unique location) ---\n", max_uniloc_points))
-  
-  # Only apply to specific methods as requested
-  target_methods_pattern <- "clustGeo|DBSC|SLIC"
-  limit_n <- as.numeric(max_uniloc_points)
-  
-  for (m_name in names(all_clusterings)) {
-    if (grepl(target_methods_pattern, m_name)) {
-      
-      # Handle structure: List (SLIC) vs Dataframe (Others)
-      is_list_obj <- is.list(all_clusterings[[m_name]]) && "result_df" %in% names(all_clusterings[[m_name]])
-      curr_df <- if (is_list_obj) all_clusterings[[m_name]]$result_df else all_clusterings[[m_name]]
-      
-      # Perform Downsampling
-      # We group by 'locality_id' to mimic the behavior of '1to10'
-      # This removes 'hotspot bias' while keeping the spatial extent of the cluster
-      curr_df_mod <- curr_df %>%
-        group_by(locality_id) %>%
-        slice_sample(n = limit_n) %>% # Randomly keep 'limit_n' checks per unique location
-        ungroup()
-      
-      # Save back to object
-      if (is_list_obj) {
-        all_clusterings[[m_name]]$result_df <- curr_df_mod
-      } else {
-        all_clusterings[[m_name]] <- curr_df_mod
-      }
-      cat(sprintf("   - %s: Downsampled to max %s points per locality.\n", m_name, max_uniloc_points))
-    }
-  }
-}
-# === INSERT END ===
+# 1. Define the sets of methods
+# Baseline methods need the FULL raw data (including singletons) to work as defined
+baseline_methods <- c("1to10", "2to10", "2to10-sameObs", "1-kmSq", "lat-long", "rounded-4")
 
+# Spatial methods will use the FILTERED data (Option ii)
+spatial_methods <- c("DBSC", "BayesOptClustGeo")
+
+# Add the specific parameter versions if they exist in your 'method_names' list
+spatial_methods <- c(spatial_methods, 
+                     grep("clustGeo-", method_names, value = TRUE),
+                     grep("SLIC-", method_names, value = TRUE))
+
+# Intersect with what the user actually requested in 'method_names'
+baseline_run_list <- intersect(method_names, baseline_methods)
+spatial_run_list  <- intersect(method_names, spatial_methods)
+
+# 2. Create the "Option (ii)" Dataset
+# Logic: Keep only locations with >= 2 visits, then downsample to max 10.
+cat("--- Creating Filtered Input for Spatial Clustering (Min 2, Max 10 per Loc) ---\n")
+
+train_df_spatial_input <- master_train_df %>%
+  group_by(locality_id) %>%
+  filter(n() >= 2) %>%       # STEP A: Remove single-visit locations
+  slice_sample(n = 10) %>%   # STEP B: Downsample to max 10 (like 2to10)
+  ungroup()
+
+# 3. Run Clustering in Two Batches
+
+# Batch A: Baselines (Run on FULL data)
+# (Note: '2to10' handles its own filtering inside auk, so we give it everything)
+results_baseline <- get_clusterings(baseline_run_list, master_train_df, state_cov_names, NULL, cov_tif_albers)
+
+# Batch B: Spatial Methods (Run on FILTERED data)
+# Since inputs have >=2 obs, all resulting clusters will have >=2 obs.
+results_spatial  <- get_clusterings(spatial_run_list, train_df_spatial_input, state_cov_names, NULL, cov_tif_albers)
+
+# 4. Combine Results
+all_clusterings <- c(results_baseline, results_spatial)
 
 cat("--- Computing initial site geometries ---\n")
 all_site_geometries <- list()
