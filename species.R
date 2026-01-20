@@ -118,7 +118,7 @@ n_test_repeats <- 25
 
 res_m <- 100 
 buffer_m <- 200
-hex_m <- 1000
+hex_m <- 100
 
 PARAM_LOWER <- -10
 PARAM_UPPER <- 10
