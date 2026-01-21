@@ -16,20 +16,6 @@ normalize <- function(x) {
     return((x- min(x)) /(max(x)-min(x)))
 }
 
-# get_pairwise_distances <- function(df, sp_features, env_features, normalize = TRUE) {
-    
-#     if (normalize){
-#         for (sp_feature in sp_features){
-#             df[,sp_feature] <- normalize(df[,sp_feature])
-#         }
-#     }
-#     df <- df[,c(sp_features,env_features)]
-    
-#     m_dist <- distances::distances(as.data.frame(df))
-    
-#     return(m_dist)
-# }
-
 get_pairwise_distances <- function(df, sp_features, env_features, normalize = TRUE, env_weight = 5) {
     
     # 1. Normalize Spatial Features (0-1)

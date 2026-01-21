@@ -264,61 +264,6 @@ disjoint_site_geometries <- function(site_geoms_sf, point_data_df, crs_points = 
   return(list(geoms = sites_final, data = point_data_updated))
 }
 
-# #' Generate Overlap Matrix (W)
-# #' 
-# #' Calculates the sparse weighting matrix based on finalized geometries.
-# #' NOW FILTERS OUT NA CELLS (e.g. Water/Outside Boundary) to prevent model contamination.
-# #'
-# generate_overlap_matrix <- function(site_geoms_sf, reference_raster) {
-  
-#   # Ensure IDs are character
-#   site_geoms_sf$site <- as.character(site_geoms_sf$site)
-  
-#   # Convert to SpatVector
-#   site_vect <- terra::vect(site_geoms_sf)
-#   # Project to verify match
-#   site_vect_proj <- terra::project(site_vect, terra::crs(reference_raster))
-  
-#   # Extract coverage
-#   # returns dataframe with: [ID, value_of_raster, cell_index, fraction]
-#   overlap_df <- terra::extract(
-#     reference_raster[[1]], 
-#     site_vect_proj, 
-#     cells = TRUE, 
-#     exact = TRUE, 
-#     ID = TRUE
-#   )
-  
-#   # --- CRITICAL FIX: REMOVE NA CELLS ---
-#   # If the raster value (column 2) is NA, this cell is not habitat.
-#   # We must remove it from W so the model doesn't calculate density for it.
-#   val_col_name <- names(reference_raster)[1]
-#   # Filter rows where the raster value is NOT NA
-#   overlap_df <- overlap_df[!is.na(overlap_df[[val_col_name]]), ]
-  
-#   # Get resolution for Area
-#   r_res <- terra::res(reference_raster)
-#   cell_area_km2 <- (r_res[1] / 1000) * (r_res[2] / 1000)
-  
-#   # Multiply fraction by Area to get units of km^2
-#   overlap_df$w_area <- overlap_df$fraction * cell_area_km2
-
-#   n_sites <- nrow(site_geoms_sf)
-#   n_cells <- terra::ncell(reference_raster)
-  
-#   # Create Sparse Matrix
-#   w <- Matrix::sparseMatrix(
-#     i = overlap_df$ID,
-#     j = overlap_df$cell,
-#     x = overlap_df$w_area,
-#     dims = c(n_sites, n_cells),
-#     dimnames = list(site_geoms_sf$site, NULL) 
-#   )
-  
-#   return(w)
-# }
-
-
 generate_overlap_matrix <- function(site_geoms_sf, reference_raster) {
   
   # Check if we can use the Fast Raster Path (for SLIC)
