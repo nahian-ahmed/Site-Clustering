@@ -247,11 +247,19 @@ master_test_df <- prepare_test_data(
 cat("--- Computing clusterings ---\n")
 
 # 1. Define the sets of methods
-# Baseline methods need the FULL raw data (including singletons) to work as defined
-baseline_methods <- c("1to10", "2to10", "2to10-sameObs", "1-kmSq", "lat-long", "rounded-4")
 
-# Spatial methods will use the FILTERED data (Option ii)
-spatial_methods <- c("DBSC", "BayesOptClustGeo")
+# ONLY keep methods here that MUST see singletons (1 obs/site)
+baseline_methods <- c("1to10", "lat-long")
+
+# ALL methods that should compare the "2-to-10" filtered dataset
+spatial_methods <- c(
+  "2to10",              # Moved here to ensure identical points
+  "2to10-sameObs",      # Moved here to ensure identical points
+  "1-kmSq",             # Moved per your request
+  "rounded-4",          # Moved per your request
+  "DBSC", 
+  "BayesOptClustGeo"
+)
 
 # Add the specific parameter versions if they exist in your 'method_names' list
 spatial_methods <- c(spatial_methods, 
