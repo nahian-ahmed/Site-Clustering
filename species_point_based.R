@@ -3,6 +3,18 @@
 # Comparison: Buffered vs Unbuffered
 # -----------------------------------------------------------------
 
+
+###
+# 1. SETUP
+###
+
+install_now = FALSE
+if (install_now){
+  options(repos = c(CRAN = "https://cloud.r-project.org/"))
+  if (!requireNamespace("devtools", quietly = FALSE)) install.packages("devtools")
+  suppressMessages(devtools::install_github("nahian-ahmed/unmarked", ref = "occuN", force = TRUE))
+}
+
 library(unmarked)
 library(dplyr)
 library(tidyr)
