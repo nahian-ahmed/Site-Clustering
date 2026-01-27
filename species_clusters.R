@@ -131,7 +131,7 @@ min_uniloc_points <- 2 # Options: 1, 2, 3, ...
 max_uniloc_points <- 10 # Options: 1, 3, ... 10, ... "all"
 
 # Output Directory
-output_dir <- file.path("species_experiments", "output")
+output_dir <- file.path("species_experiments", "output", "clusters")
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 

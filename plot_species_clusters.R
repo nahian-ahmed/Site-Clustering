@@ -6,7 +6,7 @@ library(ggpubr)
 # Create output directory
 # dir.create("simulation_experiments/output/plots", recursive = TRUE, showWarnings = FALSE)
 
-output_dir <- file.path("species_experiments", "output")
+output_dir <- file.path("species_experiments", "output", "clusters")
 output_plot_dir <- file.path(output_dir, "plots")
 if (!dir.exists(output_plot_dir)) dir.create(output_plot_dir, recursive = TRUE)
 
