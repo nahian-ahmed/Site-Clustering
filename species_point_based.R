@@ -190,17 +190,36 @@ for (sp in species_names) {
   curr_test_buf_occu <- inner_join(curr_test_buf_occu, spec_test_obs, by="checklist_id")
   
   
+  # --- SYNCHRONIZE TEST SPLITS ---
+  # We generate the splits ONCE using the unbuffered dataset to get the IDs.
+  # Then we filter the other datasets to match these IDs exactly.
+  cat("  Generating Synchronized Test Splits...\n")
+  
+  test_splits_unbuf    <- list()
+  test_splits_buf      <- list()
+  test_splits_buf_occu <- list()
+  
+  for (r in 1:n_test_repeats) {
+    # 1. Sample using hex grid on the Unbuffered dataset
+    sampled_unbuf <- spatial_subsample_dataset(curr_test_unbuf, hex_m/1000, r)
+    
+    # 2. Extract the IDs chosen
+    selected_ids <- sampled_unbuf$checklist_id
+    
+    # 3. Store the Unbuffered Split
+    test_splits_unbuf[[r]] <- sampled_unbuf
+    
+    # 4. Create the Buffered Splits by Filtering on ID (Ensures exact match)
+    test_splits_buf[[r]]      <- curr_test_buf[curr_test_buf$checklist_id %in% selected_ids, ]
+    test_splits_buf_occu[[r]] <- curr_test_buf_occu[curr_test_buf_occu$checklist_id %in% selected_ids, ]
+  }
+  
+  
   # =========================================================
   # EXPERIMENT A: UNBUFFERED (AAAI Style)
   # Buffer = 0 (Points only) | Model = occu ONLY
   # =========================================================
   cat("  [Experiment A] Unbuffered (Point-based, Buffer=0)\n")
-  
-  # Generate Test Repeats
-  test_splits_unbuf <- list()
-  for (r in 1:n_test_repeats) {
-    test_splits_unbuf[[r]] <- spatial_subsample_dataset(curr_test_unbuf, hex_m/1000, r)
-  }
   
   for (method in method_names) {
     cat(sprintf("    - Method: %s... ", method))
@@ -273,14 +292,6 @@ for (sp in species_names) {
   # EXPERIMENT B: BUFFERED (occuN Style)
   # Buffer = 100, 200, 500
   # =========================================================
-  
-  # Generate Test Repeats
-  test_splits_buf <- list()
-  test_splits_buf_occu <- list()
-  for (r in 1:n_test_repeats) {
-    test_splits_buf[[r]]      <- spatial_subsample_dataset(curr_test_buf, hex_m/1000, r)
-    test_splits_buf_occu[[r]] <- spatial_subsample_dataset(curr_test_buf_occu, hex_m/1000, r)
-  }
   
   for (buf in buffers_m) {
     cat(sprintf("  [Experiment B] Buffered (Size: %dm)\n", buf))
