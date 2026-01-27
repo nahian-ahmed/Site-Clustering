@@ -7,7 +7,7 @@
 # 1. SETUP
 ###
 
-install_now = FALSE
+install_now <- FALSE
 if (install_now){
   options(repos = c(CRAN = "https://cloud.r-project.org/"))
   if (!requireNamespace("devtools", quietly = FALSE)) install.packages("devtools")
@@ -45,9 +45,15 @@ obs_cov_names <- c("day_of_year", "time_observations_started", "duration_minutes
 selected_optimizer <- "nlminb"
 n_fit_repeats <- 50
 n_test_repeats <- 25
+stable_reps <- 10
+
+PARAM_LOWER <- -10
+PARAM_UPPER <- 10
+INIT_LOWER <- -2
+INIT_UPPER <- 2
 
 res_m <- 100 
-buffers_m  <- c(100, 200, 500)
+buffers_m <- c(100, 200, 500)
 test_buffer_m <- 200
 hex_m <- 100
 
@@ -55,8 +61,60 @@ hex_m <- 100
 output_dir <- file.path("species_experiments", "point_based_output")
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
+
 ###
-# 2. PREPROCESS RASTER
+# 2. LOCAL HELPER FOR OCCU
+###
+# Mirrors fit_occuN_model logic but for standard occu
+# Selects best model based on Negative Log Likelihood (NLL)
+fit_occu_model <- function(umf, state_formula, obs_formula, n_reps, stable_reps, 
+                           init_lower, init_upper, method="nlminb") {
+  
+  # Count params for random starts
+  # (Assumes simple linear formulas)
+  n_state <- length(all.vars(state_formula)) + 1
+  n_obs <- length(all.vars(obs_formula)) + 1
+  n_params <- n_state + n_obs
+  
+  best_fm <- NULL
+  min_nll <- Inf
+  stable_count <- 0
+  tolerance <- 0.01
+  
+  full_formula <- as.formula(paste(paste(deparse(obs_formula), collapse=""), 
+                                   paste(deparse(state_formula), collapse="")))
+  
+  for (i in 1:n_reps) {
+    starts <- runif(n_params, init_lower, init_upper)
+    
+    fm_try <- try(unmarked::occu(full_formula, data = umf, starts = starts, 
+                                 method = method, se = FALSE), silent = TRUE)
+    
+    if (!inherits(fm_try, "try-error")) {
+      curr_nll <- fm_try@negLogLike
+      
+      if (!is.nan(curr_nll)) {
+        if (curr_nll < min_nll) {
+          # Check stability
+          if (abs(min_nll - curr_nll) < tolerance) stable_count <- stable_count + 1
+          else stable_count <- 0
+          
+          min_nll <- curr_nll
+          best_fm <- fm_try
+        } else if (abs(curr_nll - min_nll) < tolerance) {
+          stable_count <- stable_count + 1
+        }
+      }
+    }
+    if (stable_count >= stable_reps) break
+  }
+  
+  return(best_fm)
+}
+
+
+###
+# 3. PREPROCESS RASTER
 ###
 
 cat("--- Pre-processing raster data... ---\n")
@@ -89,7 +147,7 @@ full_raster_covs <- as.data.frame(terra::values(cov_tif_albers))[, state_cov_nam
 full_raster_covs[is.na(full_raster_covs)] <- 0
 
 ###
-# 3. DATA PREPARATION (Templates)
+# 4. DATA PREPARATION (Templates)
 ###
 cat("--- Preparing Master Data Structures (Templates) ---\n")
 
@@ -137,10 +195,10 @@ master_test_df_buffered_occu <- cbind(master_test_df_buffered, test_means)
 
 
 ###
-# 4. MAIN EXPERIMENT LOOP
+# 5. MAIN EXPERIMENT LOOP
 ###
 
-results_list <- list()
+all_pred_results <- list()
 
 # Helper to load simple observation data
 get_species_obs_df <- function(sp_name, year) {
@@ -165,7 +223,7 @@ for (sp in species_names) {
   
   # --- Load Observations ---
   spec_train_obs <- get_species_obs_df(sp, 2017)
-  spec_test_obs  <- get_species_obs_df(sp, 2018)
+  spec_test_obs <- get_species_obs_df(sp, 2018)
   
   # --- Update Dataframes ---
   
@@ -191,28 +249,26 @@ for (sp in species_names) {
   
   
   # --- SYNCHRONIZE TEST SPLITS ---
-  # We generate the splits ONCE using the unbuffered dataset to get the IDs.
-  # Then we filter the other datasets to match these IDs exactly.
   cat("  Generating Synchronized Test Splits...\n")
   
-  test_splits_unbuf    <- list()
-  test_splits_buf      <- list()
+  test_splits_unbuf <- list()
+  test_splits_buf <- list()
   test_splits_buf_occu <- list()
   
   for (r in 1:n_test_repeats) {
-    # 1. Sample using hex grid on the Unbuffered dataset
+    # Sample IDs
     sampled_unbuf <- spatial_subsample_dataset(curr_test_unbuf, hex_m/1000, r)
-    
-    # 2. Extract the IDs chosen
     selected_ids <- sampled_unbuf$checklist_id
     
-    # 3. Store the Unbuffered Split
+    # Store Splits
     test_splits_unbuf[[r]] <- sampled_unbuf
-    
-    # 4. Create the Buffered Splits by Filtering on ID (Ensures exact match)
-    test_splits_buf[[r]]      <- curr_test_buf[curr_test_buf$checklist_id %in% selected_ids, ]
+    test_splits_buf[[r]] <- curr_test_buf[curr_test_buf$checklist_id %in% selected_ids, ]
     test_splits_buf_occu[[r]] <- curr_test_buf_occu[curr_test_buf_occu$checklist_id %in% selected_ids, ]
   }
+  
+  # Define Formulas
+  state_form <- as.formula(paste("~", paste(state_cov_names, collapse = " + ")))
+  obs_form <- as.formula(paste("~", paste(obs_cov_names, collapse = " + ")))
   
   
   # =========================================================
@@ -236,8 +292,7 @@ for (sp in species_names) {
       filtered_train$site <- filtered_train$locality_id
     }
 
-    # FIT OCCU (Unbuffered)
-    # Pivot for unmarked
+    # Prepare Data
     occu_df <- filtered_train %>%
       dplyr::select(site, species_observed, all_of(state_cov_names), all_of(obs_cov_names)) %>%
       group_by(site) %>% mutate(visit = row_number()) %>% ungroup()
@@ -256,30 +311,36 @@ for (sp in species_names) {
     
     umf <- unmarkedFrameOccu(y = y_wide, siteCovs = site_covs, obsCovs = obs_covs_list)
     
-    state_form <- as.formula(paste("~", paste(state_cov_names, collapse = " + ")))
-    obs_form   <- as.formula(paste("~", paste(obs_cov_names, collapse = " + ")))
+    # FIT OCCU (With Best-Fit Logic)
+    fm <- fit_occu_model(umf, state_form, obs_form, 
+                         n_reps = n_fit_repeats, stable_reps = stable_reps, 
+                         init_lower = INIT_LOWER, init_upper = INIT_UPPER,
+                         method = selected_optimizer)
     
-    fm <- try(unmarked::occu(as.formula(paste(paste(deparse(obs_form), collapse=""), paste(deparse(state_form), collapse=""))), umf), silent = TRUE)
-    
-    if (!inherits(fm, "try-error")) {
-      auc_vec <- c(); auprc_vec <- c()
+    if (!is.null(fm)) {
+      auc_vec <- numeric(n_test_repeats)
+      auprc_vec <- numeric(n_test_repeats)
       
       for(r in 1:n_test_repeats){
         t_df <- test_splits_unbuf[[r]]
         X_state <- model.matrix(state_form, t_df)
-        X_obs   <- model.matrix(obs_form, t_df)
+        X_obs <- model.matrix(obs_form, t_df)
         
         pred_psi <- plogis(X_state %*% coef(fm, "state"))
         pred_det <- plogis(X_obs %*% coef(fm, "det"))
         
+        # USE METRICS FUNCTION
         met <- calculate_classification_metrics(pred_psi * pred_det, t_df$species_observed)
-        auc_vec <- c(auc_vec, met$auc)
-        auprc_vec <- c(auprc_vec, met$auprc)
+        auc_vec[r] <- met$auc
+        auprc_vec[r] <- met$auprc
       }
       
-      results_list[[length(results_list)+1]] <- data.frame(
-        Species = sp, Buffer = 0, Method = method, Model = "occu",
-        AUC = mean(auc_vec, na.rm=TRUE), AUPRC = mean(auprc_vec, na.rm=TRUE)
+      # SAVE ALL REPEATS
+      all_pred_results[[length(all_pred_results)+1]] <- data.frame(
+        species = sp, buffer = 0, method = method, model = "occu",
+        test_repeat = 1:n_test_repeats,
+        auc = auc_vec,
+        auprc = auprc_vec
       )
     } else {
         cat("FAILED.\n")
@@ -327,36 +388,40 @@ for (sp in species_names) {
       
       # --- MODEL 1: occuN ---
       site_lookup <- filtered_train %>% dplyr::select(checklist_id, site)
-      umf <- prepare_occuN_data(filtered_train, site_lookup, train_w, 
+      umf_n <- prepare_occuN_data(filtered_train, site_lookup, train_w, 
                                 obs_cov_names, full_raster_covs)
       
-      state_form <- as.formula(paste("~", paste(state_cov_names, collapse = " + ")))
-      obs_form   <- as.formula(paste("~", paste(obs_cov_names, collapse = " + ")))
-      
-      fm <- fit_occuN_model(umf, state_form, obs_form, 
-                            n_reps=n_fit_repeats, stable_reps=n_fit_repeats,
+      fm_n <- fit_occuN_model(umf_n, state_form, obs_form, 
+                            n_reps=n_fit_repeats, stable_reps=stable_reps,
+                            lower=PARAM_LOWER, upper=PARAM_UPPER,
+                            init_lower=INIT_LOWER, init_upper=INIT_UPPER,
                             optimizer=selected_optimizer)
       
-      if(!is.null(fm)) {
-        auc_vec <- c(); auprc_vec <- c()
-        alphas <- coef(fm, 'det'); betas  <- coef(fm, 'state')
+      if(!is.null(fm_n)) {
+        auc_vec <- numeric(n_test_repeats)
+        auprc_vec <- numeric(n_test_repeats)
+        alphas <- coef(fm_n, 'det'); betas <- coef(fm_n, 'state')
         
         for(r in 1:n_test_repeats){
           t_df <- test_splits_buf[[r]]
           X_state <- model.matrix(state_form, t_df)
-          X_obs   <- model.matrix(obs_form, t_df)
+          X_obs <- model.matrix(obs_form, t_df)
           
           lambda <- exp(X_state %*% betas)
-          psi    <- 1 - exp(-lambda * t_df$area_j)
-          p      <- plogis(X_obs %*% alphas)
+          psi <- 1 - exp(-lambda * t_df$area_j)
+          p <- plogis(X_obs %*% alphas)
           
+          # USE METRICS FUNCTION
           met <- calculate_classification_metrics(psi * p, t_df$species_observed)
-          auc_vec <- c(auc_vec, met$auc); auprc_vec <- c(auprc_vec, met$auprc)
+          auc_vec[r] <- met$auc
+          auprc_vec[r] <- met$auprc
         }
         
-        results_list[[length(results_list)+1]] <- data.frame(
-          Species = sp, Buffer = buf, Method = method, Model = "occuN",
-          AUC = mean(auc_vec, na.rm=TRUE), AUPRC = mean(auprc_vec, na.rm=TRUE)
+        all_pred_results[[length(all_pred_results)+1]] <- data.frame(
+          species = sp, buffer = buf, method = method, model = "occuN",
+          test_repeat = 1:n_test_repeats,
+          auc = auc_vec,
+          auprc = auprc_vec
         )
       } else {
          cat("occuN FAILED. ")
@@ -379,27 +444,37 @@ for (sp in species_names) {
           pivot_wider(names_from=visit, values_from=all_of(v)) %>% dplyr::select(-site) %>% as.matrix()
       }
       
-      umf <- unmarkedFrameOccu(y = y_wide, siteCovs = site_covs, obsCovs = obs_covs_list)
-      fm <- try(unmarked::occu(as.formula(paste(paste(deparse(obs_form), collapse=""), paste(deparse(state_form), collapse=""))), umf), silent=TRUE)
+      umf_o <- unmarkedFrameOccu(y = y_wide, siteCovs = site_covs, obsCovs = obs_covs_list)
       
-      if (!inherits(fm, "try-error")) {
-        auc_vec <- c(); auprc_vec <- c()
+      # FIT OCCU (With Best-Fit Logic)
+      fm_o <- fit_occu_model(umf_o, state_form, obs_form, 
+                             n_reps = n_fit_repeats, stable_reps = stable_reps, 
+                             init_lower = INIT_LOWER, init_upper = INIT_UPPER,
+                             method = selected_optimizer)
+      
+      if (!is.null(fm_o)) {
+        auc_vec <- numeric(n_test_repeats)
+        auprc_vec <- numeric(n_test_repeats)
         
         for(r in 1:n_test_repeats){
           t_df <- test_splits_buf_occu[[r]]
           X_state <- model.matrix(state_form, t_df)
-          X_obs   <- model.matrix(obs_form, t_df)
+          X_obs <- model.matrix(obs_form, t_df)
           
-          pred_psi <- plogis(X_state %*% coef(fm, "state"))
-          pred_det <- plogis(X_obs %*% coef(fm, "det"))
+          pred_psi <- plogis(X_state %*% coef(fm_o, "state"))
+          pred_det <- plogis(X_obs %*% coef(fm_o, "det"))
           
+          # USE METRICS FUNCTION
           met <- calculate_classification_metrics(pred_psi * pred_det, t_df$species_observed)
-          auc_vec <- c(auc_vec, met$auc); auprc_vec <- c(auprc_vec, met$auprc)
+          auc_vec[r] <- met$auc
+          auprc_vec[r] <- met$auprc
         }
         
-        results_list[[length(results_list)+1]] <- data.frame(
-          Species = sp, Buffer = buf, Method = method, Model = "occu",
-          AUC = mean(auc_vec, na.rm=TRUE), AUPRC = mean(auprc_vec, na.rm=TRUE)
+        all_pred_results[[length(all_pred_results)+1]] <- data.frame(
+          species = sp, buffer = buf, method = method, model = "occu",
+          test_repeat = 1:n_test_repeats,
+          auc = auc_vec,
+          auprc = auprc_vec
         )
       } else {
          cat("occu FAILED.")
@@ -412,6 +487,6 @@ for (sp in species_names) {
 } # End Species Loop
 
 # Save
-final_res <- bind_rows(results_list)
+final_res <- bind_rows(all_pred_results)
 write.csv(final_res, file.path(output_dir, "point_based_results.csv"), row.names=FALSE)
 cat("Done.\n")
