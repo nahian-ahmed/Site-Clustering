@@ -1,5 +1,6 @@
 # -----------------------------------------------------------------
-# Real Species Experiments for occuN model (OPTIMIZED)
+# Real Species Experiments for occuN model
+#
 # -----------------------------------------------------------------
 
 ###

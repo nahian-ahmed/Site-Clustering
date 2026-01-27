@@ -3,7 +3,6 @@
 # Comparison: Buffered vs Unbuffered
 # -----------------------------------------------------------------
 
-
 ###
 # 1. SETUP
 ###
@@ -29,7 +28,12 @@ source(file.path("R", "model_helpers.R"))
 source(file.path("R", "analysis_helpers.R"))
 
 # --- CONFIGURATION ---
-species_names <- c("AMCR") # Add your full list here
+species_names <- c(
+  "AMCR", "AMRO", "BAEA", "BKHGRO", "BRCR", "BUTI", "CASC", "CHBCHI", 
+  "COHA", "HAFL", "HAWO", "HEWA", "MAWA", "MOQU", "NOFL", "NOOW", 
+  "OLFL", "PAFL", "PAWR", "PIWO", "REHA", "SOSP", "SPTO", "SWTH", 
+  "WAVI", "WEPE", "WETA", "WIWA", "WRENTI", "YEBCHA", "YEWA"
+)
 methods       <- c("lat-long", "1to10", "2to10")
 buffer_sizes  <- c(100, 200, 500) # For the "Buffered" experiments
 test_buffer   <- 200              # Fixed Test Buffer for "Buffered" experiments
