@@ -58,7 +58,7 @@ test_buffer_m <- 200
 hex_m <- 100
 
 # Output Directory
-output_dir <- file.path("species_experiments", "point_based_output")
+output_dir <- file.path("species_experiments", "output", "point")
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 
@@ -501,5 +501,5 @@ for (sp in species_names) {
 
 # Save
 final_res <- bind_rows(all_pred_results)
-write.csv(final_res, file.path(output_dir, "point_based_results.csv"), row.names=FALSE)
+write.csv(final_res, file.path(output_dir, "point_results.csv"), row.names=FALSE)
 cat("Done.\n")
