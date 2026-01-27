@@ -172,7 +172,6 @@ master_test_df_unbuffered <- prepare_test_data(
   standardization_params = state_cov_params,
   placeholder_spec_name = template_species
 )
-
 # C. Master Test Data (Buffered 200m - for occuN)
 test_structs <- prepare_test_spatial_structures(
   test_df = master_test_df_unbuffered,
@@ -186,12 +185,18 @@ w_matrix_test <- test_structs$w_matrix
 
 # D. Master Test Data (Buffered Mean Covs - for occu)
 cat("--- Extracting Mean Test Covariates for Buffered occu ---\n")
+
+# FIX: Use 'master_test_df_buffered' because it already has the 'site' column 
+# required by voronoi_clipped_buffers. 
 test_geoms_vect <- terra::vect(voronoi_clipped_buffers(
-  sf::st_as_sf(master_test_df_unbuffered, coords=c("longitude","latitude"), crs=4326) %>% sf::st_transform(albers_crs_str), 
+  sf::st_as_sf(master_test_df_buffered, coords=c("longitude","latitude"), crs=4326) %>% 
+    sf::st_transform(albers_crs_str), 
   buffer_dist = test_buffer_m
 ))
+
 test_means <- terra::extract(cov_tif_albers, test_geoms_vect, fun=mean, na.rm=TRUE, ID=FALSE)
-master_test_df_buffered_occu <- cbind(master_test_df_buffered, test_means) 
+master_test_df_buffered_occu <- cbind(master_test_df_buffered, test_means)
+
 
 
 ###
