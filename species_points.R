@@ -315,7 +315,9 @@ for (sp in species_names) {
     y_wide <- occu_df %>% dplyr::select(site, visit, species_observed) %>% 
       pivot_wider(names_from=visit, values_from=species_observed) %>% dplyr::select(-site) %>% as.matrix()
     
+
     site_covs <- occu_df %>% group_by(site) %>% slice(1) %>% 
+      ungroup() %>%
       dplyr::select(all_of(state_cov_names)) %>% as.data.frame()
     
     obs_covs_list <- list()
@@ -450,6 +452,7 @@ for (sp in species_names) {
         pivot_wider(names_from=visit, values_from=species_observed) %>% dplyr::select(-site) %>% as.matrix()
       
       site_covs <- occu_df %>% group_by(site) %>% slice(1) %>% 
+        ungroup() %>%
         dplyr::select(all_of(state_cov_names)) %>% as.data.frame()
       
       obs_covs_list <- list()
