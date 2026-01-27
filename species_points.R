@@ -264,7 +264,6 @@ for (sp in species_names) {
   
   
   # --- SYNCHRONIZE TEST SPLITS ---
-  cat("  Generating Synchronized Test Splits...\n")
   
   test_splits_unbuf <- list()
   test_splits_buf <- list()
