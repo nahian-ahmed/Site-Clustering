@@ -67,11 +67,10 @@ if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 ###
 # Mirrors fit_occuN_model logic but for standard occu
 # Selects best model based on Negative Log Likelihood (NLL)
+# Debug version of fit_occu_model
 fit_occu_model <- function(umf, state_formula, obs_formula, n_reps, stable_reps, 
                            init_lower, init_upper, method="nlminb") {
   
-  # Count params for random starts
-  # (Assumes simple linear formulas)
   n_state <- length(all.vars(state_formula)) + 1
   n_obs <- length(all.vars(obs_formula)) + 1
   n_params <- n_state + n_obs
@@ -84,34 +83,42 @@ fit_occu_model <- function(umf, state_formula, obs_formula, n_reps, stable_reps,
   full_formula <- as.formula(paste(paste(deparse(obs_formula), collapse=""), 
                                    paste(deparse(state_formula), collapse="")))
   
+  last_error <- "No attempts made" 
+  
   for (i in 1:n_reps) {
     starts <- runif(n_params, init_lower, init_upper)
     
+    # 1. Assign result to fm_try
     fm_try <- try(unmarked::occu(full_formula, data = umf, starts = starts, 
                                  method = method, se = FALSE), silent = TRUE)
     
+    # 2. Check fm_try (NOT fm_rep)
     if (!inherits(fm_try, "try-error")) {
+      
       curr_nll <- fm_try@negLogLike
       
       if (!is.nan(curr_nll)) {
         if (curr_nll < min_nll) {
-          # Check stability
           if (abs(min_nll - curr_nll) < tolerance) stable_count <- stable_count + 1
           else stable_count <- 0
-          
           min_nll <- curr_nll
           best_fm <- fm_try
         } else if (abs(curr_nll - min_nll) < tolerance) {
           stable_count <- stable_count + 1
         }
       }
+    } else {
+      last_error <- as.character(fm_try)
     }
     if (stable_count >= stable_reps) break
   }
   
+  if (is.null(best_fm)) {
+    cat(paste("    [DEBUG] occu failed. Last error:", last_error, "\n"))
+  }
+  
   return(best_fm)
 }
-
 
 ###
 # 3. PREPROCESS RASTER
