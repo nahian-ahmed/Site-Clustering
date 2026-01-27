@@ -184,20 +184,23 @@ master_test_df_buffered <- test_structs$test_df
 w_matrix_test <- test_structs$w_matrix
 
 # D. Master Test Data (Buffered Mean Covs - for occu)
+# D. Master Test Data (Buffered Mean Covs - for occu)
 cat("--- Extracting Mean Test Covariates for Buffered occu ---\n")
 
-# FIX: Use 'master_test_df_buffered' because it already has the 'site' column 
-# required by voronoi_clipped_buffers. 
+# 1. Create geometries (using buffered df to ensure 'site' column exists)
 test_geoms_vect <- terra::vect(voronoi_clipped_buffers(
   sf::st_as_sf(master_test_df_buffered, coords=c("longitude","latitude"), crs=4326) %>% 
     sf::st_transform(albers_crs_str), 
   buffer_dist = test_buffer_m
 ))
 
+# 2. Extract Means
 test_means <- terra::extract(cov_tif_albers, test_geoms_vect, fun=mean, na.rm=TRUE, ID=FALSE)
-master_test_df_buffered_occu <- cbind(master_test_df_buffered, test_means)
 
-
+# 3. Bind Means (CRITICAL FIX: Remove original point covs first!)
+master_test_df_buffered_occu <- master_test_df_buffered %>%
+  dplyr::select(-all_of(state_cov_names)) %>%  # <--- DROPS DUPLICATES
+  cbind(test_means)                            # <--- ADDS MEANS
 
 ###
 # 5. MAIN EXPERIMENT LOOP
