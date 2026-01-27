@@ -69,7 +69,7 @@ if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 # Selects best model based on Negative Log Likelihood (NLL)
 # Debug version of fit_occu_model
 fit_occu_model <- function(umf, state_formula, obs_formula, n_reps, stable_reps, 
-                           init_lower, init_upper, method="nlminb") {
+                           init_lower, init_upper, method = "Nelder-Mead") {
   
   n_state <- length(all.vars(state_formula)) + 1
   n_obs <- length(all.vars(obs_formula)) + 1
@@ -329,8 +329,7 @@ for (sp in species_names) {
     # FIT OCCU (With Best-Fit Logic)
     fm <- fit_occu_model(umf, state_form, obs_form, 
                          n_reps = n_fit_repeats, stable_reps = stable_reps, 
-                         init_lower = INIT_LOWER, init_upper = INIT_UPPER,
-                         method = selected_optimizer)
+                         init_lower = INIT_LOWER, init_upper = INIT_UPPER)
     
     if (!is.null(fm)) {
       auc_vec <- numeric(n_test_repeats)
@@ -464,8 +463,7 @@ for (sp in species_names) {
       # FIT OCCU (With Best-Fit Logic)
       fm_o <- fit_occu_model(umf_o, state_form, obs_form, 
                              n_reps = n_fit_repeats, stable_reps = stable_reps, 
-                             init_lower = INIT_LOWER, init_upper = INIT_UPPER,
-                             method = selected_optimizer)
+                             init_lower = INIT_LOWER, init_upper = INIT_UPPER)
       
       if (!is.null(fm_o)) {
         auc_vec <- numeric(n_test_repeats)
