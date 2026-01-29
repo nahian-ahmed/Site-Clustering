@@ -88,8 +88,15 @@ plot_raw_a <- function(df, y_col, y_lab, output_filename) {
 
 # --- Perc Diff Plots A ---
 plot_perc_a <- function(df, y_lab, output_filename) {
-  # FORCE X-AXIS ORDER
-  df$method <- factor(df$method, levels = c("lat-long", "1to10", "2to10"))
+  
+  # DYNAMIC SORTING (Sort by mean) - Reverted as requested
+  m_order <- df %>% 
+    group_by(method) %>% 
+    summarise(m = mean(mean_perc_diff, na.rm = TRUE)) %>% 
+    arrange(m) %>% 
+    pull(method)
+  
+  df$method <- factor(df$method, levels = m_order)
   
   p <- ggplot(df, aes(x = method, y = mean_perc_diff, fill = method)) +
     theme_classic() +
@@ -184,7 +191,7 @@ plot_perc_b <- function(df, y_lab, output_filename) {
   
   df_formatted <- format_buffer_label(df)
   
-  # FORCE X-AXIS ORDER
+  # FORCE X-AXIS ORDER (Fixed for Experiment B)
   df_formatted$method <- factor(df_formatted$method, levels = c("lat-long", "1to10", "2to10"))
   
   p <- ggplot(df_formatted, aes(x = method, y = mean_perc_diff, fill = method)) +
