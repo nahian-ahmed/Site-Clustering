@@ -37,17 +37,11 @@ if (file.exists(species_map_path)) {
 # 2. Helper Functions
 # -------------------------------------------------------------------------
 
-# Calculate % Improvement (Local Baseline)
-# Computes diff relative to 'lat-long' within the SAME buffer/model/repeat group
 calculate_improvement_local <- function(df, metric_col) {
-  
-  # 1. Extract Baseline (lat-long) for every group
   baseline_df <- df %>%
     filter(method == "lat-long") %>%
     select(species, buffer, model, test_repeat, baseline_val = all_of(metric_col))
   
-  # 2. Join Baseline back to the full dataset
-  #    This ensures every row (including lat-long itself) gets a baseline_val
   df_diff <- df %>%
     inner_join(baseline_df, by = c("species", "buffer", "model", "test_repeat")) %>%
     mutate(perc_diff = ((.data[[metric_col]] - baseline_val) / baseline_val) * 100) %>%
@@ -56,7 +50,6 @@ calculate_improvement_local <- function(df, metric_col) {
   return(df_diff)
 }
 
-# Aggregation Helpers
 aggregate_by_species <- function(df_diff) {
   df_diff %>%
     group_by(species, buffer, model, method) %>%
@@ -74,15 +67,10 @@ aggregate_by_repeat <- function(df_diff) {
 # -------------------------------------------------------------------------
 cat("--- Processing Experiment A (0m) ---\n")
 
-# Filter Data
 df_a <- data %>% filter(buffer == 0)
-
-# Colors for A
 colors_a <- c("lat-long" = "navy", "1to10" = "cyan", "2to10" = "pink")
 
-# --- Plotting Function for A ---
 plot_raw_a <- function(df, y_col, y_lab, output_filename) {
-  # Sort Species
   sp_order <- df %>% group_by(species) %>% summarise(m=mean(.data[[y_col]])) %>% arrange(m) %>% pull(species)
   df$species <- factor(df$species, levels = sp_order)
   
@@ -98,7 +86,6 @@ plot_raw_a <- function(df, y_col, y_lab, output_filename) {
 }
 
 plot_perc_a <- function(df, y_lab, output_filename) {
-  # Sort Method
   m_order <- df %>% group_by(method) %>% summarise(m=mean(mean_perc_diff)) %>% arrange(m) %>% pull(method)
   df$method <- factor(df$method, levels = m_order)
   
@@ -106,7 +93,8 @@ plot_perc_a <- function(df, y_lab, output_filename) {
     theme_classic() +
     geom_hline(yintercept = 0, linetype = 'dashed', col = 'darkgrey') +
     geom_boxplot() +
-    stat_summary(fun = mean, geom = "point", shape = 23, size = 3, fill = "white") +
+    # MAROON DIAMOND, WHITE BORDER
+    stat_summary(fun = mean, geom = "point", shape = 23, size = 3, fill = "maroon", color = "white") +
     scale_fill_manual(values = colors_a) +
     labs(y = y_lab, x = "Method") +
     theme(legend.position = "none")
@@ -114,11 +102,10 @@ plot_perc_a <- function(df, y_lab, output_filename) {
   ggsave(output_filename, plot = p, width = 6, height = 7, dpi = 300)
 }
 
-# 1. Raw Plots
+# Experiment A Plots
 plot_raw_a(df_a, "auc", "AUC (0m)", file.path(output_dir, "occu_0m_auc.png"))
 plot_raw_a(df_a, "auprc", "AUPRC (0m)", file.path(output_dir, "occu_0m_auprc.png"))
 
-# 2. Perc Diff
 auc_diff_a <- calculate_improvement_local(df_a, "auc")
 auprc_diff_a <- calculate_improvement_local(df_a, "auprc")
 
@@ -133,27 +120,26 @@ plot_perc_a(aggregate_by_repeat(auprc_diff_a), "% AUPRC Improvement (vs lat-long
 # -------------------------------------------------------------------------
 cat("--- Processing Experiment B (Buffered) ---\n")
 
-# Filter Data & Factor Ordering
-df_b <- data %>% 
-  filter(buffer > 0) %>%
-  mutate(
-    # Ensure Model factor level order for Rows (occuN top, occu bottom)
-    model = factor(model, levels = c("occuN", "occu")),
-    # Ensure Buffer factor level order for Cols (100, 200, 500)
-    buffer = factor(buffer, levels = c(100, 200, 500)),
-    # Create combined label for 1x6 plot ordering
-    panel_label = factor(paste(model, buffer), 
-                         levels = c("occuN 100", "occuN 200", "occuN 500", 
-                                    "occu 100", "occu 200", "occu 500"))
-  )
-
-# Colors for B
 colors_b <- c("lat-long" = "navy", "1to10" = "cyan", "2to10" = "pink")
 
-# --- Plotting Function for B (Raw: 1x6 Grid) ---
+# -------------------------------------------------------------------------
+# Raw Plots B
+# -------------------------------------------------------------------------
+df_b_raw <- data %>% 
+  filter(buffer > 0) %>%
+  mutate(
+    # Ensure Model factor level order for Rows
+    model = factor(model, levels = c("occuN", "occu")),
+    # Ensure Buffer factor level order 
+    buffer = factor(buffer, levels = c(100, 200, 500)),
+    # Create combined label with "m" and hyphen (e.g., "occuN-100m")
+    panel_label = factor(paste(model, paste0(buffer, "m"), sep = "-"), 
+                         levels = c("occuN-100m", "occuN-200m", "occuN-500m", 
+                                    "occu-100m", "occu-200m", "occu-500m"))
+  )
+
 plot_raw_b <- function(df, y_col, y_lab, output_filename) {
   
-  # Sort Species by overall mean
   sp_order <- df %>% group_by(species) %>% summarise(m=mean(.data[[y_col]])) %>% arrange(m) %>% pull(species)
   df$species <- factor(df$species, levels = sp_order)
   
@@ -161,54 +147,65 @@ plot_raw_b <- function(df, y_col, y_lab, output_filename) {
     geom_boxplot(outlier.size = 0.5, lwd = 0.2) +
     theme_classic() +
     coord_flip() +
-    # 1 Row, 6 Columns Layout
     facet_wrap(~panel_label, nrow = 1, scales = "free_x") + 
     scale_fill_manual(values = colors_b) +
     labs(x = "Species", y = y_lab) +
     theme(
       legend.position = "bottom", 
       legend.title = element_blank(),
-      strip.background = element_rect(fill = "grey90", color = NA),
-      strip.text = element_text(face = "bold")
+      strip.background = element_rect(fill = "grey90", color = "black"), # Border on strip
+      strip.text = element_text(face = "bold"),
+      panel.border = element_rect(colour = "black", fill = NA, size = 1) # Border on panel
     )
   
-  # Width increased to accommodate 6 columns
   ggsave(output_filename, plot = p, width = 18, height = 12, dpi = 300)
 }
 
-# --- Plotting Function for B (Perc Diff: 2x3 Grid) ---
+plot_raw_b(df_b_raw, "auc", "AUC (Buffered)", file.path(output_dir, "buffered_auc.png"))
+plot_raw_b(df_b_raw, "auprc", "AUPRC (Buffered)", file.path(output_dir, "buffered_auprc.png"))
+
+
+# -------------------------------------------------------------------------
+# Perc Diff Plots B
+# -------------------------------------------------------------------------
+df_b_diff <- data %>% filter(buffer > 0) # Base data for calcs
+
+auc_diff_b <- calculate_improvement_local(df_b_diff, "auc")
+auprc_diff_b <- calculate_improvement_local(df_b_diff, "auprc")
+
+# Helper to format the buffer column for plotting
+format_buffer_label <- function(df) {
+  df %>% mutate(
+    model = factor(model, levels = c("occuN", "occu")),
+    # Create "100m" label instead of "100"
+    buffer_label = factor(paste0(buffer, "m"), levels = c("100m", "200m", "500m"))
+  )
+}
+
 plot_perc_b <- function(df, y_lab, output_filename) {
   
-  # We want lat-long included (it will be 0)
+  df_formatted <- format_buffer_label(df)
   
-  p <- ggplot(df, aes(x = method, y = mean_perc_diff, fill = method)) +
+  p <- ggplot(df_formatted, aes(x = method, y = mean_perc_diff, fill = method)) +
     theme_classic() +
     geom_hline(yintercept = 0, linetype = 'dashed', col = 'darkgrey') +
     geom_boxplot() +
-    stat_summary(fun = mean, geom = "point", shape = 23, size = 2, fill = "white") +
-    # 2 Rows (Model) x 3 Columns (Buffer)
-    facet_grid(model ~ buffer, scales = "fixed") + 
+    # MAROON DIAMOND, WHITE BORDER
+    stat_summary(fun = mean, geom = "point", shape = 23, size = 2, fill = "maroon", color = "white") +
+    facet_grid(model ~ buffer_label, scales = "fixed") + 
     scale_fill_manual(values = colors_b) +
     labs(y = y_lab, x = "Method") +
     theme(
       legend.position = "none",
       axis.text.x = element_text(angle = 45, hjust = 1),
-      strip.background = element_rect(fill = "grey90", color = NA),
-      strip.text = element_text(face = "bold")
+      strip.background = element_rect(fill = "grey90", color = "black"), # Border on strip
+      strip.text = element_text(face = "bold"),
+      panel.border = element_rect(colour = "black", fill = NA, size = 1) # Border on panel
     )
   
   ggsave(output_filename, plot = p, width = 10, height = 8, dpi = 300)
 }
 
-# 1. Raw Plots
-plot_raw_b(df_b, "auc", "AUC (Buffered)", file.path(output_dir, "buffered_auc.png"))
-plot_raw_b(df_b, "auprc", "AUPRC (Buffered)", file.path(output_dir, "buffered_auprc.png"))
-
-# 2. Perc Diff
-auc_diff_b <- calculate_improvement_local(df_b, "auc")
-auprc_diff_b <- calculate_improvement_local(df_b, "auprc")
-
-# Ensure aggregation preserves the grouping factors for faceting
 agg_auc_species <- aggregate_by_species(auc_diff_b)
 agg_auc_repeat <- aggregate_by_repeat(auc_diff_b)
 agg_auprc_species <- aggregate_by_species(auprc_diff_b)
