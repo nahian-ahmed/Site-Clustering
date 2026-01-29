@@ -163,7 +163,7 @@ plot_raw_b <- function(df, y_col, y_lab, output_filename) {
       legend.title = element_blank(),
       strip.background = element_rect(fill = "grey90", color = "black"),
       strip.text = element_text(face = "bold"),
-      panel.border = element_rect(colour = "black", fill = NA, size = 1)
+      panel.border = element_rect(colour = "black", fill = NA, linewidth = 1)
     )
   
   ggsave(output_filename, plot = p, width = 18, height = 12, dpi = 300)
@@ -208,7 +208,7 @@ plot_perc_b <- function(df, y_lab, output_filename) {
       axis.text.x = element_text(angle = 45, hjust = 1),
       strip.background = element_rect(fill = "grey90", color = "black"),
       strip.text = element_text(face = "bold"),
-      panel.border = element_rect(colour = "black", fill = NA, size = 1)
+      panel.border = element_rect(colour = "black", fill = NA, linewidth = 1)
     )
   
   # REDUCED HEIGHT (8 -> 6)
