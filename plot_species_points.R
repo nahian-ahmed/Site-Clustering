@@ -2,7 +2,6 @@ library(dplyr)
 library(ggplot2)
 library(tidyr)
 library(ggpubr)
-library(stringr)
 
 # -------------------------------------------------------------------------
 # Setup Directories
@@ -17,7 +16,6 @@ if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 # -------------------------------------------------------------------------
 data_path <- file.path(input_dir, "points_results.csv")
 if (!file.exists(data_path)) {
-  # Fallback if running from the output folder directly
   data_path <- "points_results.csv"
 }
 
@@ -36,55 +34,24 @@ if (file.exists(species_map_path)) {
 }
 
 # -------------------------------------------------------------------------
-# 2. Define Color Palettes
+# 2. Helper Functions
 # -------------------------------------------------------------------------
 
-# Palette for Experiment A (3 methods)
-colors_exp_a <- c(
-  "lat-long" = "grey30",
-  "1to10" = "#E7B800",
-  "2to10" = "#FC4E07"
-)
-
-# Palette for Experiment B (18 methods)
-# Distinct colors to differentiate the 18 combinations
-colors_exp_b <- c(
-  # 100m Group
-  "occu-lat-long-100m"  = "#A6CEE3", "occuN-lat-long-100m" = "#1F78B4",
-  "occu-1to10-100m"     = "#B2DF8A", "occuN-1to10-100m"    = "#33A02C",
-  "occu-2to10-100m"     = "#FB9A99", "occuN-2to10-100m"    = "#E31A1C",
+# Calculate % Improvement (Local Baseline)
+# Computes diff relative to 'lat-long' within the SAME buffer/model/repeat group
+calculate_improvement_local <- function(df, metric_col) {
   
-  # 200m Group
-  "occu-lat-long-200m"  = "#FDBF6F", "occuN-lat-long-200m" = "#FF7F00",
-  "occu-1to10-200m"     = "#CAB2D6", "occuN-1to10-200m"    = "#6A3D9A",
-  "occu-2to10-200m"     = "#FFFF99", "occuN-2to10-200m"    = "#B15928",
-  
-  # 500m Group
-  "occu-lat-long-500m"  = "#8DD3C7", "occuN-lat-long-500m" = "#BEBADA",
-  "occu-1to10-500m"     = "#FB8072", "occuN-1to10-500m"    = "#80B1D3",
-  "occu-2to10-500m"     = "#FDB462", "occuN-2to10-500m"    = "#B3DE69"
-)
-
-# -------------------------------------------------------------------------
-# 3. Helper Functions
-# -------------------------------------------------------------------------
-
-# Function to calculate % improvement against a FIXED baseline method
-calculate_improvement_fixed <- function(df, metric_col, baseline_method_name, group_cols) {
-  
-  # 1. Extract Baseline Rows (The Reference Standard)
+  # 1. Extract Baseline (lat-long) for every group
   baseline_df <- df %>%
-    filter(method_label == baseline_method_name) %>%
-    select(species, test_repeat, baseline_val = all_of(metric_col))
+    filter(method == "lat-long") %>%
+    select(species, buffer, model, test_repeat, baseline_val = all_of(metric_col))
   
-  if(nrow(baseline_df) == 0) stop(paste("Baseline method not found:", baseline_method_name))
-  
-  # 2. Join Baseline to EVERYTHING (including itself)
-  #    We join by species and test_repeat to ensure matched comparison
+  # 2. Join Baseline back to the full dataset
+  #    This ensures every row (including lat-long itself) gets a baseline_val
   df_diff <- df %>%
-    inner_join(baseline_df, by = c("species", "test_repeat")) %>%
+    inner_join(baseline_df, by = c("species", "buffer", "model", "test_repeat")) %>%
     mutate(perc_diff = ((.data[[metric_col]] - baseline_val) / baseline_val) * 100) %>%
-    select(species, test_repeat, method_label, perc_diff)
+    select(species, buffer, model, test_repeat, method, perc_diff)
   
   return(df_diff)
 }
@@ -92,152 +59,164 @@ calculate_improvement_fixed <- function(df, metric_col, baseline_method_name, gr
 # Aggregation Helpers
 aggregate_by_species <- function(df_diff) {
   df_diff %>%
-    group_by(species, method_label) %>%
+    group_by(species, buffer, model, method) %>%
     summarise(mean_perc_diff = mean(perc_diff, na.rm = TRUE), .groups = "drop")
 }
 
 aggregate_by_repeat <- function(df_diff) {
   df_diff %>%
-    group_by(test_repeat, method_label) %>%
+    group_by(test_repeat, buffer, model, method) %>%
     summarise(mean_perc_diff = mean(perc_diff, na.rm = TRUE), .groups = "drop")
 }
 
-# Plotting Function
-plot_improvement <- function(df, x_col, y_col, fill_col, y_lab, palette, output_path, sort_x = TRUE) {
-  
-  if(sort_x) {
-    # Order by mean value
-    order <- df %>%
-      group_by(.data[[x_col]]) %>%
-      summarise(mean_val = mean(.data[[y_col]], na.rm = TRUE)) %>%
-      arrange(mean_val) %>%
-      pull(.data[[x_col]])
-    df[[x_col]] <- factor(df[[x_col]], levels = order)
-  }
-  
-  p <- ggplot(df, aes(x = .data[[x_col]], y = .data[[y_col]], fill = .data[[fill_col]])) +
-    theme_classic() +
-    geom_hline(yintercept = 0, linetype = 'dashed', lwd = 1, col = 'darkgrey') +
-    geom_boxplot(outlier.size = 0.5) +
-    stat_summary(fun = mean, geom = "point", shape = 23, size = 2, col = "white", bg = "darkred") +
-    scale_fill_manual(values = palette) +
-    theme(
-      axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1, size = 10),
-      axis.title = element_text(size = 12),
-      legend.position = "none" # Hide legend if x-axis labels are sufficient
-    ) +
-    labs(y = y_lab, x = "Method")
-  
-  ggsave(output_path, plot = p, width = 10, height = 7, dpi = 300)
-}
-
-# Raw Performance Plotter
-plot_raw <- function(df, x_col, y_col, fill_col, y_lab, palette, output_path) {
-  
-  # Order species by performance
-  sp_order <- df %>%
-    group_by(species) %>%
-    summarise(mean_val = mean(.data[[y_col]], na.rm=T)) %>%
-    arrange(mean_val) %>%
-    pull(species)
-  df$species <- factor(df$species, levels = sp_order)
-  
-  p <- ggplot(df, aes(x = .data[[x_col]], y = .data[[y_col]], fill = .data[[fill_col]])) +
-    geom_boxplot(outlier.size = 0.5, lwd = 0.3) +
-    theme_classic() +
-    coord_flip() +
-    scale_fill_manual(values = palette) +
-    theme(
-      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 10),
-      legend.position = "bottom",
-      legend.title = element_blank()
-    ) +
-    labs(x = "Species", y = y_lab)
-  
-  ggsave(output_path, plot = p, width = 8, height = 12, dpi = 300)
-}
-
-
-# =========================================================================
-# PART 1: EXPERIMENT A (Unbuffered, 0m, occu only)
-# =========================================================================
+# -------------------------------------------------------------------------
+# 3. Experiment A (0m, Unbuffered)
+# -------------------------------------------------------------------------
 cat("--- Processing Experiment A (0m) ---\n")
 
 # Filter Data
-df_a <- data %>% 
-  filter(buffer == 0) %>%
-  mutate(method_label = method) # Use simple names: lat-long, 1to10, 2to10
+df_a <- data %>% filter(buffer == 0)
+
+# Colors for A
+colors_a <- c("lat-long" = "navy", "1to10" = "cyan", "2to10" = "pink")
+
+# --- Plotting Function for A ---
+plot_raw_a <- function(df, y_col, y_lab, output_filename) {
+  # Sort Species
+  sp_order <- df %>% group_by(species) %>% summarise(m=mean(.data[[y_col]])) %>% arrange(m) %>% pull(species)
+  df$species <- factor(df$species, levels = sp_order)
+  
+  p <- ggplot(df, aes(x = species, y = .data[[y_col]], fill = method)) +
+    geom_boxplot(outlier.size = 0.5, lwd = 0.3) +
+    theme_classic() +
+    coord_flip() +
+    scale_fill_manual(values = colors_a) +
+    labs(x = "Species", y = y_lab) +
+    theme(legend.position = "bottom", legend.title = element_blank())
+  
+  ggsave(output_filename, plot = p, width = 8, height = 12, dpi = 300)
+}
+
+plot_perc_a <- function(df, y_lab, output_filename) {
+  # Sort Method
+  m_order <- df %>% group_by(method) %>% summarise(m=mean(mean_perc_diff)) %>% arrange(m) %>% pull(method)
+  df$method <- factor(df$method, levels = m_order)
+  
+  p <- ggplot(df, aes(x = method, y = mean_perc_diff, fill = method)) +
+    theme_classic() +
+    geom_hline(yintercept = 0, linetype = 'dashed', col = 'darkgrey') +
+    geom_boxplot() +
+    stat_summary(fun = mean, geom = "point", shape = 23, size = 3, fill = "white") +
+    scale_fill_manual(values = colors_a) +
+    labs(y = y_lab, x = "Method") +
+    theme(legend.position = "none")
+  
+  ggsave(output_filename, plot = p, width = 6, height = 7, dpi = 300)
+}
 
 # 1. Raw Plots
-plot_raw(df_a, "species", "auc", "method_label", "AUC (0m)", colors_exp_a, 
-         file.path(output_dir, "auc_0m.png"))
-plot_raw(df_a, "species", "auprc", "method_label", "AUPRC (0m)", colors_exp_a, 
-         file.path(output_dir, "auprc_0m.png"))
+plot_raw_a(df_a, "auc", "AUC (0m)", file.path(output_dir, "occu_0m_auc.png"))
+plot_raw_a(df_a, "auprc", "AUPRC (0m)", file.path(output_dir, "occu_0m_auprc.png"))
 
-# 2. Percentage Difference (Baseline: lat-long)
-auc_diff_a <- calculate_improvement_fixed(df_a, "auc", "lat-long")
-auprc_diff_a <- calculate_improvement_fixed(df_a, "auprc", "lat-long")
+# 2. Perc Diff
+auc_diff_a <- calculate_improvement_local(df_a, "auc")
+auprc_diff_a <- calculate_improvement_local(df_a, "auprc")
 
-# 3. Aggregations & Plots
-# Species Aggregation
-plot_improvement(aggregate_by_species(auc_diff_a), "method_label", "mean_perc_diff", "method_label", 
-                 "% AUC Improvement (vs lat-long 0m)", colors_exp_a, file.path(output_dir, "auc_perc_diff_species_0m.png"))
-plot_improvement(aggregate_by_species(auprc_diff_a), "method_label", "mean_perc_diff", "method_label", 
-                 "% AUPRC Improvement (vs lat-long 0m)", colors_exp_a, file.path(output_dir, "auprc_perc_diff_species_0m.png"))
-
-# Repeats Aggregation
-plot_improvement(aggregate_by_repeat(auc_diff_a), "method_label", "mean_perc_diff", "method_label", 
-                 "% AUC Improvement (vs lat-long 0m)", colors_exp_a, file.path(output_dir, "auc_perc_diff_repeats_0m.png"))
-plot_improvement(aggregate_by_repeat(auprc_diff_a), "method_label", "mean_perc_diff", "method_label", 
-                 "% AUPRC Improvement (vs lat-long 0m)", colors_exp_a, file.path(output_dir, "auprc_perc_diff_repeats_0m.png"))
+plot_perc_a(aggregate_by_species(auc_diff_a), "% AUC Improvement (vs lat-long)", file.path(output_dir, "occu_0m_auc_perc_diff_species.png"))
+plot_perc_a(aggregate_by_repeat(auc_diff_a), "% AUC Improvement (vs lat-long)", file.path(output_dir, "occu_0m_auc_perc_diff_repeats.png"))
+plot_perc_a(aggregate_by_species(auprc_diff_a), "% AUPRC Improvement (vs lat-long)", file.path(output_dir, "occu_0m_auprc_perc_diff_species.png"))
+plot_perc_a(aggregate_by_repeat(auprc_diff_a), "% AUPRC Improvement (vs lat-long)", file.path(output_dir, "occu_0m_auprc_perc_diff_repeats.png"))
 
 
-# =========================================================================
-# PART 2: EXPERIMENT B (Buffered, 18 Methods)
-# =========================================================================
+# -------------------------------------------------------------------------
+# 4. Experiment B (Buffered)
+# -------------------------------------------------------------------------
 cat("--- Processing Experiment B (Buffered) ---\n")
 
-# Filter & Create Label
-df_b <- data %>%
+# Filter Data & Factor Ordering
+df_b <- data %>% 
   filter(buffer > 0) %>%
   mutate(
-    # Construct label: "model-method-buffer"
-    method_label = paste(model, method, paste0(buffer, "m"), sep = "-")
+    # Ensure Model factor level order for Rows (occuN top, occu bottom)
+    model = factor(model, levels = c("occuN", "occu")),
+    # Ensure Buffer factor level order for Cols (100, 200, 500)
+    buffer = factor(buffer, levels = c(100, 200, 500)),
+    # Create combined label for 1x6 plot ordering
+    panel_label = factor(paste(model, buffer), 
+                         levels = c("occuN 100", "occuN 200", "occuN 500", 
+                                    "occu 100", "occu 200", "occu 500"))
   )
 
-# Define Baseline
-baseline_b <- "occuN-lat-long-200m"
+# Colors for B
+colors_b <- c("lat-long" = "navy", "1to10" = "cyan", "2to10" = "pink")
+
+# --- Plotting Function for B (Raw: 1x6 Grid) ---
+plot_raw_b <- function(df, y_col, y_lab, output_filename) {
+  
+  # Sort Species by overall mean
+  sp_order <- df %>% group_by(species) %>% summarise(m=mean(.data[[y_col]])) %>% arrange(m) %>% pull(species)
+  df$species <- factor(df$species, levels = sp_order)
+  
+  p <- ggplot(df, aes(x = species, y = .data[[y_col]], fill = method)) +
+    geom_boxplot(outlier.size = 0.5, lwd = 0.2) +
+    theme_classic() +
+    coord_flip() +
+    # 1 Row, 6 Columns Layout
+    facet_wrap(~panel_label, nrow = 1, scales = "free_x") + 
+    scale_fill_manual(values = colors_b) +
+    labs(x = "Species", y = y_lab) +
+    theme(
+      legend.position = "bottom", 
+      legend.title = element_blank(),
+      strip.background = element_rect(fill = "grey90", color = NA),
+      strip.text = element_text(face = "bold")
+    )
+  
+  # Width increased to accommodate 6 columns
+  ggsave(output_filename, plot = p, width = 18, height = 12, dpi = 300)
+}
+
+# --- Plotting Function for B (Perc Diff: 2x3 Grid) ---
+plot_perc_b <- function(df, y_lab, output_filename) {
+  
+  # We want lat-long included (it will be 0)
+  
+  p <- ggplot(df, aes(x = method, y = mean_perc_diff, fill = method)) +
+    theme_classic() +
+    geom_hline(yintercept = 0, linetype = 'dashed', col = 'darkgrey') +
+    geom_boxplot() +
+    stat_summary(fun = mean, geom = "point", shape = 23, size = 2, fill = "white") +
+    # 2 Rows (Model) x 3 Columns (Buffer)
+    facet_grid(model ~ buffer, scales = "fixed") + 
+    scale_fill_manual(values = colors_b) +
+    labs(y = y_lab, x = "Method") +
+    theme(
+      legend.position = "none",
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      strip.background = element_rect(fill = "grey90", color = NA),
+      strip.text = element_text(face = "bold")
+    )
+  
+  ggsave(output_filename, plot = p, width = 10, height = 8, dpi = 300)
+}
 
 # 1. Raw Plots
-plot_raw(df_b, "species", "auc", "method_label", "AUC (Buffered)", colors_exp_b, 
-         file.path(output_dir, "auc_buffered.png"))
-plot_raw(df_b, "species", "auprc", "method_label", "AUPRC (Buffered)", colors_exp_b, 
-         file.path(output_dir, "auprc_buffered.png"))
+plot_raw_b(df_b, "auc", "AUC (Buffered)", file.path(output_dir, "buffered_auc.png"))
+plot_raw_b(df_b, "auprc", "AUPRC (Buffered)", file.path(output_dir, "buffered_auprc.png"))
 
-# 2. Percentage Difference (Baseline: occuN-lat-long-200m)
-auc_diff_b <- calculate_improvement_fixed(df_b, "auc", baseline_b)
-auprc_diff_b <- calculate_improvement_fixed(df_b, "auprc", baseline_b)
+# 2. Perc Diff
+auc_diff_b <- calculate_improvement_local(df_b, "auc")
+auprc_diff_b <- calculate_improvement_local(df_b, "auprc")
 
-# 3. Aggregations & Plots
-# Note: X-axis sorting is enabled (sort_x=TRUE) to arrange bars by performance, 
-# but you can set sort_x=FALSE to keep alphabetical/group order if preferred.
+# Ensure aggregation preserves the grouping factors for faceting
+agg_auc_species <- aggregate_by_species(auc_diff_b)
+agg_auc_repeat <- aggregate_by_repeat(auc_diff_b)
+agg_auprc_species <- aggregate_by_species(auprc_diff_b)
+agg_auprc_repeat <- aggregate_by_repeat(auprc_diff_b)
 
-# Species Aggregation
-plot_improvement(aggregate_by_species(auc_diff_b), "method_label", "mean_perc_diff", "method_label", 
-                 paste("% AUC Improvement (vs", baseline_b, ")"), colors_exp_b, 
-                 file.path(output_dir, "auc_perc_diff_species_buffered.png"))
-
-plot_improvement(aggregate_by_species(auprc_diff_b), "method_label", "mean_perc_diff", "method_label", 
-                 paste("% AUPRC Improvement (vs", baseline_b, ")"), colors_exp_b, 
-                 file.path(output_dir, "auprc_perc_diff_species_buffered.png"))
-
-# Repeats Aggregation
-plot_improvement(aggregate_by_repeat(auc_diff_b), "method_label", "mean_perc_diff", "method_label", 
-                 paste("% AUC Improvement (vs", baseline_b, ")"), colors_exp_b, 
-                 file.path(output_dir, "auc_perc_diff_repeat_buffered.png")) # Matches your requested filename (repeat vs repeats)
-
-plot_improvement(aggregate_by_repeat(auprc_diff_b), "method_label", "mean_perc_diff", "method_label", 
-                 paste("% AUPRC Improvement (vs", baseline_b, ")"), colors_exp_b, 
-                 file.path(output_dir, "auprc_perc_diff_repeats_buffered.png"))
+plot_perc_b(agg_auc_species, "% AUC Improvement", file.path(output_dir, "buffered_auc_perc_diff_species.png"))
+plot_perc_b(agg_auc_repeat, "% AUC Improvement", file.path(output_dir, "buffered_auc_perc_diff_repeats.png"))
+plot_perc_b(agg_auprc_species, "% AUPRC Improvement", file.path(output_dir, "buffered_auprc_perc_diff_species.png"))
+plot_perc_b(agg_auprc_repeat, "% AUPRC Improvement", file.path(output_dir, "buffered_auprc_perc_diff_repeats.png"))
 
 cat("Done. All plots generated in:", output_dir, "\n")
