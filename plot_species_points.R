@@ -102,7 +102,7 @@ plot_perc_a <- function(df, y_lab, output_filename) {
     theme(legend.position = "none")
   
   # REDUCED HEIGHT (7 -> 5)
-  ggsave(output_filename, plot = p, width = 6, height = 5, dpi = 300)
+  ggsave(output_filename, plot = p, width = 6, height = 6, dpi = 300)
 }
 
 # Experiment A Plots
@@ -205,7 +205,7 @@ plot_perc_b <- function(df, y_lab, output_filename) {
     )
   
   # REDUCED HEIGHT (8 -> 6)
-  ggsave(output_filename, plot = p, width = 10, height = 6, dpi = 300)
+  ggsave(output_filename, plot = p, width = 10, height = 7, dpi = 300)
 }
 
 agg_auc_species <- aggregate_by_species(auc_diff_b)
