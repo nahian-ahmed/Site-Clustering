@@ -26,6 +26,10 @@ source(file.path("R", "utils.R"))
 source(file.path("R", "data_helpers.R"))
 source(file.path("R", "model_helpers.R"))
 source(file.path("R", "analysis_helpers.R"))
+# NEW: Source clustering helpers
+source(file.path("R", "clustering_helpers.R"))
+
+set.seed(123) 
 
 # --- CONFIGURATION ---
 species_names <- c(
@@ -154,7 +158,7 @@ full_raster_covs <- as.data.frame(terra::values(cov_tif_albers))[, state_cov_nam
 full_raster_covs[is.na(full_raster_covs)] <- 0
 
 ###
-# 4. DATA PREPARATION (Templates)
+# 4. DATA PREPARATION (Templates & Pre-filtering)
 ###
 cat("--- Preparing Master Data Structures (Templates) ---\n")
 
@@ -169,6 +173,22 @@ train_data_res <- prepare_train_data(
   placeholder_spec_name = template_species
 )
 master_train_df <- train_data_res$train_df
+
+# --- NEW: Pre-calculate Site Definitions (Using Clustering Helpers) ---
+cat("--- Pre-calculating Site Definitions (lat-long, 1to10, 2to10) ---\n")
+# This runs the filtering ONCE, similar to species_clusters.R
+site_definitions <- get_clusterings(method_names, master_train_df, state_cov_names, NULL, cov_tif_albers)
+
+# Ensure 'site' column exists (lat-long, 1to10, 2to10 naturally map locality_id to site)
+for (m in method_names) {
+  if (!is.null(site_definitions[[m]])) {
+    # If returned DF doesn't have explicit 'site' column, use locality_id
+    if (!"site" %in% names(site_definitions[[m]])) {
+       site_definitions[[m]]$site <- site_definitions[[m]]$locality_id
+    }
+  }
+}
+cat("--- Site definitions ready. ---\n")
 
 
 # B. Master Test Data (Unbuffered/Points)
@@ -190,7 +210,6 @@ test_structs <- prepare_test_spatial_structures(
 master_test_df_buffered <- test_structs$test_df
 w_matrix_test <- test_structs$w_matrix
 
-# D. Master Test Data (Buffered Mean Covs - for occu)
 # D. Master Test Data (Buffered Mean Covs - for occu)
 cat("--- Extracting Mean Test Covariates for Buffered occu ---\n")
 
@@ -243,10 +262,9 @@ for (sp in species_names) {
   # --- Update Dataframes ---
   
   # 1. Train DF (Unbuffered)
-  current_train_df <- master_train_df
-  current_train_df$species_observed <- NULL
-  current_train_df <- inner_join(current_train_df, spec_train_obs, by="checklist_id")
-
+  # NOTE: We now pull from 'site_definitions' per method inside the loop, 
+  # but current_train_df isn't used directly for filtering anymore.
+  
   # 2. Test DF (Unbuffered)
   curr_test_unbuf <- master_test_df_unbuffered
   curr_test_unbuf$species_observed <- NULL
@@ -294,17 +312,18 @@ for (sp in species_names) {
   for (method in method_names) {
     cat(sprintf("    - Method: %s... ", method))
     
-    # Filter Data
-    filtered_train <- current_train_df
-    if (method == "lat-long") {
-      filtered_train$site <- filtered_train$locality_id
-    } else if (method == "1to10") {
-      filtered_train <- filtered_train %>% group_by(locality_id) %>% filter(n() <= 10) %>% ungroup()
-      filtered_train$site <- filtered_train$locality_id
-    } else if (method == "2to10") {
-      filtered_train <- filtered_train %>% group_by(locality_id) %>% filter(n() >= 2, n() <= 10) %>% ungroup()
-      filtered_train$site <- filtered_train$locality_id
+    # Retrieve Pre-filtered Data
+    base_df <- site_definitions[[method]]
+    
+    if (is.null(base_df)) {
+        cat("Skipping (NULL data).\n")
+        next
     }
+    
+    # Update with current species observations
+    filtered_train <- base_df
+    filtered_train$species_observed <- NULL # Remove template species column
+    filtered_train <- inner_join(filtered_train, spec_train_obs, by="checklist_id")
 
     # Prepare Data
     occu_df <- filtered_train %>%
@@ -375,19 +394,21 @@ for (sp in species_names) {
     for (method in method_names) {
       cat(sprintf("    - Method: %s... ", method))
       
-      # Filter
-      filtered_train <- current_train_df
-      if (method == "lat-long") {
-        filtered_train$site <- filtered_train$locality_id
-      } else if (method == "1to10") {
-        filtered_train <- filtered_train %>% group_by(locality_id) %>% filter(n() <= 10) %>% ungroup()
-        filtered_train$site <- filtered_train$locality_id
-      } else if (method == "2to10") {
-        filtered_train <- filtered_train %>% group_by(locality_id) %>% filter(n() >= 2, n() <= 10) %>% ungroup()
-        filtered_train$site <- filtered_train$locality_id
+      # Retrieve Pre-filtered Data
+      base_df <- site_definitions[[method]]
+      
+      if (is.null(base_df)) {
+          cat("Skipping (NULL data).\n")
+          next
       }
       
+      # Update with current species observations
+      filtered_train <- base_df
+      filtered_train$species_observed <- NULL
+      filtered_train <- inner_join(filtered_train, spec_train_obs, by="checklist_id")
+      
       # Create Geometries & W Matrix
+      # Note: filtered_train must have 'site' column (guaranteed by pre-calc loop)
       train_geoms <- create_site_geometries(filtered_train, cov_tif_albers, buffer_m = buf)
       train_w <- generate_overlap_matrix(train_geoms, cov_tif_albers)
       
