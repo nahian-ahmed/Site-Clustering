@@ -1,44 +1,37 @@
 ###########################
 # BayesOptClustGeo helper
-# (Updated: GLM Proxy - No FNN, Validation = Self-Sites)
+# (Updated: Returns Final Clusters directly)
 ###########################
 
 library(rBayesianOptimization) 
 library(dplyr)
 library(ClustGeo)
 
-# --- Normalization Helper ---
-normalize <- function(x) {
-    return((x - min(x)) / (max(x) - min(x)))
-}
-
-# --- Main Optimization Function ---
 bayesianOptimizedClustGeo <- function(
     train_data,          # The "Spatial Input" (2-10 visits)
     validation_data,     # The "Discarded" Data (Singletons + Overflow)
     state_covs, 
     obs_covs,            # Needed for the GLM proxy
     n_init = 15,
-    n_iter = 25,
-    env_weight = 5       # Weight for environmental distance in ClustGeo
+    n_iter = 25
 ){
     
     # --- 1. PREP DATA ---
-    # We only cluster unique locations in the training set
     train_locs <- train_data %>%
         dplyr::distinct(locality_id, latitude, longitude, .keep_all = TRUE)
     
-    # --- 2. PRE-CALCULATE DISTANCES (Training Only) ---
+    # --- 2. PRE-CALCULATE DISTANCES ---
     df_for_dist <- train_locs
     
-    # Normalize features for distance calculation
-    for (col in c("latitude", "longitude")) {
-        df_for_dist[[col]] <- normalize(df_for_dist[[col]])
-    }
-    for (col in state_covs) {
-        df_for_dist[[col]] <- normalize(df_for_dist[[col]]) * env_weight
-    }
+    # A. Standardize Geography (Z-Score)
+    # Matches the scale of environmental covariates
+    df_for_dist$latitude  <- as.numeric(scale(df_for_dist$latitude))
+    df_for_dist$longitude <- as.numeric(scale(df_for_dist$longitude))
     
+    # B. Environment (ALREADY STANDARDIZED)
+    # Use Z-scores as-is from input
+    
+    # Calculate Distances
     env_dist <- dist(df_for_dist[, state_covs])
     geo_dist <- dist(df_for_dist[, c("latitude", "longitude")])
     
@@ -46,9 +39,7 @@ bayesianOptimizedClustGeo <- function(
     clustGeo_fit <- function(rho, kappa) {
         
         tryCatch({
-            
-            # A. Generate Clusters (Training Only)
-            # ------------------------------------
+            # A. Generate Clusters
             tree <- ClustGeo::hclustgeo(env_dist, geo_dist, alpha = rho)
             
             percent <- kappa / 100.0
@@ -61,9 +52,7 @@ bayesianOptimizedClustGeo <- function(
             full_train <- train_data %>%
                 left_join(train_locs[, c("locality_id", "site_id")], by = "locality_id")
             
-            # B. Prepare Training Data for GLM (Cluster Averages)
-            # ---------------------------------------------------
-            # We average the environment per cluster.
+            # B. Prepare Training Data (Cluster Averages)
             train_site_covs <- full_train %>%
                 group_by(site_id) %>%
                 summarise(across(all_of(state_covs), mean, .names = "site_{.col}"), .groups="drop")
@@ -71,33 +60,21 @@ bayesianOptimizedClustGeo <- function(
             model_train <- full_train %>% 
                 left_join(train_site_covs, by = "site_id")
             
-            # C. Prepare Validation Data for GLM (Self-Sites)
-            # -----------------------------------------------
-            # Treat every validation point as its own site. 
-            # The "Site Environment" is just the point's raw environment.
-            # We create columns named 'site_elevation', etc., using the raw values.
-            
+            # C. Prepare Validation Data (Self-Sites)
             model_val <- validation_data %>%
                 mutate(across(all_of(state_covs), ~ .x, .names = "site_{.col}"))
             
-            # D. Fit GLM Proxy & Predict
-            # --------------------------
-            # Formula: observed ~ site_environment + observation_covariates
+            # D. Fit GLM Proxy
             site_vars <- paste0("site_", state_covs)
             f_str <- paste("species_observed ~", 
                            paste(c(site_vars, obs_covs), collapse = " + "))
             
-            # Fit on Training (Clustered View)
             m_proxy <- glm(as.formula(f_str), data = model_train, family = binomial())
             
-            # Predict on Validation (Raw View)
+            # Predict & Score
             preds <- predict(m_proxy, newdata = model_val, type = "response")
-            
-            # E. Calculate AUC
-            # ----------------
             labels <- model_val$species_observed
             
-            # Edge case checks
             if(length(unique(labels)) < 2) return(list(Score = 0, Pred = 0))
             
             fg <- preds[labels == 1]
@@ -105,7 +82,6 @@ bayesianOptimizedClustGeo <- function(
             
             if(length(fg) == 0 || length(bg) == 0) return(list(Score = 0, Pred = 0))
             
-            # Using PRROC (ensure it's loaded in parent script or load here)
             auc_score <- PRROC::roc.curve(scores.class0 = fg, scores.class1 = bg)$auc
             
             return(list(Score = auc_score, Pred = 0))
@@ -117,7 +93,6 @@ bayesianOptimizedClustGeo <- function(
     
     # --- 4. RUN OPTIMIZATION ---
     search_bounds <- list(rho = c(0.1, 0.9), kappa = c(10, 90))
-    
     search_grid <- data.frame(
         rho = runif(n_init, 0.1, 0.9),
         kappa = runif(n_init, 10, 90)
@@ -133,5 +108,21 @@ bayesianOptimizedClustGeo <- function(
         verbose = FALSE
     )
     
-    return(res)
+    # --- 5. GENERATE FINAL CLUSTERS ---
+    # Retrieve best parameters
+    best_rho <- res$Best_Pars["rho"]
+    best_kappa <- res$Best_Pars["kappa"]
+    
+    # Rerun ONE last time to get the object
+    final_tree <- ClustGeo::hclustgeo(env_dist, geo_dist, alpha = best_rho)
+    final_percent <- best_kappa / 100.0
+    final_K <- max(2, round(nrow(train_locs) * final_percent))
+    
+    train_locs$site_id <- cutree(final_tree, final_K)
+    
+    # Return everything in a list
+    return(list(
+        Optimization = res,
+        Final_Site_Map = train_locs[, c("locality_id", "site_id")] # Just the mapping
+    ))
 }
