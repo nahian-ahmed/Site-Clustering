@@ -258,8 +258,8 @@ spatial_methods <- c(
   "2to10-sameObs",      # Moved here to ensure identical points
   "1-kmSq",             # Moved per your request
   "rounded-4",          # Moved per your request
-  "DBSC", 
-  "BayesOptClustGeo"
+  "DBSC" 
+  # "BayesOptClustGeo"
 )
 
 # Add the specific parameter versions if they exist in your 'method_names' list
