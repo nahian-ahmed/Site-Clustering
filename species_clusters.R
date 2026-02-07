@@ -63,8 +63,8 @@ method_names <- c(
   "clustGeo-50-80",
   "clustGeo-50-90",
   "clustGeo-50-95",
-  "DBSC",
-  "BayesOptClustGeo"
+  "DBSC"
+  # "BayesOptClustGeo"
   # "SLIC-0.05-3200",
   # "SLIC-0.1-3200",
   # "SLIC-0.15-3200",
