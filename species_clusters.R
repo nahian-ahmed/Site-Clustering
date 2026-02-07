@@ -63,8 +63,8 @@ method_names <- c(
   "clustGeo-50-80",
   "clustGeo-50-90",
   "clustGeo-50-95",
-  "DBSC",
-  "BayesOptClustGeo"
+  "DBSC"
+  # "BayesOptClustGeo"
   # "SLIC-0.05-3200",
   # "SLIC-0.1-3200",
   # "SLIC-0.15-3200",
@@ -78,7 +78,7 @@ method_names <- c(
 
 # Methods to plot
 methods_to_plot <- c(
-  "1to10", "2to10", "2to10-sameObs", "lat-long", "1-kmSq", "rounded-4", "DBSC", "BayesOptClustGeo"
+  "1to10", "2to10", "2to10-sameObs", "lat-long", "1-kmSq", "rounded-4", "DBSC"
 )
 
 methods_to_plot_clustGeo <- c(
@@ -540,6 +540,102 @@ for (species_name in species_names) {
     clust_df$species_observed <- NULL
     clust_df <- inner_join(clust_df, spec_train_obs, by = "checklist_id")
 
+
+
+    if (method_name == "BayesOptClustGeo") {
+        cat("  Optimizing specific clusters (GLM Proxy)... ")
+        
+        # 1. Prepare Data Splits
+        # 'train_df_spatial_input' (min 2, max 10) is already defined globally,
+        # BUT we need to make sure it has the CURRENT species observations attached.
+        
+        # Re-attach current species obs to the spatial input skeleton
+        current_spatial_input <- train_df_spatial_input %>%
+            select(-any_of("species_observed")) %>%
+            inner_join(spec_train_obs, by = "checklist_id")
+
+        # Create Validation Set (Singletons + Overflow)
+        # Everything in current_train_df that is NOT in the spatial input
+        validation_df <- current_train_df %>%
+            filter(!checklist_id %in% current_spatial_input$checklist_id)
+
+        # 2. Run Optimization
+        opt_res <- bayesianOptimizedClustGeo(
+            train_data = current_spatial_input,
+            validation_data = validation_df,
+            state_covs = state_cov_names,
+            obs_covs = obs_cov_names,
+            n_init = 10,       # Initial random points
+            n_iter = 15,       # Optimization steps (adjust for time)
+            env_weight = 5
+        )
+        
+        best_rho <- opt_res$Best_Pars$rho
+        best_kappa <- opt_res$Best_Pars$kappa
+        cat(sprintf("[Rho: %.2f, Kappa: %.2f] ", best_rho, best_kappa))
+        
+        # 3. Generate Final Clusters (Re-run one last time with best params)
+        # Get unique locations
+        uniq_loc_df <- dplyr::distinct(current_spatial_input, latitude, longitude, .keep_all = TRUE)
+        # normalize and dist (same as inside the function, simplified here for generation)
+        # ... actually, relying on 'clustGeoSites' helper is cleaner if it handles raw data:
+        
+        # We need to manually generate the site IDs on the unique locations
+        # to ensure consistency with how BayesOpt did it.
+        # It's safest to just rely on clustGeoSites if it accepts raw inputs:
+        final_sites_df <- clustGeoSites(
+            alpha = best_rho,
+            checklists = uniq_loc_df,
+            state_covs = state_cov_names,
+            num_sites = max(2, round(nrow(uniq_loc_df) * (best_kappa / 100.0)))
+        )
+        
+        # 4. Map back to full spatial input
+        site_lookup <- final_sites_df[, c("locality_id", "site")]
+        
+        # This 'clust_df' is what occuN expects
+        # We join it to 'current_spatial_input'
+        clust_df <- left_join(current_spatial_input, site_lookup, by = "locality_id")
+        
+        # Update 'global_clust_obj' so the standard code below uses it
+        global_clust_obj <- clust_df 
+        
+        # 5. Generate W Matrix specifically for this new clustering
+        # (We must do this here because the sites didn't exist before)
+        # Extract geometries
+        current_geoms <- create_site_geometries(clust_df, cov_tif_albers, buffer_m, "BayesOpt_Temp")
+        # Handle disjoint
+        split_res <- disjoint_site_geometries(current_geoms, clust_df)
+        current_geoms <- split_res$geoms
+        clust_df <- split_res$data # Update data with split sites
+        
+        # Generate W
+        w_matrix <- generate_overlap_matrix(current_geoms, cov_tif_albers)
+        
+        # Override the standard loop variable
+        # (The loop usually expects 'all_w_matrices[[method_name]]')
+        # We just set w_matrix directly here, and the code below uses 'w_matrix'
+        
+    } else {
+        # [STANDARD LOGIC] for all other methods
+        global_clust_obj <- all_clusterings[[method_name]]
+        
+        # ... (rest of standard logic to extract clust_df) ...
+        if (is.list(global_clust_obj) && "result_df" %in% names(global_clust_obj)) {
+          clust_df <- global_clust_obj$result_df
+        } else {
+          clust_df <- global_clust_obj
+        }
+        
+        # Ensure species obs are updated
+        if(!is.null(clust_df)) {
+             clust_df$species_observed <- NULL
+             clust_df <- inner_join(clust_df, spec_train_obs, by = "checklist_id")
+        }
+
+        w_matrix <- all_w_matrices[[method_name]]
+    }
+    
     # 2. Retrieve W Matrix
     w_matrix <- all_w_matrices[[method_name]]
     

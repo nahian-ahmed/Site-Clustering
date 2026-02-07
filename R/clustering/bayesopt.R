@@ -1,128 +1,159 @@
 ###########################
 # BayesOptClustGeo helper
-# (Refactored for performance and safety)
-#
-# November 9, 2025
+# (Updated: GLM Proxy with Validation Set)
 ###########################
 
-library(rBayesianOptimization) # bayesian optimization library
-library(cluster)               # silhouette width calculation
-library(dplyr)                 # For distinct() and %>%
-library(distances)
+library(rBayesianOptimization) 
+library(dplyr)
+library(FNN)   # install.packages("FNN") for fast nearest neighbor
+library(ClustGeo)
 
-# --- Helper Functions ---
-# (These are fine as-is)
+# --- Normalization Helper ---
 normalize <- function(x) {
-    return((x- min(x)) /(max(x)-min(x)))
+    return((x - min(x)) / (max(x) - min(x)))
 }
 
-get_pairwise_distances <- function(df, sp_features, env_features, normalize = TRUE, env_weight = 5) {
-    
-    # 1. Normalize Spatial Features (0-1)
-    if (normalize){
-        for (sp_feature in sp_features){
-            df[,sp_feature] <- normalize(df[,sp_feature])
-        }
-    }
-    
-    # 2. Apply Weight to Environmental Features
-    # Multiplying the values effectively increases their contribution 
-    # to the Euclidean distance calculation.
-    for (env_feature in env_features){
-        df[, env_feature] <- df[, env_feature] * env_weight
-    }
-
-    # 3. Select columns and calculate distance
-    df <- df[,c(sp_features,env_features)]
-    
-    m_dist <- distances::distances(as.data.frame(df))
-    
-    return(m_dist)
-}
-
-# --- Main Bayesian Optimization Function ---
-
-# UPDATED SIGNATURE: no longer takes obs_covs
+# --- Main Optimization Function ---
 bayesianOptimizedClustGeo <- function(
-    train_data, 
+    train_data,          # The "Spatial Input" (2-10 visits)
+    validation_data,     # The "Discarded" Data (Singletons + Overflow)
     state_covs, 
-    fit_func,
-    n_init = 20,
-    n_iter = 10,
-    env_weight = 1
-
+    obs_covs,            # Needed for the GLM proxy
+    n_init = 15,
+    n_iter = 25,
+    env_weight = 5       # Weight for environmental distance in ClustGeo
 ){
     
-    # --- 1. PRE-CALCULATE ALL STATIC DATA ---
-    message("BayesOpt: Pre-processing data...")
-
-    train_data_cgul <- train_data
-    train_data_cgul$lat_long <- paste0(train_data_cgul$latitude, "_", train_data_cgul$longitude)
+    # --- 1. PREP DATA ---
+    # We only cluster unique locations
+    train_locs <- train_data %>%
+        dplyr::distinct(locality_id, latitude, longitude, .keep_all = TRUE)
     
-    uniq_loc_df <- dplyr::distinct(train_data_cgul, lat_long, .keep_all = T)
+    # --- 2. PRE-CALCULATE DISTANCES ---
+    # (Calculate once to save time inside the loop)
+    df_for_dist <- train_locs
     
-    message("BayesOpt: Pre-calculating pairwise distance matrix...")
-    m_dist <- get_pairwise_distances(train_data_cgul, c("latitude","longitude"), state_covs, env_weight = env_weight)
+    # Normalize features for distance calculation
+    for (col in c("latitude", "longitude")) {
+        df_for_dist[[col]] <- normalize(df_for_dist[[col]])
+    }
+    for (col in state_covs) {
+        df_for_dist[[col]] <- normalize(df_for_dist[[col]]) * env_weight
+    }
     
-
-    # --- 2. DEFINE THE FITNESS FUNCTION (as a Closure) ---
+    env_dist <- dist(df_for_dist[, state_covs])
+    geo_dist <- dist(df_for_dist[, c("latitude", "longitude")])
+    
+    # --- 3. FITNESS FUNCTION ---
+    # This runs inside the Bayesian Optimization loop
     clustGeo_fit <- function(rho, kappa) {
-
-        percent <- kappa / 100.0
         
-
-        clustGeo_df_i <- clustGeoSites(
-            alpha = rho, 
-            uniq_loc_df,
-            state_covs = state_covs, 
-            num_sites = round(nrow(uniq_loc_df) * percent)
-        )
-        
-        # Link the *full* dataset back to the new cluster IDs
-        site_lookup <- clustGeo_df_i[, c("lat_long", "site")]
-        
-        joined_data <- dplyr::left_join(train_data_cgul, site_lookup, by = "lat_long")
-        current_sites <- joined_data$site
-        current_sites[is.na(current_sites)] <- -1 
-        
-        m_sil <- silhouette(current_sites, m_dist) 
-        silh <- mean(m_sil[, 3], na.rm = TRUE) 
-        
-        if (fit_func == "silhouette") {
-            result <- list(Score = silh, Pred = 0)
-            return(result)
-        }
-    } # --- End of nested clustGeo_fit function ---
-
-
-    # --- 3. DEFINE SEARCH AND RUN OPTIMIZATION ---
-    search_bound <- list(rho = c(0.01, 0.99),
-                         kappa = c(10, 90))
-
+        # Wrap in tryCatch to handle rare clustering failures
+        tryCatch({
+            
+            # A. Generate Clusters
+            # --------------------
+            tree <- ClustGeo::hclustgeo(env_dist, geo_dist, alpha = rho)
+            
+            percent <- kappa / 100.0
+            K <- max(2, round(nrow(train_locs) * percent))
+            
+            # Get Cluster IDs for Training Locations
+            train_locs$site_id <- cutree(tree, K)
+            
+            # B. Assign Validation Data to Clusters
+            # -------------------------------------
+            # 1. Existing Locations: Join by locality_id
+            val_mapped <- validation_data %>%
+                left_join(train_locs[, c("locality_id", "site_id")], by = "locality_id")
+            
+            # 2. New Locations (Singletons): Nearest Neighbor
+            val_found <- val_mapped %>% filter(!is.na(site_id))
+            val_missing <- val_mapped %>% filter(is.na(site_id))
+            
+            if (nrow(val_missing) > 0) {
+                # Find nearest training location
+                nn_idx <- FNN::get.knnx(
+                    data = train_locs[, c("latitude", "longitude")],
+                    query = val_missing[, c("latitude", "longitude")],
+                    k = 1
+                )$nn.index
+                val_missing$site_id <- train_locs$site_id[nn_idx]
+            }
+            
+            # Combine validation sets
+            full_validation <- bind_rows(val_found, val_missing)
+            
+            # Join site IDs back to full training data
+            full_train <- train_data %>%
+                left_join(train_locs[, c("locality_id", "site_id")], by = "locality_id")
+            
+            # C. Calculate SITE-LEVEL Covariates
+            # ----------------------------------
+            # CRITICAL: We average the environment per cluster.
+            # This forces the GLM to evaluate the CLUSTER'S predictive power.
+            site_covs <- full_train %>%
+                group_by(site_id) %>%
+                summarise(across(all_of(state_covs), mean, .names = "site_{.col}"), .groups="drop")
+            
+            # Attach Site Covs to Train & Validation
+            model_train <- full_train %>% left_join(site_covs, by = "site_id")
+            model_val <- full_validation %>% left_join(site_covs, by = "site_id")
+            
+            # D. Fit GLM Proxy
+            # ----------------
+            # Formula: observed ~ site_environment + observation_covariates
+            site_vars <- paste0("site_", state_covs)
+            f_str <- paste("species_observed ~", 
+                           paste(c(site_vars, obs_covs), collapse = " + "))
+            
+            # Fit on Training
+            m_proxy <- glm(as.formula(f_str), data = model_train, family = binomial())
+            
+            # Predict on Validation
+            preds <- predict(m_proxy, newdata = model_val, type = "response")
+            
+            # E. Calculate AUC
+            # ----------------
+            labels <- model_val$species_observed
+            
+            # Edge case: Validation set has only 0s or only 1s (rare but possible)
+            if(length(unique(labels)) < 2) return(list(Score = 0, Pred = 0))
+            
+            # Simple AUC calculation using PRROC (already loaded in main script) or ROCR
+            # Using PRROC since it's in your dependencies
+            fg <- preds[labels == 1]
+            bg <- preds[labels == 0]
+            
+            if(length(fg) == 0 || length(bg) == 0) return(list(Score = 0, Pred = 0))
+            
+            auc_score <- PRROC::roc.curve(scores.class0 = fg, scores.class1 = bg)$auc
+            
+            return(list(Score = auc_score, Pred = 0))
+            
+        }, error = function(e) {
+            # Return low score on failure
+            return(list(Score = 0, Pred = 0))
+        })
+    }
+    
+    # --- 4. RUN OPTIMIZATION ---
+    search_bounds <- list(rho = c(0.1, 0.9), kappa = c(10, 90))
+    
     search_grid <- data.frame(
-        rho = runif(n_init, search_bound$rho[1], search_bound$rho[2]),
-        kappa = runif(n_init, search_bound$kappa[1], search_bound$kappa[2])
+        rho = runif(n_init, 0.1, 0.9),
+        kappa = runif(n_init, 10, 90)
     )
     
-    message("BayesOpt: Starting optimization...")
-    
-    bayesianOptimized <- rBayesianOptimization::BayesianOptimization(
-        FUN = clustGeo_fit, 
-        bounds = search_bound, 
-        init_grid_dt = search_grid, 
-        init_points = 0, 
-        n_iter = n_iter, 
+    res <- rBayesianOptimization::BayesianOptimization(
+        FUN = clustGeo_fit,
+        bounds = search_bounds,
+        init_grid_dt = search_grid,
+        init_points = 0,
+        n_iter = n_iter,
         acq = "ucb",
-        verbose = TRUE 
+        verbose = FALSE
     )
     
-    message("BayesOpt: Optimization complete.")
-
-    return (list(
-        Best_Value = bayesianOptimized$Best_Value,
-        Best_Pars = list(
-            rho = bayesianOptimized$Best_Par[1], 
-            kappa = bayesianOptimized$Best_Par[2]
-        )
-    ))
+    return(res)
 }
