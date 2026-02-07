@@ -63,8 +63,8 @@ method_names <- c(
   "clustGeo-50-80",
   "clustGeo-50-90",
   "clustGeo-50-95",
-  "DBSC"
-  # "BayesOptClustGeo"
+  "DBSC",
+  "BayesOptClustGeo"
   # "SLIC-0.05-3200",
   # "SLIC-0.1-3200",
   # "SLIC-0.15-3200",
@@ -635,9 +635,9 @@ for (species_name in species_names) {
 
         w_matrix <- all_w_matrices[[method_name]]
     }
-    
-    # 2. Retrieve W Matrix
-    w_matrix <- all_w_matrices[[method_name]]
+
+    # # 2. Retrieve W Matrix
+    # w_matrix <- all_w_matrices[[method_name]]
     
     if (is.null(w_matrix)) {
        cat("Skipping (No W matrix)\n"); next
