@@ -451,6 +451,7 @@ w_matrix_test <- test_structures$w_matrix
 
 all_param_results <- list()
 all_pred_results <- list()
+all_bayesopt_history <- list()
 
 # Helper to load simple observation data
 get_species_obs_df <- function(sp_name, year) {
@@ -563,6 +564,20 @@ for (species_name in species_names) {
             n_iter = 15
         )
         
+
+        # Extract the full history (Round, rho, kappa, Value)
+        history_df <- opt_result_list$Optimization$History
+        
+        # Add species name
+        history_df$species <- species_name
+        
+        # Rename 'Value' to 'AUC' for clarity
+        colnames(history_df)[colnames(history_df) == "Value"] <- "AUC"
+        
+        # Store in global list
+        all_bayesopt_history[[length(all_bayesopt_history) + 1]] <- history_df
+
+
         # Extract Params for logging
         best_rho <- opt_result_list$Optimization$Best_Pars["rho"]
         best_kappa <- opt_result_list$Optimization$Best_Pars["kappa"]
@@ -702,5 +717,17 @@ write.csv(dplyr::bind_rows(all_param_results), file.path(output_dir, "estimated_
 write.csv(dplyr::bind_rows(all_pred_results), file.path(output_dir, "predictive_performance.csv"), row.names = FALSE)
 write.csv(dplyr::bind_rows(all_clustering_stats_pre), file.path(output_dir, "clustering_stats_PRE.csv"), row.names = FALSE)
 write.csv(dplyr::bind_rows(all_clustering_stats_post), file.path(output_dir, "clustering_stats_POST.csv"), row.names = FALSE)
+
+
+# Save Full BayesOpt History
+if (length(all_bayesopt_history) > 0) {
+  # Combine all species histories
+  full_history_df <- dplyr::bind_rows(all_bayesopt_history)
+  
+  # Reorder columns to user preference: species, Round, rho, kappa, AUC
+  full_history_df <- full_history_df[, c("species", "Round", "rho", "kappa", "AUC")]
+  
+  write.csv(full_history_df, file.path(output_dir, "BayesOptClustGeo_params.csv"), row.names = FALSE)
+}
 
 cat("Done.\n")
