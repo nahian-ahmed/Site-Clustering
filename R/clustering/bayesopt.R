@@ -92,10 +92,10 @@ bayesianOptimizedClustGeo <- function(
     }
     
     # --- 4. RUN OPTIMIZATION ---
-    search_bounds <- list(rho = c(0.1, 0.9), kappa = c(10, 90))
+    search_bounds <- list(rho = c(0.01, 0.99), kappa = c(5, 95))
     search_grid <- data.frame(
-        rho = runif(n_init, 0.1, 0.9),
-        kappa = runif(n_init, 10, 90)
+        rho = runif(n_init, 0.01, 0.99),
+        kappa = runif(n_init, 5, 95)
     )
     
     res <- rBayesianOptimization::BayesianOptimization(
