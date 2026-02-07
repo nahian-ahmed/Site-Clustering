@@ -12,8 +12,8 @@ bayesianOptimizedClustGeo <- function(
     validation_data,     # The "Discarded" Data (Singletons + Overflow)
     state_covs, 
     obs_covs,            # Needed for the GLM proxy
-    n_init = 15,
-    n_iter = 25
+    n_init = 20,
+    n_iter = 30
 ){
     
     # --- 1. PREP DATA ---
