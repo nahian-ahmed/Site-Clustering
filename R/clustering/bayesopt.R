@@ -1,11 +1,10 @@
 ###########################
 # BayesOptClustGeo helper
-# (Updated: GLM Proxy with Validation Set)
+# (Updated: GLM Proxy - No FNN, Validation = Self-Sites)
 ###########################
 
 library(rBayesianOptimization) 
 library(dplyr)
-library(FNN)   # install.packages("FNN") for fast nearest neighbor
 library(ClustGeo)
 
 # --- Normalization Helper ---
@@ -25,12 +24,11 @@ bayesianOptimizedClustGeo <- function(
 ){
     
     # --- 1. PREP DATA ---
-    # We only cluster unique locations
+    # We only cluster unique locations in the training set
     train_locs <- train_data %>%
         dplyr::distinct(locality_id, latitude, longitude, .keep_all = TRUE)
     
-    # --- 2. PRE-CALCULATE DISTANCES ---
-    # (Calculate once to save time inside the loop)
+    # --- 2. PRE-CALCULATE DISTANCES (Training Only) ---
     df_for_dist <- train_locs
     
     # Normalize features for distance calculation
@@ -45,94 +43,74 @@ bayesianOptimizedClustGeo <- function(
     geo_dist <- dist(df_for_dist[, c("latitude", "longitude")])
     
     # --- 3. FITNESS FUNCTION ---
-    # This runs inside the Bayesian Optimization loop
     clustGeo_fit <- function(rho, kappa) {
         
-        # Wrap in tryCatch to handle rare clustering failures
         tryCatch({
             
-            # A. Generate Clusters
-            # --------------------
+            # A. Generate Clusters (Training Only)
+            # ------------------------------------
             tree <- ClustGeo::hclustgeo(env_dist, geo_dist, alpha = rho)
             
             percent <- kappa / 100.0
             K <- max(2, round(nrow(train_locs) * percent))
             
-            # Get Cluster IDs for Training Locations
+            # Assign Site IDs to Training Locations
             train_locs$site_id <- cutree(tree, K)
             
-            # B. Assign Validation Data to Clusters
-            # -------------------------------------
-            # 1. Existing Locations: Join by locality_id
-            val_mapped <- validation_data %>%
-                left_join(train_locs[, c("locality_id", "site_id")], by = "locality_id")
-            
-            # 2. New Locations (Singletons): Nearest Neighbor
-            val_found <- val_mapped %>% filter(!is.na(site_id))
-            val_missing <- val_mapped %>% filter(is.na(site_id))
-            
-            if (nrow(val_missing) > 0) {
-                # Find nearest training location
-                nn_idx <- FNN::get.knnx(
-                    data = train_locs[, c("latitude", "longitude")],
-                    query = val_missing[, c("latitude", "longitude")],
-                    k = 1
-                )$nn.index
-                val_missing$site_id <- train_locs$site_id[nn_idx]
-            }
-            
-            # Combine validation sets
-            full_validation <- bind_rows(val_found, val_missing)
-            
-            # Join site IDs back to full training data
+            # Map Site IDs back to full training data
             full_train <- train_data %>%
                 left_join(train_locs[, c("locality_id", "site_id")], by = "locality_id")
             
-            # C. Calculate SITE-LEVEL Covariates
-            # ----------------------------------
-            # CRITICAL: We average the environment per cluster.
-            # This forces the GLM to evaluate the CLUSTER'S predictive power.
-            site_covs <- full_train %>%
+            # B. Prepare Training Data for GLM (Cluster Averages)
+            # ---------------------------------------------------
+            # We average the environment per cluster.
+            train_site_covs <- full_train %>%
                 group_by(site_id) %>%
                 summarise(across(all_of(state_covs), mean, .names = "site_{.col}"), .groups="drop")
             
-            # Attach Site Covs to Train & Validation
-            model_train <- full_train %>% left_join(site_covs, by = "site_id")
-            model_val <- full_validation %>% left_join(site_covs, by = "site_id")
+            model_train <- full_train %>% 
+                left_join(train_site_covs, by = "site_id")
             
-            # D. Fit GLM Proxy
-            # ----------------
+            # C. Prepare Validation Data for GLM (Self-Sites)
+            # -----------------------------------------------
+            # Treat every validation point as its own site. 
+            # The "Site Environment" is just the point's raw environment.
+            # We create columns named 'site_elevation', etc., using the raw values.
+            
+            model_val <- validation_data %>%
+                mutate(across(all_of(state_covs), ~ .x, .names = "site_{.col}"))
+            
+            # D. Fit GLM Proxy & Predict
+            # --------------------------
             # Formula: observed ~ site_environment + observation_covariates
             site_vars <- paste0("site_", state_covs)
             f_str <- paste("species_observed ~", 
                            paste(c(site_vars, obs_covs), collapse = " + "))
             
-            # Fit on Training
+            # Fit on Training (Clustered View)
             m_proxy <- glm(as.formula(f_str), data = model_train, family = binomial())
             
-            # Predict on Validation
+            # Predict on Validation (Raw View)
             preds <- predict(m_proxy, newdata = model_val, type = "response")
             
             # E. Calculate AUC
             # ----------------
             labels <- model_val$species_observed
             
-            # Edge case: Validation set has only 0s or only 1s (rare but possible)
+            # Edge case checks
             if(length(unique(labels)) < 2) return(list(Score = 0, Pred = 0))
             
-            # Simple AUC calculation using PRROC (already loaded in main script) or ROCR
-            # Using PRROC since it's in your dependencies
             fg <- preds[labels == 1]
             bg <- preds[labels == 0]
             
             if(length(fg) == 0 || length(bg) == 0) return(list(Score = 0, Pred = 0))
             
+            # Using PRROC (ensure it's loaded in parent script or load here)
             auc_score <- PRROC::roc.curve(scores.class0 = fg, scores.class1 = bg)$auc
             
             return(list(Score = auc_score, Pred = 0))
             
         }, error = function(e) {
-            # Return low score on failure
             return(list(Score = 0, Pred = 0))
         })
     }
