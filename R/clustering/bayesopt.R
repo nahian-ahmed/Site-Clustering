@@ -110,8 +110,8 @@ bayesianOptimizedClustGeo <- function(
     
     # --- 5. GENERATE FINAL CLUSTERS ---
     # Retrieve best parameters
-    best_rho <- res$Best_Pars["rho"]
-    best_kappa <- res$Best_Pars["kappa"]
+    best_rho <- res$Best_Par["rho"]
+    best_kappa <- res$Best_Par["kappa"]
     
     # Rerun ONE last time to get the object
     final_tree <- ClustGeo::hclustgeo(env_dist, geo_dist, alpha = best_rho)

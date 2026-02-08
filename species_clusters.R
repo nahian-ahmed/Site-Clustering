@@ -515,7 +515,7 @@ for (species_name in species_names) {
   for (method_name in method_names) {
   
     cat(sprintf("  - Method: %s... ", method_name))
-    
+
     if (method_name == "BayesOptClustGeo") {
         cat("  Optimizing specific clusters (GLM Proxy)... ")
         
@@ -552,8 +552,8 @@ for (species_name in species_names) {
 
 
         # Extract Params for logging
-        best_rho <- opt_result_list$Optimization$Best_Pars["rho"]
-        best_kappa <- opt_result_list$Optimization$Best_Pars["kappa"]
+        best_rho <- opt_result_list$Optimization$Best_Par["rho"]
+        best_kappa <- opt_result_list$Optimization$Best_Par["kappa"]
         cat(sprintf("[Rho: %.2f, Kappa: %.2f] ", best_rho, best_kappa))
         
         # 3. Retrieve Final Clusters directly
