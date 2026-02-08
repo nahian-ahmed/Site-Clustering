@@ -513,36 +513,9 @@ for (species_name in species_names) {
   
   # --- FIT MODELS ---
   for (method_name in method_names) {
+  
     cat(sprintf("  - Method: %s... ", method_name))
     
-    # 1. Retrieve Pre-Calculated Clustering Data
-    # The clustering (site assignments) comes from the global run.
-    # However, 'current_clustering_df' is derived from training data.
-    # In 'get_clusterings', the output often contains the original data + 'site' column.
-    # We need to ensure that the 'species_observed' in the clustering DF matches the current species.
-    
-    # global_clust_obj <- all_clusterings[[method_name]]
-    
-    # # Extract the DF
-    # if (is.list(global_clust_obj) && "result_df" %in% names(global_clust_obj)) {
-    #   clust_df <- global_clust_obj$result_df
-    # } else {
-    #   clust_df <- global_clust_obj
-    # }
-    
-    # if (is.null(clust_df)) {
-    #     cat("Skipping (NULL data)\n")
-    #     next
-    # }
-    
-    # # CRITICAL: The 'clust_df' has the template species 'species_observed'.
-    # # We must update it with the current species observations.
-    # # We can do this by joining 'spec_train_obs' again or transferring from current_train_df
-    # clust_df$species_observed <- NULL
-    # clust_df <- inner_join(clust_df, spec_train_obs, by = "checklist_id")
-
-
-
     if (method_name == "BayesOptClustGeo") {
         cat("  Optimizing specific clusters (GLM Proxy)... ")
         
