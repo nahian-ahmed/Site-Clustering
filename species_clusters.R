@@ -517,84 +517,86 @@ for (species_name in species_names) {
     cat(sprintf("  - Method: %s... ", method_name))
 
     if (method_name == "BayesOptClustGeo") {
-        cat("  Optimizing specific clusters (GLM Proxy)... ")
-        
-        # 1. Prepare Data
-        current_spatial_input <- train_df_spatial_input %>%
-            select(-any_of("species_observed")) %>%
-            inner_join(spec_train_obs, by = "checklist_id")
+      cat("  Optimizing specific clusters (GLM Proxy)... ")
+      
+      # 1. Prepare Data
+      current_spatial_input <- train_df_spatial_input %>%
+          select(-any_of("species_observed")) %>%
+          inner_join(spec_train_obs, by = "checklist_id")
 
-        validation_df <- current_train_df %>%
-            filter(!checklist_id %in% current_spatial_input$checklist_id)
+      validation_df <- current_train_df %>%
+          filter(!checklist_id %in% current_spatial_input$checklist_id)
 
-        # 2. Run Optimization (Returns List with Final Map)
-        opt_result_list <- bayesianOptimizedClustGeo(
-            train_data = current_spatial_input,
-            validation_data = validation_df,
-            state_covs = state_cov_names,
-            obs_covs = obs_cov_names,
-            n_init = 10,
-            n_iter = 15
-        )
-        
+      # 2. Run Optimization
+      # UPDATE: Changed to 20 init + 30 iter = 50 total rounds
+      opt_result_list <- bayesianOptimizedClustGeo(
+          train_data = current_spatial_input,
+          validation_data = validation_df,
+          state_covs = state_cov_names,
+          obs_covs = obs_cov_names,
+          n_init = 20, 
+          n_iter = 30
+      )
+      
+      # Extract the full history (Round, kappa, Value)
+      history_df <- opt_result_list$Optimization$History
+      
+      # UPDATE: Add 'rho' manually because it's no longer in the optimization object
+      history_df$rho <- 0.5
+      history_df$species <- species_name
+      
+      # Rename 'Value' to 'AUC'
+      colnames(history_df)[colnames(history_df) == "Value"] <- "AUC"
+      
+      # Ensure column order matches your CSV preference
+      history_df <- history_df[, c("species", "Round", "rho", "kappa", "AUC")]
+      
+      # Store in global list
+      all_bayesopt_history[[length(all_bayesopt_history) + 1]] <- history_df
 
-        # Extract the full history (Round, rho, kappa, Value)
-        history_df <- opt_result_list$Optimization$History
-        
-        # Add species name
-        history_df$species <- species_name
-        
-        # Rename 'Value' to 'AUC' for clarity
-        colnames(history_df)[colnames(history_df) == "Value"] <- "AUC"
-        
-        # Store in global list
-        all_bayesopt_history[[length(all_bayesopt_history) + 1]] <- history_df
-
-
-        # Extract Params for logging
-        best_rho <- opt_result_list$Optimization$Best_Par["rho"]
-        best_kappa <- opt_result_list$Optimization$Best_Par["kappa"]
-        cat(sprintf("[Rho: %.2f, Kappa: %.2f] ", best_rho, best_kappa))
-        
-        # 3. Retrieve Final Clusters directly
-        # The function already did the work on the correct data!
-        site_lookup <- opt_result_list$Final_Site_Map
-        
-        # Rename 'site_id' to 'site' to match convention
-        site_lookup <- dplyr::rename(site_lookup, site = site_id)
-        
-        # 4. Map back to full spatial input
-        clust_df <- left_join(current_spatial_input, site_lookup, by = "locality_id")
-        
-        # Update global object
-        global_clust_obj <- clust_df 
-        
-        # 5. Generate W Matrix
-        current_geoms <- create_site_geometries(clust_df, cov_tif_albers, buffer_m, "BayesOpt_Temp")
-        split_res <- disjoint_site_geometries(current_geoms, clust_df)
-        current_geoms <- split_res$geoms
-        clust_df <- split_res$data 
-        
-        w_matrix <- generate_overlap_matrix(current_geoms, cov_tif_albers)
+      # Extract Params for logging
+      # UPDATE: Set best_rho manually, get kappa from result
+      best_rho <- 0.5
+      best_kappa <- opt_result_list$Optimization$Best_Par["kappa"]
+      cat(sprintf("[Rho: %.2f, Kappa: %.2f] ", best_rho, best_kappa))
+      
+      # 3. Retrieve Final Clusters directly
+      site_lookup <- opt_result_list$Final_Site_Map
+      
+      # Rename 'site_id' to 'site'
+      site_lookup <- dplyr::rename(site_lookup, site = site_id)
+      
+      # 4. Map back
+      clust_df <- left_join(current_spatial_input, site_lookup, by = "locality_id")
+      
+      global_clust_obj <- clust_df 
+      
+      # 5. Generate W Matrix
+      current_geoms <- create_site_geometries(clust_df, cov_tif_albers, buffer_m, "BayesOpt_Temp")
+      split_res <- disjoint_site_geometries(current_geoms, clust_df)
+      current_geoms <- split_res$geoms
+      clust_df <- split_res$data 
+      
+      w_matrix <- generate_overlap_matrix(current_geoms, cov_tif_albers)
         
     } else {
-        # [STANDARD LOGIC] for all other methods
-        global_clust_obj <- all_clusterings[[method_name]]
-        
-        # ... (rest of standard logic to extract clust_df) ...
-        if (is.list(global_clust_obj) && "result_df" %in% names(global_clust_obj)) {
-          clust_df <- global_clust_obj$result_df
-        } else {
-          clust_df <- global_clust_obj
-        }
-        
-        # Ensure species obs are updated
-        if(!is.null(clust_df)) {
-             clust_df$species_observed <- NULL
-             clust_df <- inner_join(clust_df, spec_train_obs, by = "checklist_id")
-        }
+      # [STANDARD LOGIC] for all other methods
+      global_clust_obj <- all_clusterings[[method_name]]
+      
+      # ... (rest of standard logic to extract clust_df) ...
+      if (is.list(global_clust_obj) && "result_df" %in% names(global_clust_obj)) {
+        clust_df <- global_clust_obj$result_df
+      } else {
+        clust_df <- global_clust_obj
+      }
+      
+      # Ensure species obs are updated
+      if(!is.null(clust_df)) {
+            clust_df$species_observed <- NULL
+            clust_df <- inner_join(clust_df, spec_train_obs, by = "checklist_id")
+      }
 
-        w_matrix <- all_w_matrices[[method_name]]
+      w_matrix <- all_w_matrices[[method_name]]
     }
 
     # # 2. Retrieve W Matrix
