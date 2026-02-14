@@ -104,8 +104,10 @@ bayesianOptimizedClustGeo <- function(
         umf, state_formula, obs_formula,
         n_reps = n_reps, stable_reps = stable_reps,
         optimizer = "nlminb",
-        init_lower = -2, 
-        init_upper = 2
+        lower = lower,
+        upper = upper,
+        init_lower = init_lower,
+        init_upper = init_upper
       )
       
       if (is.null(fm)) {
