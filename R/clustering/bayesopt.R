@@ -1,6 +1,6 @@
 ###########################
 # BayesOptClustGeo helper
-# (Updated: Bootstrap Validation)
+# (Diagnostic Version: Prints why AUC fails)
 ###########################
 
 library(rBayesianOptimization) 
@@ -43,7 +43,6 @@ bayesianOptimizedClustGeo <- function(
   # --- 3. PREP DATA (Validation) ---
   cat("  [BayesOpt] Preparing validation data...\n")
   
-  # We still use this helper to attach area_j and raster values efficiently
   val_prep <- prepare_test_spatial_structures(
     test_df = validation_data,
     albers_crs = albers_crs,
@@ -53,6 +52,16 @@ bayesianOptimizedClustGeo <- function(
   )
   validation_df_ready <- val_prep$test_df
   
+  # --- DIAGNOSTIC 1: CHECK VALIDATION TRUTH ---
+  n_obs <- sum(validation_df_ready$species_observed, na.rm=TRUE)
+  n_total <- nrow(validation_df_ready)
+  cat(sprintf("    [Diag] Validation Set: %d rows, %d detections (%.2f%%)\n", 
+              n_total, n_obs, (n_obs/n_total)*100))
+  
+  if (n_obs == 0 || n_obs == n_total) {
+    cat("    [CRITICAL WARNING] Validation set has NO variation (all 0s or all 1s). AUC is mathematically impossible.\n")
+  }
+
   obs_formula <- as.formula(paste("~", paste(obs_covs, collapse = " + ")))
   state_formula <- as.formula(paste("~", paste(state_covs, collapse = " + ")))
 
@@ -95,6 +104,7 @@ bayesianOptimizedClustGeo <- function(
       )
       
       if (is.null(fm)) {
+        cat("    [Diag] Model failed to converge (fm is NULL)\n")
         return(list(Score = 0, Pred = 0)) 
       }
       
@@ -105,58 +115,72 @@ bayesianOptimizedClustGeo <- function(
       rm(w_matrix, umf, fm, current_geoms)
       gc() 
       
-      # --- E. BOOTSTRAP VALIDATION (Replacing Spatial Subsampling) ---
-      auc_scores <- numeric(25)
-      valid_folds <- 0
+      # --- E. BOOTSTRAP VALIDATION ---
       
-      # Pre-calculate matrices for the WHOLE validation set once (Speedup)
+      # 1. Pre-calculate Predictions (Full Set)
       X_state_all <- model.matrix(state_formula, data = validation_df_ready)
       X_obs_all   <- model.matrix(obs_formula, data = validation_df_ready)
       
-      # Predict for ALL validation points once
-      pred_psi_all <- 1 - exp(-(exp(X_state_all %*% est_betas) * validation_df_ready$area_j))
+      # Robust Prediction: Handle Exploding Exponentials
+      linear_state <- X_state_all %*% est_betas
+      # Cap extreme values to prevent Inf
+      linear_state[linear_state > 20] <- 20 
+      linear_state[linear_state < -20] <- -20
+      
+      pred_psi_all <- 1 - exp(-(exp(linear_state) * validation_df_ready$area_j))
       pred_det_all <- plogis(X_obs_all %*% est_alphas)
       prob_all     <- pred_psi_all * pred_det_all
       truth_all    <- validation_df_ready$species_observed
       
+      # --- DIAGNOSTIC 2: CHECK PREDICTIONS ---
+      na_preds <- sum(is.na(prob_all))
+      if (na_preds > 0) {
+         # Force fix NAs
+         prob_all[is.na(prob_all)] <- 0
+         # Only print once per run usually, but here useful
+         # cat(sprintf("    [Diag] Fixed %d NA predictions.\n", na_preds))
+      }
+      
+      # If NO truth variation, return 0 immediately (avoids crash loops later)
+      if (length(unique(truth_all)) < 2) {
+         return(list(Score = 0, Pred = 0))
+      }
+
+      # 2. Bootstrap Loop
+      auc_scores <- numeric(25)
       n_val <- length(prob_all)
       
       for (r in 1:25) {
-        # 1. Bootstrap Sample Indices (With Replacement)
         boot_idx <- sample.int(n_val, n_val, replace = TRUE)
-        
-        # 2. Extract Predictions and Truth for this sample
         prob_boot <- prob_all[boot_idx]
         truth_boot <- truth_all[boot_idx]
         
-        # 3. Check for Monotonicity (Must have 0s and 1s)
+        # Check variation in this bootstrap sample
         if (length(unique(truth_boot)) < 2) {
            auc_scores[r] <- NA
            next
         }
         
-        # 4. Calculate AUC
         metrics <- calculate_classification_metrics(prob_boot, truth_boot)
-        
         if (!is.na(metrics$auc)) {
           auc_scores[r] <- metrics$auc
-          valid_folds <- valid_folds + 1
         } else {
           auc_scores[r] <- NA
         }
       }
       
-      # --- F. AGGREGATE ---
       mean_auc <- mean(auc_scores, na.rm = TRUE)
       
-      # Final safety check if bootstrapping failed completely (extremely rare)
       if (is.na(mean_auc)) {
-         # Fallback to single calculation on full set
+         # Fallback to Global AUC
          global_metrics <- calculate_classification_metrics(prob_all, truth_all)
          mean_auc <- global_metrics$auc
       }
       
-      if (is.na(mean_auc)) mean_auc <- 0
+      if (is.na(mean_auc)) {
+         cat("    [Diag] AUC is still NA after fallback. Returning 0.\n")
+         mean_auc <- 0
+      }
       
       return(list(Score = mean_auc, Pred = 0))
       
