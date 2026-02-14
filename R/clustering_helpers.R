@@ -104,10 +104,10 @@ run_clustering_method <- function(method_name, og_data, state_covs, truth_df = N
   # --- C. Simple/Flag-based methods ---
   } else {
     auk_params <- switch(method_name,
-      "1to10" = list(min_obs = 1, max_obs = 10, site_vars = c("locality_id"), canonical = "1to10"),
-      "2to10" = list(min_obs = 2, max_obs = 10, site_vars = c("locality_id"), canonical = "2to10"),
-      "2to10-sameObs" = list(min_obs = 2, max_obs = 10, site_vars = c("locality_id", "observer_id"), canonical = "2to10-sameObs"),
-      "lat-long" = list(min_obs = 1, max_obs = 1000000, site_vars = c("locality_id"), canonical = "lat-long"),
+      "1to10"         = list(min_obs = 1, max_obs = 10, site_vars = c("locality_id")),
+      "2to10"         = list(min_obs = 2, max_obs = 10, site_vars = c("locality_id")),
+      "2to10-sameObs" = list(min_obs = 2, max_obs = 10, site_vars = c("locality_id", "observer_id")),
+      "lat-long"      = list(min_obs = 1, max_obs = 1000000, site_vars = c("locality_id")),
       NULL 
     )
     
@@ -120,7 +120,7 @@ run_clustering_method <- function(method_name, og_data, state_covs, truth_df = N
         date_var = "formatted_date",
         site_vars = auk_params$site_vars
       )
-      return(list(name = auk_params$canonical, data = result_df))
+      return(list(name = method_name, data = result_df))
     }
     
     if (method_name == "svs" || method_name == "SVS") {
