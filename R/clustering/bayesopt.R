@@ -1,6 +1,6 @@
 ###########################
 # BayesOptClustGeo helper
-# (Crash-Proof Version with Forced Variance)
+# (Fixed: Initialization Bounds)
 ###########################
 
 library(rBayesianOptimization) 
@@ -64,8 +64,7 @@ bayesianOptimizedClustGeo <- function(
   # --- 4. FITNESS FUNCTION ---
   clustGeo_fit <- function(kappa) { 
     
-    # Initialize random fallback score to prevent Infinite Deviance crash
-    # (Values between 0.0001 and 0.001)
+    # Initialize random fallback score
     fallback_score <- 0.0001 + runif(1, 0, 0.0009)
     
     w_matrix <- NULL
@@ -96,10 +95,13 @@ bayesianOptimizedClustGeo <- function(
       
       umf <- prepare_occuN_data(train_data, clust_df, w_matrix, obs_covs, full_raster_covs)
       
+      # [FIX] Explicitly pass valid initialization bounds (-2, 2)
       fm <- fit_occuN_model(
         umf, state_formula, obs_formula,
         n_reps = n_reps, stable_reps = stable_reps,
-        optimizer = "nlminb"
+        optimizer = "nlminb",
+        init_lower = -2, 
+        init_upper = 2
       )
       
       if (is.null(fm)) {
@@ -131,8 +133,6 @@ bayesianOptimizedClustGeo <- function(
       # [DIAGNOSTIC] Print Prediction Stats
       p_mean <- mean(prob_all, na.rm=T)
       p_sd   <- sd(prob_all, na.rm=T)
-      cat(sprintf("    [Diag K=%.0f] Preds: Mean=%.4f, SD=%.4f\n", kappa, p_mean, p_sd))
-      flush.console()
       
       if (p_sd == 0 || is.na(p_sd)) {
           cat("    [Err] Constant predictions. Returning fallback.\n")
