@@ -465,7 +465,7 @@ for (species_name in species_names) {
     cat(sprintf("  - Method: %s... ", method_name))
 
     if (method_name == "BayesOptClustGeo") {
-      cat("  Optimizing specific clusters (GLM Proxy)... ")
+      cat("  Optimizing number of clusters... ")
       
       # 1. Prepare Data
       current_spatial_input <- train_df_spatial_input %>%
