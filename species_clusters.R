@@ -49,18 +49,18 @@ method_names <- c(
   "1-kmSq",
   "lat-long", 
   "rounded-4", 
-  "clustGeo-50-5",
-  "clustGeo-50-10",
-  "clustGeo-50-20",
-  "clustGeo-50-30",
-  "clustGeo-50-40",
-  "clustGeo-50-50",
-  "clustGeo-50-55",
-  "clustGeo-50-60",
-  "clustGeo-50-70",
-  "clustGeo-50-80",
-  "clustGeo-50-90",
-  "clustGeo-50-95",
+  # "clustGeo-50-5",
+  # "clustGeo-50-10",
+  # "clustGeo-50-20",
+  # "clustGeo-50-30",
+  # "clustGeo-50-40",
+  # "clustGeo-50-50",
+  # "clustGeo-50-55",
+  # "clustGeo-50-60",
+  # "clustGeo-50-70",
+  # "clustGeo-50-80",
+  # "clustGeo-50-90",
+  # "clustGeo-50-95",
   "DBSC",
   "BayesOptClustGeo"
 )
@@ -112,7 +112,7 @@ max_uniloc_points <- 10 # Options: 1, 3, ... 10, ... "all"
 output_dir <- file.path("species_experiments", "output", "clusters")
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
-
+plot_site_clusters = FALSE
 ###
 # 3. PREPROCESS RASTER
 ###
@@ -297,29 +297,30 @@ stats_pre <- summarize_clusterings(all_clusterings, all_site_geometries, units =
 stats_pre$species <- "GLOBAL_TEMPLATE" # Marked as template
 all_clustering_stats_pre[[1]] <- stats_pre
 
-# --- PLOTTING PRE-SPLIT ---
-cat("--- Plotting sites (PRE-SPLIT) ---\n")
-plot_sites(
-    base_train_df = master_train_df,
-    all_clusterings = all_clusterings,
-    all_site_geometries = all_site_geometries,
-    elevation_raster = cov_tif_albers_raw, 
-    methods_to_plot = methods_to_plot,
-    boundary_shp_path = boundary_shapefile_path,
-    output_path = file.path(output_dir, "sites_PRE.png"),
-    cluster_labels = TRUE
-)
-plot_sites(
-    base_train_df = master_train_df,
-    all_clusterings = all_clusterings,
-    all_site_geometries = all_site_geometries,
-    elevation_raster = cov_tif_albers_raw, 
-    methods_to_plot = methods_to_plot_clustGeo,
-    boundary_shp_path = boundary_shapefile_path,
-    output_path = file.path(output_dir, "sites_clustGeo_PRE.png"),
-    cluster_labels = TRUE
-)
-
+# # --- PLOTTING PRE-SPLIT ---
+if (plot_site_clusters){
+  cat("--- Plotting sites (PRE-SPLIT) ---\n")
+  plot_sites(
+      base_train_df = master_train_df,
+      all_clusterings = all_clusterings,
+      all_site_geometries = all_site_geometries,
+      elevation_raster = cov_tif_albers_raw, 
+      methods_to_plot = methods_to_plot,
+      boundary_shp_path = boundary_shapefile_path,
+      output_path = file.path(output_dir, "sites_PRE.png"),
+      cluster_labels = TRUE
+  )
+  plot_sites(
+      base_train_df = master_train_df,
+      all_clusterings = all_clusterings,
+      all_site_geometries = all_site_geometries,
+      elevation_raster = cov_tif_albers_raw, 
+      methods_to_plot = methods_to_plot_clustGeo,
+      boundary_shp_path = boundary_shapefile_path,
+      output_path = file.path(output_dir, "sites_clustGeo_PRE.png"),
+      cluster_labels = TRUE
+  )
+}
 
 
 # === 5.3 SPLIT DISJOINT SITES ===
@@ -349,28 +350,29 @@ stats_post$species <- "GLOBAL_TEMPLATE"
 all_clustering_stats_post[[1]] <- stats_post
 
 # --- PLOTTING POST-SPLIT (Run Once) ---
-cat("--- Plotting sites (POST-SPLIT) ---\n")
-plot_sites(
-    base_train_df = master_train_df,
-    all_clusterings = all_clusterings,
-    all_site_geometries = all_site_geometries,
-    elevation_raster = cov_tif_albers_raw, 
-    methods_to_plot = methods_to_plot,
-    boundary_shp_path = boundary_shapefile_path,
-    output_path = file.path(output_dir, "sites_POST.png"),
-    cluster_labels = TRUE
-)
-plot_sites(
-    base_train_df = master_train_df,
-    all_clusterings = all_clusterings,
-    all_site_geometries = all_site_geometries,
-    elevation_raster = cov_tif_albers_raw, 
-    methods_to_plot = methods_to_plot_clustGeo,
-    boundary_shp_path = boundary_shapefile_path,
-    output_path = file.path(output_dir, "sites_clustGeo_POST.png"),
-    cluster_labels = TRUE
-)
-
+if (plot_site_clusters){
+  cat("--- Plotting sites (POST-SPLIT) ---\n")
+  plot_sites(
+      base_train_df = master_train_df,
+      all_clusterings = all_clusterings,
+      all_site_geometries = all_site_geometries,
+      elevation_raster = cov_tif_albers_raw, 
+      methods_to_plot = methods_to_plot,
+      boundary_shp_path = boundary_shapefile_path,
+      output_path = file.path(output_dir, "sites_POST.png"),
+      cluster_labels = TRUE
+  )
+  plot_sites(
+      base_train_df = master_train_df,
+      all_clusterings = all_clusterings,
+      all_site_geometries = all_site_geometries,
+      elevation_raster = cov_tif_albers_raw, 
+      methods_to_plot = methods_to_plot_clustGeo,
+      boundary_shp_path = boundary_shapefile_path,
+      output_path = file.path(output_dir, "sites_clustGeo_POST.png"),
+      cluster_labels = TRUE
+  )
+}
 # === 5.4 W MATRICES ===
 cat("--- Generating W matrices ---\n")
 all_w_matrices <- list()
