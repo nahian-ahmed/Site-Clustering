@@ -1,6 +1,6 @@
 ###########################
 # BayesOptClustGeo helper
-# (Deep Diagnostic Version)
+# (Crash-Proof Version with Forced Variance)
 ###########################
 
 library(rBayesianOptimization) 
@@ -52,17 +52,21 @@ bayesianOptimizedClustGeo <- function(
   )
   validation_df_ready <- val_prep$test_df
   
-  # Diagnostic: Check Validation Truth
+  # Check Truth
   n_obs <- sum(validation_df_ready$species_observed, na.rm=TRUE)
   cat(sprintf("    [Diag] Validation: %d rows, %d detections (%.1f%%)\n", 
               nrow(validation_df_ready), n_obs, (n_obs/nrow(validation_df_ready))*100))
-
+  
   obs_formula <- as.formula(paste("~", paste(obs_covs, collapse = " + ")))
   state_formula <- as.formula(paste("~", paste(state_covs, collapse = " + ")))
 
   
   # --- 4. FITNESS FUNCTION ---
   clustGeo_fit <- function(kappa) { 
+    
+    # Initialize random fallback score to prevent Infinite Deviance crash
+    # (Values between 0.0001 and 0.001)
+    fallback_score <- 0.0001 + runif(1, 0, 0.0009)
     
     w_matrix <- NULL
     umf <- NULL
@@ -99,28 +103,22 @@ bayesianOptimizedClustGeo <- function(
       )
       
       if (is.null(fm)) {
-        cat("    [Err] Model failed to fit (NULL result).\n")
-        return(list(Score = 0, Pred = 0)) 
+        cat(sprintf("    [Err K=%.0f] Model failed to fit (NULL). Returning random small score.\n", kappa))
+        return(list(Score = fallback_score, Pred = 0)) 
       }
       
       est_alphas <- coef(fm, 'det')   
       est_betas <- coef(fm, 'state')
-      
-      # [DIAGNOSTIC] Print Coefficients to check for explosion
-      # cat(sprintf("    [Diag K=%.0f] Betas Range: [%.2f, %.2f]\n", 
-      #             kappa, min(est_betas), max(est_betas)))
       
       # --- D. CLEANUP ---
       rm(w_matrix, umf, fm, current_geoms)
       gc() 
       
       # --- E. BOOTSTRAP VALIDATION ---
-      
-      # 1. Pre-calculate Predictions (Full Set)
       X_state_all <- model.matrix(state_formula, data = validation_df_ready)
       X_obs_all   <- model.matrix(obs_formula, data = validation_df_ready)
       
-      # Handle Exploding Exponentials
+      # Cap extreme values to prevent NA predictions
       linear_state <- X_state_all %*% est_betas
       linear_state[linear_state > 20] <- 20 
       linear_state[linear_state < -20] <- -20
@@ -130,16 +128,18 @@ bayesianOptimizedClustGeo <- function(
       prob_all     <- pred_psi_all * pred_det_all
       truth_all    <- validation_df_ready$species_observed
       
-      # [DIAGNOSTIC] Check Prediction Distribution
-      # If Mean Pred is 0 or very small, AUC might fail or be 0.5
+      # [DIAGNOSTIC] Print Prediction Stats
       p_mean <- mean(prob_all, na.rm=T)
       p_sd   <- sd(prob_all, na.rm=T)
+      cat(sprintf("    [Diag K=%.0f] Preds: Mean=%.4f, SD=%.4f\n", kappa, p_mean, p_sd))
+      flush.console()
+      
       if (p_sd == 0 || is.na(p_sd)) {
-          cat(sprintf("    [Err K=%.0f] Predictions are CONSTANT (Mean=%.4f). AUC undefined. Returning 0.5.\n", kappa, p_mean))
-          return(list(Score = 0.5, Pred = 0)) # Return 0.5 (random) to prevent crash
+          cat("    [Err] Constant predictions. Returning fallback.\n")
+          return(list(Score = fallback_score, Pred = 0))
       }
 
-      # 2. Bootstrap Loop
+      # Bootstrap Loop
       auc_scores <- numeric(25)
       n_val <- length(prob_all)
       
@@ -148,10 +148,8 @@ bayesianOptimizedClustGeo <- function(
         prob_boot <- prob_all[boot_idx]
         truth_boot <- truth_all[boot_idx]
         
-        # Check variation
         if (length(unique(truth_boot)) < 2) {
-           auc_scores[r] <- NA
-           next
+           auc_scores[r] <- NA; next
         }
         
         metrics <- calculate_classification_metrics(prob_boot, truth_boot)
@@ -164,26 +162,26 @@ bayesianOptimizedClustGeo <- function(
       
       mean_auc <- mean(auc_scores, na.rm = TRUE)
       
-      # Fallback Logic with Print
-      if (is.na(mean_auc)) {
-         cat(sprintf("    [Warn K=%.0f] Bootstrap AUCs all NA. Using global AUC.\n", kappa))
+      # Final Fallbacks
+      if (is.na(mean_auc) || mean_auc == 0) {
+         cat("    [Warn] AUC is NA/0. Using global AUC.\n")
          global_metrics <- calculate_classification_metrics(prob_all, truth_all)
          mean_auc <- global_metrics$auc
       }
       
-      if (is.na(mean_auc)) {
-         cat(sprintf("    [Err K=%.0f] Final AUC is NA. Returning 0.5.\n", kappa))
-         mean_auc <- 0.5 # Return random performance instead of 0 to allow opt to continue
+      if (is.na(mean_auc) || mean_auc == 0) {
+         cat("    [Err] Final AUC failed. Returning fallback.\n")
+         mean_auc <- fallback_score
       }
       
       return(list(Score = mean_auc, Pred = 0))
       
     }, error = function(e) {
-      message(paste("    [Err] Opt Exception:", e$message))
+      cat(paste("    [Err Exception]", e$message, "\n"))
       if(exists("w_matrix")) rm(w_matrix)
       if(exists("umf")) rm(umf)
       gc()
-      return(list(Score = 0, Pred = 0))
+      return(list(Score = fallback_score, Pred = 0))
     })
   }
   
