@@ -1,6 +1,6 @@
 ###########################
 # BayesOptClustGeo helper
-# (Debug Version: Prints validation stats)
+# (Updated: Bootstrap Validation)
 ###########################
 
 library(rBayesianOptimization) 
@@ -19,7 +19,6 @@ bayesianOptimizedClustGeo <- function(
   albers_crs,         
   area_raster,        
   buffer_m = 200,     
-  hex_m = 100,        
   n_iter = 9,
   n_reps = 3,
   stable_reps = 3
@@ -42,9 +41,9 @@ bayesianOptimizedClustGeo <- function(
   
   
   # --- 3. PREP DATA (Validation) ---
-  cat("  [BayesOpt] Preparing validation spatial structures...\n")
-  cat(sprintf("    - Raw Validation Rows: %d\n", nrow(validation_data)))
+  cat("  [BayesOpt] Preparing validation data...\n")
   
+  # We still use this helper to attach area_j and raster values efficiently
   val_prep <- prepare_test_spatial_structures(
     test_df = validation_data,
     albers_crs = albers_crs,
@@ -53,11 +52,6 @@ bayesianOptimizedClustGeo <- function(
     area_raster = area_raster
   )
   validation_df_ready <- val_prep$test_df
-  
-  # DEBUG: Check for NA areas
-  na_area_count <- sum(is.na(validation_df_ready$area_j))
-  cat(sprintf("    - Validation Rows with Valid Area: %d (NAs: %d)\n", 
-              nrow(validation_df_ready), na_area_count))
   
   obs_formula <- as.formula(paste("~", paste(obs_covs, collapse = " + ")))
   state_formula <- as.formula(paste("~", paste(state_covs, collapse = " + ")))
@@ -101,7 +95,6 @@ bayesianOptimizedClustGeo <- function(
       )
       
       if (is.null(fm)) {
-        cat("    [Debug] Model failed to converge (fm is NULL)\n")
         return(list(Score = 0, Pred = 0)) 
       }
       
@@ -112,56 +105,58 @@ bayesianOptimizedClustGeo <- function(
       rm(w_matrix, umf, fm, current_geoms)
       gc() 
       
-      # --- E. SPATIAL SUBSAMPLE VALIDATION ---
+      # --- E. BOOTSTRAP VALIDATION (Replacing Spatial Subsampling) ---
       auc_scores <- numeric(25)
-      hex_res_km <- hex_m / 1000
+      valid_folds <- 0
       
-      # DEBUG COUNTERS
-      n_too_small <- 0
-      n_no_class_var <- 0
-      n_valid_auc <- 0
+      # Pre-calculate matrices for the WHOLE validation set once (Speedup)
+      X_state_all <- model.matrix(state_formula, data = validation_df_ready)
+      X_obs_all   <- model.matrix(obs_formula, data = validation_df_ready)
+      
+      # Predict for ALL validation points once
+      pred_psi_all <- 1 - exp(-(exp(X_state_all %*% est_betas) * validation_df_ready$area_j))
+      pred_det_all <- plogis(X_obs_all %*% est_alphas)
+      prob_all     <- pred_psi_all * pred_det_all
+      truth_all    <- validation_df_ready$species_observed
+      
+      n_val <- length(prob_all)
       
       for (r in 1:25) {
-        sub_df <- spatial_subsample_dataset(validation_df_ready, hex_res_km, r)
+        # 1. Bootstrap Sample Indices (With Replacement)
+        boot_idx <- sample.int(n_val, n_val, replace = TRUE)
         
-        if(nrow(sub_df) < 5) {
-           auc_scores[r] <- NA 
-           n_too_small <- n_too_small + 1
+        # 2. Extract Predictions and Truth for this sample
+        prob_boot <- prob_all[boot_idx]
+        truth_boot <- truth_all[boot_idx]
+        
+        # 3. Check for Monotonicity (Must have 0s and 1s)
+        if (length(unique(truth_boot)) < 2) {
+           auc_scores[r] <- NA
            next
         }
-
-        # Predict
-        X_state <- model.matrix(state_formula, data = sub_df)
-        pred_psi <- 1 - exp(-(exp(X_state %*% est_betas) * sub_df$area_j))
-        X_obs <- model.matrix(obs_formula, data = sub_df)
-        pred_det <- plogis(X_obs %*% est_alphas)
-        pred_prob <- pred_psi * pred_det
         
-        # Check Truth
-        if (length(unique(sub_df$species_observed)) < 2) {
-             auc_scores[r] <- NA
-             n_no_class_var <- n_no_class_var + 1
-             next
-        }
-        
-        metrics <- calculate_classification_metrics(pred_prob, sub_df$species_observed)
+        # 4. Calculate AUC
+        metrics <- calculate_classification_metrics(prob_boot, truth_boot)
         
         if (!is.na(metrics$auc)) {
           auc_scores[r] <- metrics$auc
-          n_valid_auc <- n_valid_auc + 1
+          valid_folds <- valid_folds + 1
         } else {
           auc_scores[r] <- NA
         }
       }
       
+      # --- F. AGGREGATE ---
       mean_auc <- mean(auc_scores, na.rm = TRUE)
       
-      # DEBUG OUTPUT
-      if(is.na(mean_auc)) {
-          cat(sprintf("    [Debug K=%.0f] Mean AUC is NaN! (Valid: %d, TooSmall: %d, MonoClass: %d)\n", 
-                      kappa, n_valid_auc, n_too_small, n_no_class_var))
-          mean_auc <- 0
+      # Final safety check if bootstrapping failed completely (extremely rare)
+      if (is.na(mean_auc)) {
+         # Fallback to single calculation on full set
+         global_metrics <- calculate_classification_metrics(prob_all, truth_all)
+         mean_auc <- global_metrics$auc
       }
+      
+      if (is.na(mean_auc)) mean_auc <- 0
       
       return(list(Score = mean_auc, Pred = 0))
       

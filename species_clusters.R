@@ -488,7 +488,6 @@ for (species_name in species_names) {
           albers_crs = albers_crs_str,
           area_raster = area_j_raster,
           buffer_m = buffer_m,
-          hex_m = hex_m,
           n_iter = 9, # Will result in 11 init + 9 opt = 20 total
           n_reps = n_fit_repeats,
           stable_reps = n_fit_repeats
