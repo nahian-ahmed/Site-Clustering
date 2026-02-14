@@ -262,11 +262,11 @@ train_df_spatial_input <- master_train_df %>%
 
 # Batch A: Baselines (Run on FULL data)
 # (Note: '2to10' handles its own filtering inside auk, so we give it everything)
-results_baseline <- get_clusterings(baseline_run_list, master_train_df, state_cov_names, NULL, cov_tif_albers)
+results_baseline <- get_clusterings(baseline_run_list, master_train_df, state_cov_names, NULL)
 
 # Batch B: Spatial Methods (Run on FILTERED data)
 # Since inputs have >=2 obs, all resulting clusters will have >=2 obs.
-results_spatial  <- get_clusterings(spatial_run_list, train_df_spatial_input, state_cov_names, NULL, cov_tif_albers)
+results_spatial  <- get_clusterings(spatial_run_list, train_df_spatial_input, state_cov_names, NULL)
 
 # 4. Combine Results
 all_clusterings <- c(results_baseline, results_spatial)
