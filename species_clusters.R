@@ -483,14 +483,18 @@ for (species_name in species_names) {
           validation_data = validation_df,
           state_covs = state_cov_names,
           obs_covs = obs_cov_names,
-          # --- NEW ARGUMENTS ---
           cov_tif_albers = cov_tif_albers,
           albers_crs = albers_crs_str,
           area_raster = area_j_raster,
           buffer_m = buffer_m,
           n_iter = 9, # Will result in 11 init + 9 opt = 20 total
           n_reps = n_fit_repeats,
-          stable_reps = n_fit_repeats
+          stable_reps = n_fit_repeats,
+          lower = PARAM_LOWER,
+          upper = PARAM_UPPER,
+          init_lower = INIT_LOWER,
+          init_upper = INIT_UPPER
+
       )
       
       # Extract the full history (Round, kappa, Value)

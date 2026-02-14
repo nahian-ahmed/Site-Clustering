@@ -11,17 +11,21 @@ library(terra)
 library(sf)
 
 bayesianOptimizedClustGeo <- function(
-  train_data,      
-  validation_data,   
-  state_covs, 
+  train_data,
+  validation_data,
+  state_covs,
   obs_covs,
-  cov_tif_albers,     
-  albers_crs,         
-  area_raster,        
-  buffer_m = 200,     
+  cov_tif_albers,
+  albers_crs,
+  area_raster,
+  buffer_m = 200,
   n_iter = 9,
-  n_reps = 3,
-  stable_reps = 3
+  n_reps = 30,
+  stable_reps = 10,
+  lower = -Inf,
+  upper = Inf,
+  init_lower = -Inf,
+  init_upper = Inf
 ){
   
   # --- 1. CONFIGURATION ---
