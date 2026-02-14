@@ -528,14 +528,20 @@ for (species_name in species_names) {
           filter(!checklist_id %in% current_spatial_input$checklist_id)
 
       # 2. Run Optimization
-      # UPDATE: Changed to 20 init + 30 iter = 50 total rounds
       opt_result_list <- bayesianOptimizedClustGeo(
           train_data = current_spatial_input,
           validation_data = validation_df,
           state_covs = state_cov_names,
           obs_covs = obs_cov_names,
-          n_init = 20, 
-          n_iter = 30
+          # --- NEW ARGUMENTS ---
+          cov_tif_albers = cov_tif_albers,
+          albers_crs = albers_crs_str,
+          area_raster = area_j_raster,
+          buffer_m = buffer_m,
+          hex_m = hex_m,
+          n_iter = 9, # Will result in 11 init + 9 opt = 20 total
+          n_reps = n_fit_repeats,
+          stable_reps = n_fit_repeats
       )
       
       # Extract the full history (Round, kappa, Value)
