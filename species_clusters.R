@@ -26,8 +26,6 @@ source(file.path("R", "clustering_helpers.R"))
 source(file.path("R", "model_helpers.R"))
 source(file.path("R", "analysis_helpers.R"))
 source(file.path("R", "plotting_helpers.R"))
-# Added SLIC source
-source(file.path("R", "clustering", "slic.R"))
 
 set.seed(123) 
 
@@ -65,15 +63,6 @@ method_names <- c(
   "clustGeo-50-95",
   "DBSC",
   "BayesOptClustGeo"
-  # "SLIC-0.05-3200",
-  # "SLIC-0.1-3200",
-  # "SLIC-0.15-3200",
-  # "SLIC-0.2-3200",
-  # "SLIC-0.25-3200",
-  # "SLIC-0.3-3200",
-  # "SLIC-0.35-3200",
-  # "SLIC-0.4-3200",
-  # "SLIC-0.45-3200"
 )
 
 # Methods to plot
@@ -96,17 +85,6 @@ methods_to_plot_clustGeo <- c(
   "clustGeo-50-95"
 )
 
-methods_to_plot_slic <- c(
-  "SLIC-0.05-3200",
-  "SLIC-0.1-3200",
-  "SLIC-0.15-3200",
-  "SLIC-0.2-3200",
-  "SLIC-0.25-3200",
-  "SLIC-0.3-3200",
-  "SLIC-0.35-3200",
-  "SLIC-0.4-3200",
-  "SLIC-0.45-3200"
-)
 
 # Covariates
 state_cov_names <- c("elevation", "TCB", "TCG", "TCW", "TCA")
@@ -264,8 +242,7 @@ spatial_methods <- c(
 
 # Add the specific parameter versions if they exist in your 'method_names' list
 spatial_methods <- c(spatial_methods, 
-                     grep("clustGeo-", method_names, value = TRUE),
-                     grep("SLIC-", method_names, value = TRUE))
+                     grep("clustGeo-", method_names, value = TRUE))
 
 # Intersect with what the user actually requested in 'method_names'
 baseline_run_list <- intersect(method_names, baseline_methods)
@@ -301,24 +278,15 @@ for (method_name in method_names) {
     # Retrieve the raw output from get_clusterings
     cluster_obj <- all_clusterings[[method_name]]
     
-    # 1. Handle SLIC (Pre-calculated geometries)
-    if (grepl("SLIC", method_name) && is.list(cluster_obj) && "site_geoms" %in% names(cluster_obj)) {
-        
-        cat(sprintf("Using pre-calculated polygons for %s...\n", method_name))
-        all_site_geometries[[method_name]] <- cluster_obj$site_geoms
-        
-    # 2. Handle Standard Methods (Buffer points)
+    # Extract dataframe if wrapped in a list
+    if (is.list(cluster_obj) && "result_df" %in% names(cluster_obj)) {
+        cluster_df <- cluster_obj$result_df
     } else {
-        # Extract just the dataframe if it's wrapped in a list (like BayesOpt or the new SLIC structure)
-        if (is.list(cluster_obj) && "result_df" %in% names(cluster_obj)) {
-            cluster_df <- cluster_obj$result_df
-        } else {
-            cluster_df <- cluster_obj
-        }
-        
-        if (!is.null(cluster_df)) {
-            all_site_geometries[[method_name]] <- create_site_geometries(cluster_df, cov_tif_albers, buffer_m, method_name)
-        }
+        cluster_df <- cluster_obj
+    }
+    
+    if (!is.null(cluster_df)) {
+        all_site_geometries[[method_name]] <- create_site_geometries(cluster_df, cov_tif_albers, buffer_m, method_name)
     }
 }
 
@@ -351,16 +319,7 @@ plot_sites(
     output_path = file.path(output_dir, "sites_clustGeo_PRE.png"),
     cluster_labels = TRUE
 )
-# plot_sites(
-#     base_train_df = master_train_df,
-#     all_clusterings = all_clusterings,
-#     all_site_geometries = all_site_geometries,
-#     elevation_raster = cov_tif_albers_raw, 
-#     methods_to_plot = methods_to_plot_slic,
-#     boundary_shp_path = boundary_shapefile_path,
-#     output_path = file.path(output_dir, "sites_SLIC_PRE.png"),
-#     cluster_labels = TRUE
-# )
+
 
 
 # === 5.3 SPLIT DISJOINT SITES ===
@@ -411,17 +370,6 @@ plot_sites(
     output_path = file.path(output_dir, "sites_clustGeo_POST.png"),
     cluster_labels = TRUE
 )
-
-# plot_sites(
-#     base_train_df = master_train_df,
-#     all_clusterings = all_clusterings,
-#     all_site_geometries = all_site_geometries,
-#     elevation_raster = cov_tif_albers_raw, 
-#     methods_to_plot = methods_to_plot_slic,
-#     boundary_shp_path = boundary_shapefile_path,
-#     output_path = file.path(output_dir, "sites_SLIC_POST.png"),
-#     cluster_labels = TRUE
-# )
 
 # === 5.4 W MATRICES ===
 cat("--- Generating W matrices ---\n")

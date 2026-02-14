@@ -27,10 +27,10 @@ data <- data %>%
 # -------------------------------------------------------------------------
 
 # Define the manual color scale
-colors <- c("forestgreen", "darkgrey", "red", "blue", "yellow", "orange", 
-            "green", "pink", "cyan", "navy", "brown")
+colors <- c("forestgreen", "darkgrey", "red", "yellow", "orange", 
+            "green", "pink", "cyan", "navy")
 
-names(colors) <- c("BayesOptClustGeo", "DBSC", "best-clustGeo", "best-SLIC", "rounded-4",
+names(colors) <- c("BayesOptClustGeo", "DBSC", "best-clustGeo", "rounded-4",
                    "1-kmSq", "2to10-sameObs", "2to10", "1to10", "lat-long")
 
 # -------------------------------------------------------------------------
@@ -41,14 +41,12 @@ names(colors) <- c("BayesOptClustGeo", "DBSC", "best-clustGeo", "best-SLIC", "ro
 cg_data <- data %>% 
   filter(grepl("^clustGeo", method) & method != "BayesOptClustGeo")
 
-# 2. Separate SLIC variants
-slic_data <- data %>% 
-  filter(grepl("^SLIC", method))
+
 
 # 3. Get the "other" data (everything else)
 # We exclude clustGeo variants and SLIC variants from this set
 other_data <- data %>% 
-  filter((!grepl("^clustGeo", method) | method == "BayesOptClustGeo") & !grepl("^SLIC", method))
+  filter((!grepl("^clustGeo", method) | method == "BayesOptClustGeo"))
 
 # --- Process ClustGeo ---
 # Calculate mean performance over repeats for each clustGeo variant per species
@@ -86,45 +84,10 @@ best_cg_data_auprc <- cg_data %>%
   mutate(method = "best-clustGeo") %>%
   select(-best_method_auprc)
 
-# --- Process SLIC ---
-# Calculate mean performance over repeats for each SLIC variant per species
-slic_summary <- slic_data %>%
-  group_by(species, method) %>%
-  summarise(
-    mean_auc = mean(auc, na.rm = TRUE),
-    mean_auprc = mean(auprc, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-# Pick best SLIC for AUC
-best_slic_auc_methods <- slic_summary %>%
-  group_by(species) %>%
-  slice_max(mean_auc, n = 1, with_ties = FALSE) %>%
-  select(species, best_method_auc = method)
-
-# Pick best SLIC for AUPRC
-best_slic_auprc_methods <- slic_summary %>%
-  group_by(species) %>%
-  slice_max(mean_auprc, n = 1, with_ties = FALSE) %>%
-  select(species, best_method_auprc = method)
-
-# Create "best-SLIC" rows for AUC dataset
-best_slic_data_auc <- slic_data %>%
-  inner_join(best_slic_auc_methods, by = c("species")) %>%
-  filter(method == best_method_auc) %>%
-  mutate(method = "best-SLIC") %>%
-  select(-best_method_auc)
-
-# Create "best-SLIC" rows for AUPRC dataset
-best_slic_data_auprc <- slic_data %>%
-  inner_join(best_slic_auprc_methods, by = c("species")) %>%
-  filter(method == best_method_auprc) %>%
-  mutate(method = "best-SLIC") %>%
-  select(-best_method_auprc)
 
 # --- Combine all data ---
-final_data_auc <- bind_rows(other_data, best_cg_data_auc, best_slic_data_auc)
-final_data_auprc <- bind_rows(other_data, best_cg_data_auprc, best_slic_data_auprc)
+final_data_auc <- bind_rows(other_data, best_cg_data_auc)
+final_data_auprc <- bind_rows(other_data, best_cg_data_auprc)
 
 
 # -------------------------------------------------------------------------
@@ -168,7 +131,7 @@ plot_raw_performance <- function(df, metric_col, y_label, output_filename) {
   df$species <- factor(df$species, levels = species_order)
   
   alg_order <- c("2to10", "2to10-sameObs", "1to10", "1-kmSq", "lat-long", 
-                 "rounded-4", "best-clustGeo", "best-SLIC", "DBSC", "BayesOptClustGeo")
+               "rounded-4", "best-clustGeo", "DBSC", "BayesOptClustGeo")
   df <- df %>% filter(method %in% alg_order)
   df$method <- factor(df$method, levels = alg_order)
   

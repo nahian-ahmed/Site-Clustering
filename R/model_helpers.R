@@ -144,43 +144,6 @@ create_site_geometries <- function(site_data_sf, reference_raster, buffer_m = 15
     present_sites <- unique(as.character(site_data_sf$site))
     site_geoms_sf <- grid_sf[grid_sf$site %in% present_sites, ]
     
-  } else if (is_slic) {
-    # --- SLIC Logic (Optimized) ---
-    parts <- unlist(strsplit(method_name, "-"))
-    eta <- as.numeric(parts[2])
-    zeta <- as.numeric(parts[3])
-    
-    # 1. Regenerate Seeds
-    seeds <- get_slic_seeds(reference_raster, zeta, points_proj, buffer_dist_m = 50000)
-    
-    # 2. Run SLIC
-    pixel_df <- perform_slic_clustering(reference_raster, seeds, eta, zeta)
-    
-    # 3. Create Raster
-    r_temp <- terra::rast(reference_raster, nlyrs = 1)
-    cells <- terra::cellFromXY(r_temp, as.matrix(pixel_df[, c("x", "y")]))
-    r_temp[cells] <- pixel_df$site
-    
-    # --- OPTIMIZATION START ---
-    # Identify sites present in the data
-    present_sites <- unique(as.character(site_data_sf$site))
-    present_sites_num <- as.numeric(present_sites)
-    
-    # Mask the raster: Set any cell NOT in a present site to NA
-    # This prevents creating polygons for empty areas
-    r_temp[!r_temp %in% present_sites_num] <- NA
-    # --- OPTIMIZATION END ---
-
-    # 4. Convert ONLY valid clusters to Polygons
-    polys <- terra::as.polygons(r_temp, dissolve = TRUE)
-    site_geoms_sf <- sf::st_as_sf(polys)
-    
-    # Rename and Final Filter
-    colnames(site_geoms_sf)[1] <- "site"
-    site_geoms_sf$site <- as.character(site_geoms_sf$site)
-    
-    # (Double check filter just in case)
-    site_geoms_sf <- site_geoms_sf[site_geoms_sf$site %in% present_sites, ]
   } else {
     # --- Voronoi Logic ---
     site_geoms_sf <- voronoi_clipped_buffers(points_proj, buffer_m)
