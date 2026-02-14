@@ -519,7 +519,7 @@ for (species_name in species_names) {
       site_lookup <- opt_result_list$Final_Site_Map
       
       # Rename 'site_id' to 'site'
-      site_lookup <- dplyr::rename(site_lookup, site = site_id)
+      # site_lookup <- dplyr::rename(site_lookup, site = site_id)
       
       # 4. Map back
       clust_df <- left_join(current_spatial_input, site_lookup, by = "locality_id")
