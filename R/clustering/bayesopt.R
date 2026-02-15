@@ -135,14 +135,8 @@ bayesianOptimizedClustGeo <- function(
       for (r in 1:25) {
         # 1. Spatial Subsample (using utils.R logic, seeded by r)
         sub_df <- spatial_subsample_dataset(validation_df_ready, hex_res_km, r)
-        
-        # # 2. Check for Validity (Size & Class Balance)
-        # if(nrow(sub_df) < 10 || length(unique(sub_df$species_observed)) < 2) {
-        #    auc_scores[r] <- NA 
-        #    next
-        # }
 
-        # 3. Predict on Subsample
+        # 2. Predict on Subsample
         X_state <- model.matrix(state_formula, data = sub_df)
         X_obs <- model.matrix(obs_formula, data = sub_df)
         
@@ -155,7 +149,7 @@ bayesianOptimizedClustGeo <- function(
         pred_det <- plogis(X_obs %*% est_alphas)
         pred_prob <- pred_psi * pred_det
         
-        # 4. Calculate AUC
+        # 3. Calculate AUC
         metrics <- calculate_classification_metrics(pred_prob, sub_df$species_observed)
         
         if (!is.na(metrics$auc)) {

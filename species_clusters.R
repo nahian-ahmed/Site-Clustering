@@ -34,7 +34,7 @@ set.seed(123)
 ###
 
 
-plot_site_clusters = FALSE
+plot_site_clusters = TRUE
 
 
 # Species list
@@ -45,7 +45,7 @@ species_names <- c(
   "WAVI", "WEPE", "WETA", "WIWA", "WRENTI", "YEBCHA", "YEWA"
 )
 
-species_names <- c("COHA", "REHA")
+# species_names <- c("COHA", "REHA")
 
 # Comparison methods
 method_names <- c(
@@ -55,18 +55,18 @@ method_names <- c(
   "1-kmSq",
   "lat-long", 
   "rounded-4", 
-  # "clustGeo-50-5",
-  # "clustGeo-50-10",
-  # "clustGeo-50-20",
-  # "clustGeo-50-30",
-  # "clustGeo-50-40",
-  # "clustGeo-50-50",
-  # "clustGeo-50-55",
-  # "clustGeo-50-60",
-  # "clustGeo-50-70",
-  # "clustGeo-50-80",
-  # "clustGeo-50-90",
-  # "clustGeo-50-95",
+  "clustGeo-50-5",
+  "clustGeo-50-10",
+  "clustGeo-50-20",
+  "clustGeo-50-30",
+  "clustGeo-50-40",
+  "clustGeo-50-50",
+  "clustGeo-50-55",
+  "clustGeo-50-60",
+  "clustGeo-50-70",
+  "clustGeo-50-80",
+  "clustGeo-50-90",
+  "clustGeo-50-95",
   "DBSC",
   "BayesOptClustGeo"
 )
