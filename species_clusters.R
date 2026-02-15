@@ -49,18 +49,18 @@ method_names <- c(
   "1-kmSq",
   "lat-long", 
   "rounded-4", 
-  # "clustGeo-50-5",
-  # "clustGeo-50-10",
-  # "clustGeo-50-20",
-  # "clustGeo-50-30",
-  # "clustGeo-50-40",
-  # "clustGeo-50-50",
-  # "clustGeo-50-55",
-  # "clustGeo-50-60",
-  # "clustGeo-50-70",
-  # "clustGeo-50-80",
-  # "clustGeo-50-90",
-  # "clustGeo-50-95",
+  "clustGeo-50-5",
+  "clustGeo-50-10",
+  "clustGeo-50-20",
+  "clustGeo-50-30",
+  "clustGeo-50-40",
+  "clustGeo-50-50",
+  "clustGeo-50-55",
+  "clustGeo-50-60",
+  "clustGeo-50-70",
+  "clustGeo-50-80",
+  "clustGeo-50-90",
+  "clustGeo-50-95",
   "DBSC",
   "BayesOptClustGeo"
 )
@@ -112,7 +112,7 @@ max_uniloc_points <- 10 # Options: 1, 3, ... 10, ... "all"
 output_dir <- file.path("species_experiments", "output", "clusters")
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
-plot_site_clusters = FALSE
+plot_site_clusters = TRUE
 ###
 # 3. PREPROCESS RASTER
 ###
