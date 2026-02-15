@@ -34,7 +34,7 @@ set.seed(123)
 ###
 
 
-plot_site_clusters = TRUE
+plot_site_clusters = FALSE
 
 
 # Species list
