@@ -1,6 +1,6 @@
 ###########################
 # BayesOptClustGeo helper
-# (Fixed: Initialization Bounds)
+# (Final: Spatial Subsampling, No Fallback, Hex Argument)
 ###########################
 
 library(rBayesianOptimization) 
@@ -10,18 +10,24 @@ library(unmarked)
 library(terra)
 library(sf)
 
+# Ensure dggridR is loaded for spatial subsampling
+if(!require(dggridR)) {
+  warning("dggridR is required for spatial subsampling but not loaded.")
+}
+
 bayesianOptimizedClustGeo <- function(
-  train_data,
-  validation_data,
-  state_covs,
+  train_data,      
+  validation_data,   
+  state_covs, 
   obs_covs,
-  cov_tif_albers,
-  albers_crs,
-  area_raster,
-  buffer_m = 200,
+  cov_tif_albers,     
+  albers_crs,         
+  area_raster,        
+  buffer_m = 200,     
+  hex_m = 100,
   n_iter = 9,
-  n_reps = 30,
-  stable_reps = 10,
+  n_reps = 3,
+  stable_reps = 3,
   lower = -Inf,
   upper = Inf,
   init_lower = -Inf,
@@ -47,6 +53,7 @@ bayesianOptimizedClustGeo <- function(
   # --- 3. PREP DATA (Validation) ---
   cat("  [BayesOpt] Preparing validation data...\n")
   
+  # Attach area_j and other spatial structs to validation data ONCE
   val_prep <- prepare_test_spatial_structures(
     test_df = validation_data,
     albers_crs = albers_crs,
@@ -56,7 +63,7 @@ bayesianOptimizedClustGeo <- function(
   )
   validation_df_ready <- val_prep$test_df
   
-  # Check Truth
+  # Diagnostic: Check Validation Truth
   n_obs <- sum(validation_df_ready$species_observed, na.rm=TRUE)
   cat(sprintf("    [Diag] Validation: %d rows, %d detections (%.1f%%)\n", 
               nrow(validation_df_ready), n_obs, (n_obs/nrow(validation_df_ready))*100))
@@ -67,9 +74,6 @@ bayesianOptimizedClustGeo <- function(
   
   # --- 4. FITNESS FUNCTION ---
   clustGeo_fit <- function(kappa) { 
-    
-    # Initialize random fallback score
-    fallback_score <- 0.0001 + runif(1, 0, 0.0009)
     
     w_matrix <- NULL
     umf <- NULL
@@ -99,7 +103,7 @@ bayesianOptimizedClustGeo <- function(
       
       umf <- prepare_occuN_data(train_data, clust_df, w_matrix, obs_covs, full_raster_covs)
       
-      # [FIX] Explicitly pass valid initialization bounds (-2, 2)
+      # Fit with explicit bounds
       fm <- fit_occuN_model(
         umf, state_formula, obs_formula,
         n_reps = n_reps, stable_reps = stable_reps,
@@ -111,8 +115,7 @@ bayesianOptimizedClustGeo <- function(
       )
       
       if (is.null(fm)) {
-        cat(sprintf("    [Err K=%.0f] Model failed to fit (NULL). Returning random small score.\n", kappa))
-        return(list(Score = fallback_score, Pred = 0)) 
+        return(list(Score = 0, Pred = 0)) 
       }
       
       est_alphas <- coef(fm, 'det')   
@@ -122,72 +125,62 @@ bayesianOptimizedClustGeo <- function(
       rm(w_matrix, umf, fm, current_geoms)
       gc() 
       
-      # --- E. BOOTSTRAP VALIDATION ---
-      X_state_all <- model.matrix(state_formula, data = validation_df_ready)
-      X_obs_all   <- model.matrix(obs_formula, data = validation_df_ready)
-      
-      # Cap extreme values to prevent NA predictions
-      linear_state <- X_state_all %*% est_betas
-      linear_state[linear_state > 20] <- 20 
-      linear_state[linear_state < -20] <- -20
-      
-      pred_psi_all <- 1 - exp(-(exp(linear_state) * validation_df_ready$area_j))
-      pred_det_all <- plogis(X_obs_all %*% est_alphas)
-      prob_all     <- pred_psi_all * pred_det_all
-      truth_all    <- validation_df_ready$species_observed
-      
-      # [DIAGNOSTIC] Print Prediction Stats
-      p_mean <- mean(prob_all, na.rm=T)
-      p_sd   <- sd(prob_all, na.rm=T)
-      
-      if (p_sd == 0 || is.na(p_sd)) {
-          cat("    [Err] Constant predictions. Returning fallback.\n")
-          return(list(Score = fallback_score, Pred = 0))
-      }
-
-      # Bootstrap Loop
+      # --- E. SPATIAL SUBSAMPLING VALIDATION ---
       auc_scores <- numeric(25)
-      n_val <- length(prob_all)
+      hex_res_km <- hex_m / 1000  # Convert meters to km for dggridR
       
+      valid_subsamples <- 0
+      
+      # Loop 1 to 25 creates 25 reproducible spatial folds
       for (r in 1:25) {
-        boot_idx <- sample.int(n_val, n_val, replace = TRUE)
-        prob_boot <- prob_all[boot_idx]
-        truth_boot <- truth_all[boot_idx]
+        # 1. Spatial Subsample (using utils.R logic, seeded by r)
+        sub_df <- spatial_subsample_dataset(validation_df_ready, hex_res_km, r)
         
-        if (length(unique(truth_boot)) < 2) {
-           auc_scores[r] <- NA; next
+        # 2. Check for Validity (Size & Class Balance)
+        if(nrow(sub_df) < 10 || length(unique(sub_df$species_observed)) < 2) {
+           auc_scores[r] <- NA 
+           next
         }
+
+        # 3. Predict on Subsample
+        X_state <- model.matrix(state_formula, data = sub_df)
+        X_obs <- model.matrix(obs_formula, data = sub_df)
         
-        metrics <- calculate_classification_metrics(prob_boot, truth_boot)
+        # Use robust prediction (cap extremes)
+        linear_state <- X_state %*% est_betas
+        linear_state[linear_state > 20] <- 20 
+        linear_state[linear_state < -20] <- -20
+        
+        pred_psi <- 1 - exp(-(exp(linear_state) * sub_df$area_j))
+        pred_det <- plogis(X_obs %*% est_alphas)
+        pred_prob <- pred_psi * pred_det
+        
+        # 4. Calculate AUC
+        metrics <- calculate_classification_metrics(pred_prob, sub_df$species_observed)
+        
         if (!is.na(metrics$auc)) {
           auc_scores[r] <- metrics$auc
+          valid_subsamples <- valid_subsamples + 1
         } else {
           auc_scores[r] <- NA
         }
       }
       
+      # Final Score: Mean AUC across valid spatial subsamples
       mean_auc <- mean(auc_scores, na.rm = TRUE)
       
-      # Final Fallbacks
-      if (is.na(mean_auc) || mean_auc == 0) {
-         cat("    [Warn] AUC is NA/0. Using global AUC.\n")
-         global_metrics <- calculate_classification_metrics(prob_all, truth_all)
-         mean_auc <- global_metrics$auc
-      }
-      
-      if (is.na(mean_auc) || mean_auc == 0) {
-         cat("    [Err] Final AUC failed. Returning fallback.\n")
-         mean_auc <- fallback_score
+      # If ALL spatial subsamples failed, return 0
+      if (is.na(mean_auc) || valid_subsamples == 0) {
+         mean_auc <- 0
       }
       
       return(list(Score = mean_auc, Pred = 0))
       
     }, error = function(e) {
-      cat(paste("    [Err Exception]", e$message, "\n"))
       if(exists("w_matrix")) rm(w_matrix)
       if(exists("umf")) rm(umf)
       gc()
-      return(list(Score = fallback_score, Pred = 0))
+      return(list(Score = 0, Pred = 0))
     })
   }
   
