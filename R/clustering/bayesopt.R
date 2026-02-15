@@ -136,11 +136,11 @@ bayesianOptimizedClustGeo <- function(
         # 1. Spatial Subsample (using utils.R logic, seeded by r)
         sub_df <- spatial_subsample_dataset(validation_df_ready, hex_res_km, r)
         
-        # 2. Check for Validity (Size & Class Balance)
-        if(nrow(sub_df) < 10 || length(unique(sub_df$species_observed)) < 2) {
-           auc_scores[r] <- NA 
-           next
-        }
+        # # 2. Check for Validity (Size & Class Balance)
+        # if(nrow(sub_df) < 10 || length(unique(sub_df$species_observed)) < 2) {
+        #    auc_scores[r] <- NA 
+        #    next
+        # }
 
         # 3. Predict on Subsample
         X_state <- model.matrix(state_formula, data = sub_df)
