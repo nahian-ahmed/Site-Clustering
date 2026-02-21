@@ -1,9 +1,9 @@
-# -----------------------------------------------------------------
+#######################################
 # Simulation for occuN model
-# Fully simulated experiments with varying Spatial Autocorrelation (SAC)
-# Fixed Skew Pattern: Centers
-# Variable Sampling Strategies: Uniform, Positive (High Cov), Negative (Low Cov)
-# -----------------------------------------------------------------
+# Fully simulated experiments with varying Spatial Autocorrelation
+
+# February 20, 2026
+#######################################
 
 ###
 # 1. SETUP
@@ -13,7 +13,7 @@ install_now = FALSE
 if (install_now){
   options(repos = c(CRAN = "https://cloud.r-project.org/"))
   if (!requireNamespace("devtools", quietly = FALSE)) install.packages("devtools")
-  suppressMessages(devtools::install_github("nahian-ahmed/unmarked", ref = "occuN", force = TRUE))
+  suppressMessages(devtools::install_github("anonymous97331/unmarked", ref = "occuN", force = TRUE))
 }
 
 library(unmarked)
@@ -84,7 +84,7 @@ n_centers <- 1
 centers_scale <- 5
 decay_scale <- 30^2
 
-output_dir <- file.path("simulation_experiments", "output")
+output_dir <- file.path("output", "simulation_experiments")
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 cat("--- Simulation Starting ---\n")
@@ -264,7 +264,7 @@ for (sac_level in sac_levels) {
         
         if (sampling_strat == "Positive") {
           # POSITIVE: Probabilistic sampling weighted by Covariate Value.
-          # ** UPDATED **: We scale the covariate by 5 inside exp() to sharpen the probability 
+          # We scale the covariate by 5 inside exp() to sharpen the probability 
           # peak. This makes the selection much more likely to pick the absolute highest 
           # covariate values (closest to the skew center).
           sampling_probs <- exp(site_cov_vals * 5)
@@ -272,7 +272,7 @@ for (sac_level in sac_levels) {
           
         } else if (sampling_strat == "Negative") {
           # NEGATIVE: Probabilistic sampling weighted by Inverse/Negative Covariate Value.
-          # ** UPDATED **: We also scale the negative covariate by 5 inside exp() to sharpen 
+          # We also scale the negative covariate by 5 inside exp() to sharpen 
           # the probability peak for LOW covariate values (furthest from skew center).
           sampling_probs <- exp(-site_cov_vals * 5)
           cluster_center_ids <- sample(1:full_M, size = n_sampling_clusters, prob = sampling_probs, replace = FALSE)

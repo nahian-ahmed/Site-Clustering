@@ -1,7 +1,7 @@
 ####################
 # Helper functions
 
-# November 9, 2025
+# February 20, 2026
 ####################
 
 library(terra) # geospatial operations

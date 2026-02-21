@@ -1,3 +1,9 @@
+####################
+# Analysis helpers
+
+# February 20, 2026
+####################
+
 library(aricode)
 library(PRROC)
 library(dplyr)

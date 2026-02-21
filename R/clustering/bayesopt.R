@@ -1,6 +1,7 @@
 ###########################
 # BayesOptClustGeo helper
-# (Final: Spatial Subsampling, No Fallback, Hex Argument)
+
+# February 20, 2026
 ###########################
 
 library(rBayesianOptimization) 

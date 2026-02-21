@@ -1,7 +1,7 @@
 ####################
 # 1 km sq
 
-# December 10, 2024
+# February 20, 2026
 ####################
 
 library(sf) # spatial geometry operations

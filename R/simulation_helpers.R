@@ -1,3 +1,9 @@
+####################
+# Simulation helpers
+
+# February 20, 2026
+####################
+
 library(dplyr)
 library(rje) # For expit()
 library(terra) # Added for raster operations

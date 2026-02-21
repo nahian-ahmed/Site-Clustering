@@ -1,7 +1,9 @@
-# -----------------------------------------------------------------
-# Real Species Experiments for occuN model
-#
-# -----------------------------------------------------------------
+#######################################
+# Species Cluster-Based Experiments
+# Compares all methods on species data
+
+# February 20, 2026
+#######################################
 
 ###
 # 1. SETUP
@@ -11,7 +13,7 @@ install_now = FALSE
 if (install_now){
   options(repos = c(CRAN = "https://cloud.r-project.org/"))
   if (!requireNamespace("devtools", quietly = FALSE)) install.packages("devtools")
-  suppressMessages(devtools::install_github("nahian-ahmed/unmarked", ref = "occuN", force = TRUE))
+  suppressMessages(devtools::install_github("anonymous97331/unmarked", ref = "main", force = TRUE))
 }
 
 library(unmarked)
@@ -115,7 +117,7 @@ min_uniloc_points <- 2 # Options: 1, 2, 3, ...
 max_uniloc_points <- 10 # Options: 1, 3, ... 10, ... "all"
 
 # Output Directory
-output_dir <- file.path("species_experiments", "output", "clusters")
+output_dir <- file.path("output", "species_experiments", "clusters")
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 ###

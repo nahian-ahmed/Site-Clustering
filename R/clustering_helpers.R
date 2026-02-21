@@ -1,8 +1,8 @@
-##############################################
-# Clustering Helpers
-#
-# Updated: Cleaned of SLIC and unused arguments
-##############################################
+####################
+# Data helpers
+
+# February 20, 2026
+####################
 
 # 1. SOURCE MODULAR CLUSTERING LOGIC
 source("R/clustering/kmsq.R")

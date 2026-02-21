@@ -1,3 +1,9 @@
+####################
+# Plotting helpers
+
+# February 20, 2026
+####################
+
 library(ggplot2)
 library(terra)
 library(sf)

@@ -1,3 +1,9 @@
+####################
+# Model helpers
+
+# February 20, 2026
+####################
+
 library(sf)
 library(dplyr)
 library(terra)

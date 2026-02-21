@@ -1,3 +1,9 @@
+#######################################
+# Plot Species Point-Based Experiments
+
+# February 20, 2026
+#######################################
+
 library(dplyr)
 library(ggplot2)
 library(tidyr)
@@ -6,8 +12,8 @@ library(ggpubr)
 # -------------------------------------------------------------------------
 # Setup Directories
 # -------------------------------------------------------------------------
-input_dir <- file.path("species_experiments", "output", "points")
-output_dir <- file.path("species_experiments", "output", "points", "plots")
+input_dir <- file.path("output", "species_experiments", "points")
+output_dir <- file.path("output", "species_experiments", "points", "plots")
 
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 

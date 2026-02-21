@@ -1,7 +1,7 @@
 ######################
 # ClustGeo helper
 
-# December 10, 2024
+# February 20, 2026
 ######################
 
 library(ClustGeo) # spatial clustering with clustGeo

@@ -1,7 +1,7 @@
-# -----------------------------------------------------------------
+#######################################
 # Species Point-Based Experiments
-# Comparison: Buffered vs Unbuffered
-# -----------------------------------------------------------------
+# Comparison Between occu and occuN models
+#######################################
 
 ###
 # 1. SETUP
@@ -11,7 +11,7 @@ install_now <- FALSE
 if (install_now){
   options(repos = c(CRAN = "https://cloud.r-project.org/"))
   if (!requireNamespace("devtools", quietly = FALSE)) install.packages("devtools")
-  suppressMessages(devtools::install_github("nahian-ahmed/unmarked", ref = "occuN", force = TRUE))
+  suppressMessages(devtools::install_github("anonymous97331/unmarked", ref = "main", force = TRUE))
 }
 
 library(unmarked)
@@ -62,7 +62,7 @@ test_buffer_m <- 200
 hex_m <- 100
 
 # Output Directory
-output_dir <- file.path("species_experiments", "output", "points")
+output_dir <- file.path("output", "species_experiments", "points")
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 

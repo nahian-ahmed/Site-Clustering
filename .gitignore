@@ -16,7 +16,4 @@ Python/venv/
 /state_covariate_raster/
 /checklist_data/
 
-/simulation_experiments/output/
-/species_experiments/output/
-
-/OLD_code/results/
+/output/

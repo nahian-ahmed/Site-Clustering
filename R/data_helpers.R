@@ -1,3 +1,9 @@
+####################
+# Data helpers
+
+# February 20, 2026
+####################
+
 library(dplyr)
 library(terra)
 library(sf)
