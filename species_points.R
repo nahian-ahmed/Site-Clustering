@@ -177,7 +177,7 @@ master_train_df <- train_data_res$train_df
 # --- NEW: Pre-calculate Site Definitions (Using Clustering Helpers) ---
 cat("--- Pre-calculating Site Definitions (lat-long, 1to10, 2to10) ---\n")
 # This runs the filtering ONCE, similar to species_clusters.R
-site_definitions <- get_clusterings(method_names, master_train_df, state_cov_names, NULL, cov_tif_albers)
+site_definitions <- get_clusterings(method_names, master_train_df, state_cov_names, NULL)
 
 # Ensure 'site' column exists (lat-long, 1to10, 2to10 naturally map locality_id to site)
 for (m in method_names) {
