@@ -453,7 +453,7 @@ for (sp in species_names) {
         expand = FALSE
     ) +
     theme(
-      plot.title = element_text(hjust = 0.5, vjust = -20, face = "bold", size = 18), # Increased Title Size
+      plot.title = element_text(hjust = 0.5, vjust = -22.5, face = "bold", size = 18), # Increased Title Size
       legend.position = "inside",
       legend.position.inside = c(0.5, -0.16),
       legend.direction = "vertical",
@@ -525,7 +525,7 @@ for (sp in species_names) {
       theme(
         legend.position = "bottom", 
         legend.text = element_text(size = 14), 
-        legend.title = element_text(size = 14, vjust = 1, face = "bold"), 
+        legend.title = element_text(size = 14, vjust = 1), 
         legend.key.width = unit(1.5, "cm"),
         legend.box.margin = margin(t = 30), # Move legend down
         plot.title = element_text(hjust = 0.5, size = 14, face = "bold") # Bigger Title
