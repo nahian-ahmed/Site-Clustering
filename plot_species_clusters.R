@@ -290,10 +290,10 @@ dunn_res_final <- dunn_res_final %>%
       TRUE          ~ "-"
     ),
     # -----------------------------------------------------------------------
-    # CRITICAL FIX 1: Convert to FACTOR with explicit levels.
-    # This ensures scale_alpha_manual knows about all levels even if missing.
+    # CRITICAL FIX 1: Convert to FACTOR with explicit levels IN ORDER.
+    # This determines the legend order: -, *, **, ***
     # -----------------------------------------------------------------------
-    stars = factor(stars, levels = c("*", "**", "***", "-")), 
+    stars = factor(stars, levels = c("-", "*", "**", "***")), 
     
     # Use white text for dark backgrounds (low p-val) and black for light
     label_color = ifelse(P.adj < 0.05, "white", "black")
@@ -325,13 +325,13 @@ p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj))
     key_glyph = "text" 
   ) +
   
-  # Define the Legend Labels
+  # Define the Legend Labels (Must match factor level order)
   scale_alpha_manual(
     name = "Significance",
-    values = c("*"=0, "**"=0, "***"=0, "-"=0), # Invisible in plot
-    breaks = c("*", "**", "***", "-"),
-    labels = c("p < 0.05", "p < 0.01", "p < 0.001", "p > 0.05"),
-    drop = FALSE # CRITICAL FIX 2: Forces all 4 keys to show, matching override.aes length
+    values = c("-"=0, "*"=0, "**"=0, "***"=0), # Invisible in plot
+    breaks = c("-", "*", "**", "***"),         # Explicit Order
+    labels = c("p >= 0.05", "p < 0.05", "p < 0.01", "p < 0.001"),
+    drop = FALSE # Forces all 4 keys to show
   ) +
   
   # Guides to Control Order and Appearance
@@ -340,7 +340,7 @@ p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj))
     alpha = guide_legend(
       order = 2, 
       override.aes = list(
-        label = c("*", "**", "***", "-"), # Explicitly set symbols
+        label = c("-", "*", "**", "***"), # Explicitly set symbols (Text glyphs)
         alpha = 1, 
         size = 6
       )
@@ -359,7 +359,7 @@ p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj))
     panel.grid = element_blank(),
     legend.box = "vertical",
     legend.margin = margin(),
-    legend.spacing.y = unit(0.5, "cm") 
+    legend.spacing.y = unit(1.5, "cm") # Increased spacing
   ) +
   labs(
     title = NULL,
