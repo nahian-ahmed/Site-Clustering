@@ -279,9 +279,8 @@ print("Plots generated successfully in simulation_experiments/output/plots/")
 
 
 
-
 # -------------------------------------------------------------------------
-# (5) Generate Maps (Psi Only) - WGS84 (Solid Grey Background)
+# (5) Generate Maps (Psi Only) - WGS84 (Refined Layout)
 # -------------------------------------------------------------------------
 
 cat("\n###############################################\n")
@@ -354,7 +353,6 @@ if(exists("standardize_state_covs")) {
 cell_area_km2 <- (100 / 1000) * (100 / 1000)
 
 # B. Prepare WGS84 Background (For Plotting)
-# We project the boundary to WGS84 to define the shape
 bg_raster_wgs84 <- terra::project(state_cov_raster_raw[["elevation"]], wgs84_crs_str)
 valid_boundary_wgs84 <- terra::project(valid_boundary, wgs84_crs_str)
 bg_raster_wgs84 <- terra::mask(bg_raster_wgs84, valid_boundary_wgs84)
@@ -363,7 +361,6 @@ bg_raster_wgs84 <- terra::crop(bg_raster_wgs84, valid_boundary_wgs84)
 # Get Extent for coord_fixed
 bbox_full <- terra::ext(bg_raster_wgs84)
 bg_df_wgs84 <- as.data.frame(bg_raster_wgs84, xy = TRUE, na.rm = TRUE)
-# We don't rename the column to 'elevation' because we won't use the values for fill
 
 # 4. Define Methods to Map
 methods_for_maps <- c(
@@ -411,14 +408,12 @@ for (sp in species_names) {
   obs_train <- read.delim(train_file, sep=",")
   obs_test  <- read.delim(test_file, sep=",")
   
-  # Fix types
   if("observation_count" %in% names(obs_train)) obs_train$observation_count <- as.character(obs_train$observation_count)
   if("observation_count" %in% names(obs_test))  obs_test$observation_count  <- as.character(obs_test$observation_count)
 
   obs_train <- obs_train[!is.na(obs_train$duration_minutes) & obs_train$observation_date >= "2017-05-15" & obs_train$observation_date <= "2017-07-09",]
   obs_test  <- obs_test[!is.na(obs_test$duration_minutes) & obs_test$observation_date >= "2018-05-15" & obs_test$observation_date <= "2018-07-09",]
   
-  # Combine & Format
   pts_df <- bind_rows(obs_train, obs_test) %>%
     mutate(
       species_observed_label = ifelse(species_observed == 1 | species_observed == TRUE, "Detection", "Non-detection"),
@@ -429,16 +424,15 @@ for (sp in species_names) {
   # --- B. Create Left Plot (Observations - WGS84) ---
   
   obs_plot <- ggplot() + 
-    # 1. Background Box (Dark Grey)
+    # Background Box
     geom_rect(aes(xmin = bbox_full$xmin, xmax = bbox_full$xmax, 
                   ymin = bbox_full$ymin, ymax = bbox_full$ymax), 
               fill = "darkgray", show.legend = FALSE) +
     
-    # 2. Landmass (Solid Light Grey - No Elevation)
-    # Using 'fill' directly (not in aes) to prevent creating a scale
+    # Landmass (Solid Light Grey)
     geom_raster(data = bg_df_wgs84, aes(x = x, y = y), fill = "#E6E6E6", show.legend = FALSE) +
     
-    # 3. Observation Points
+    # Observation Points
     geom_point(data = pts_df, aes(x = longitude, y = latitude, 
                                   color = species_observed_label, 
                                   shape = species_observed_label, 
@@ -459,7 +453,7 @@ for (sp in species_names) {
         expand = FALSE
     ) +
     theme(
-      plot.title = element_text(hjust = 0.5, vjust = 5, face = "bold", size = 15),
+      plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold", size = 15), # vjust=1: Closer to plot
       legend.position = "inside",
       legend.position.inside = c(0.5, -0.16),
       legend.direction = "vertical",
@@ -470,11 +464,10 @@ for (sp in species_names) {
       plot.margin = margin(t = 1, r = 0, b = 0, l = 0, unit = "cm")
     )
 
-  # --- C. Generate Prediction Rasters (Psi Only) ---
+  # --- C. Generate Prediction Rasters ---
   psi_plots <- list()
   sp_params <- params_df %>% filter(species == sp)
   
-  # LOOKUP FULL NAME FOR BEST-CLUSTGEO
   full_name_row <- species_map %>% filter(Abbreviation == sp)
   if(nrow(full_name_row) > 0) {
       full_name <- full_name_row$Species[1]
@@ -482,7 +475,6 @@ for (sp in species_names) {
       full_name <- sp 
   }
 
-  # Identify Best clustGeo Method
   best_cg_row <- best_cg_params %>% filter(species == full_name, metric == "AUC")
   if(nrow(best_cg_row) == 0) best_cg_row <- best_cg_params %>% filter(species == full_name) 
   
@@ -491,7 +483,6 @@ for (sp in species_names) {
   for (i in seq_along(methods_for_maps)) {
     m_label <- methods_for_maps[i]
     
-    # Resolve Method Name
     if (m_label == "best-clustGeo") {
       if(is.na(actual_best_method)) {
          psi_plots[[i]] <- ggplot() + theme_void() + labs(title = "best-clustGeo (NA)") + theme(plot.title = element_text(hjust = 0.5))
@@ -504,25 +495,17 @@ for (sp in species_names) {
       plot_title <- m_label
     }
 
-    # Fetch Params
     m_param <- sp_params %>% filter(method == m_lookup)
     
     if (nrow(m_param) == 0) {
-      psi_plots[[i]] <- ggplot() + theme_void() + labs(title = plot_title) + theme(plot.title = element_text(hjust = 0.5, size = 10, face = "bold"))
+      psi_plots[[i]] <- ggplot() + theme_void() + labs(title = plot_title) + theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"))
       next
     }
     
-    # 1. Predict (Albers)
     psi_rast_albers <- predict_occuN_psi(cov_tif_albers, m_param, c("elevation","TCB","TCG","TCW","TCA"), cell_area_km2)
-    
-    # 2. Project to WGS84
     psi_rast_wgs84 <- terra::project(psi_rast_albers, wgs84_crs_str)
-    
-    # 3. Mask/Crop (WGS84)
     psi_rast_wgs84 <- terra::mask(psi_rast_wgs84, valid_boundary_wgs84)
     psi_rast_wgs84 <- terra::crop(psi_rast_wgs84, valid_boundary_wgs84)
-    
-    # 4. To DataFrame
     psi_df <- as.data.frame(psi_rast_wgs84, xy = TRUE, na.rm=TRUE)
     
     psi_plots[[i]] <- ggplot() +
@@ -532,7 +515,6 @@ for (sp in species_names) {
       geom_raster(data = psi_df, aes(x = x, y = y, fill = psi)) +
       scale_fill_viridis_c(option = "B", limits = c(0.0, 1.0), name = "Occupancy Probability") +
       theme_void() + 
-      # Match projection of Left Plot
       coord_fixed(
         ratio = 1.0, 
         xlim = c(bbox_full$xmin, bbox_full$xmax), 
@@ -545,13 +527,16 @@ for (sp in species_names) {
         legend.text = element_text(size = 14), 
         legend.title = element_text(size = 16, vjust = 1), 
         legend.key.width = unit(1.5, "cm"),
-        plot.title = element_text(hjust = 0.5, size = 10, face = "bold")
+        legend.box.margin = margin(t = 30), # Move legend down
+        plot.title = element_text(hjust = 0.5, size = 14, face = "bold") # Bigger Title
       )
   }
   
   # --- D. Assemble and Save ---
   grid_p <- ggarrange(plotlist = psi_plots, nrow = 2, ncol = 5, common.legend = TRUE, legend = "bottom")
-  final <- obs_plot + grid_p + plot_layout(nrow = 1, widths = c(1, 5))
+  
+  # Adjusted widths for larger left plot (1 : 2.5 ratio instead of 1 : 5)
+  final <- obs_plot + grid_p + plot_layout(nrow = 1, widths = c(1, 2.5))
   
   ggsave(file.path(map_output_dir, paste0(sp, ".png")), plot = final, width = 17, height = 9.5, dpi = 300)
 }
