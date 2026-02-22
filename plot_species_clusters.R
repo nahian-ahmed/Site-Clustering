@@ -281,7 +281,7 @@ print("Plots generated successfully in simulation_experiments/output/plots/")
 
 
 # -------------------------------------------------------------------------
-# (5) Generate Maps (Psi Only) - WGS84 (Corrected with ggnewscale)
+# (5) Generate Maps (Psi Only) - WGS84 (Solid Grey Background)
 # -------------------------------------------------------------------------
 
 cat("\n###############################################\n")
@@ -296,7 +296,6 @@ library(dplyr)
 library(ggplot2)
 library(ggpubr)
 library(tidyr)
-library(ggnewscale) # REQUIRED: Allows multiple fill scales in one plot
 
 # Source helpers to access 'standardize_state_covs' if available
 if(file.exists(file.path("R", "data_helpers.R"))) source(file.path("R", "data_helpers.R"))
@@ -355,6 +354,7 @@ if(exists("standardize_state_covs")) {
 cell_area_km2 <- (100 / 1000) * (100 / 1000)
 
 # B. Prepare WGS84 Background (For Plotting)
+# We project the boundary to WGS84 to define the shape
 bg_raster_wgs84 <- terra::project(state_cov_raster_raw[["elevation"]], wgs84_crs_str)
 valid_boundary_wgs84 <- terra::project(valid_boundary, wgs84_crs_str)
 bg_raster_wgs84 <- terra::mask(bg_raster_wgs84, valid_boundary_wgs84)
@@ -363,7 +363,7 @@ bg_raster_wgs84 <- terra::crop(bg_raster_wgs84, valid_boundary_wgs84)
 # Get Extent for coord_fixed
 bbox_full <- terra::ext(bg_raster_wgs84)
 bg_df_wgs84 <- as.data.frame(bg_raster_wgs84, xy = TRUE, na.rm = TRUE)
-colnames(bg_df_wgs84)[3] <- "elevation"
+# We don't rename the column to 'elevation' because we won't use the values for fill
 
 # 4. Define Methods to Map
 methods_for_maps <- c(
@@ -429,14 +429,16 @@ for (sp in species_names) {
   # --- B. Create Left Plot (Observations - WGS84) ---
   
   obs_plot <- ggplot() + 
-    # 1. Background Raster (Continuous Fill)
-    geom_raster(data = bg_df_wgs84, aes(x = x, y = y, fill = elevation), show.legend = FALSE) +
-    scale_fill_gradient(low = "grey90", high = "grey50") + 
+    # 1. Background Box (Dark Grey)
+    geom_rect(aes(xmin = bbox_full$xmin, xmax = bbox_full$xmax, 
+                  ymin = bbox_full$ymin, ymax = bbox_full$ymax), 
+              fill = "darkgray", show.legend = FALSE) +
     
-    # 2. Reset Fill Scale for Points
-    new_scale_fill() +
+    # 2. Landmass (Solid Light Grey - No Elevation)
+    # Using 'fill' directly (not in aes) to prevent creating a scale
+    geom_raster(data = bg_df_wgs84, aes(x = x, y = y), fill = "#E6E6E6", show.legend = FALSE) +
     
-    # 3. Observation Points (Discrete Fill)
+    # 3. Observation Points
     geom_point(data = pts_df, aes(x = longitude, y = latitude, 
                                   color = species_observed_label, 
                                   shape = species_observed_label, 
@@ -524,6 +526,9 @@ for (sp in species_names) {
     psi_df <- as.data.frame(psi_rast_wgs84, xy = TRUE, na.rm=TRUE)
     
     psi_plots[[i]] <- ggplot() +
+      geom_rect(aes(xmin = bbox_full$xmin, xmax = bbox_full$xmax, 
+                    ymin = bbox_full$ymin, ymax = bbox_full$ymax), 
+                fill = "darkgray", show.legend = FALSE) +
       geom_raster(data = psi_df, aes(x = x, y = y, fill = psi)) +
       scale_fill_viridis_c(option = "B", limits = c(0.0, 1.0), name = "Occupancy Probability") +
       theme_void() + 
