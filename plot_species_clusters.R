@@ -538,7 +538,7 @@ for (sp in species_names) {
   # Adjusted widths: 1:4 makes the left plot smaller relative to the previous 1:2.5
   final <- obs_plot + grid_p + plot_layout(nrow = 1, widths = c(1, 3.5))
   
-  ggsave(file.path(map_output_dir, paste0(sp, ".png")), plot = final, width = 17, height = 9.5, dpi = 300)
+  ggsave(file.path(map_output_dir, paste0(sp, ".png")), plot = final, width = 17, height = 9, dpi = 300)
 }
 
 cat("Maps generated successfully in output/species_experiments/clusters/plots/maps/\n")
