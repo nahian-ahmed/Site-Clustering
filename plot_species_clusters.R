@@ -129,8 +129,10 @@ plot_raw_performance <- function(df, metric_col, y_label, output_filename) {
   
   df$species <- factor(df$species, levels = species_order)
   
-  alg_order <- c("2to10", "2to10-sameObs", "1to10", "1-kmSq", "lat-long", 
-                 "rounded-4", "best-clustGeo", "DBSC", "BayesOptClustGeo")
+  # UPDATED ALGORITHM ORDER
+  alg_order <- c("lat-long", "1-kmSq", "DBSC", "1to10", "2to10-sameObs", 
+                 "2to10", "rounded-4", "BayesOptClustGeo", "best-clustGeo")
+  
   df <- df %>% filter(method %in% alg_order)
   df$method <- factor(df$method, levels = alg_order)
   
@@ -250,9 +252,12 @@ dunn_res <- dunnTest(mean_perc_diff ~ method, data = stats_df, method = "bh")$re
 dunn_res <- dunn_res %>%
   separate(Comparison, into = c("Method1", "Method2"), sep = " - ")
 
-# Create full matrix for plotting
-# We want a heatmap. We can plot Method1 vs Method2.
-# Note: Dunn's test output is one-way. We need to mirror it for a full grid or keep lower tri.
+# --- MAKE SYMMETRICAL ---
+dunn_res_inv <- dunn_res
+dunn_res_inv$Method1 <- dunn_res$Method2
+dunn_res_inv$Method2 <- dunn_res$Method1
+dunn_res <- bind_rows(dunn_res, dunn_res_inv)
+# ------------------------
 
 # Sort methods by performance for the axis order
 method_perf_order <- stats_df %>%
@@ -310,35 +315,43 @@ cat("GENERATING TRAITS ANALYSIS PLOTS\n")
 cat("###############################################\n")
 
 # Merge AUC improvement data with traits
-# auc_by_species has 'species', 'method', 'mean_perc_diff'
-# species_map has full names, we need abbreviations to match 'species' in auc_by_species?
-# Actually 'auc_by_species' currently has Full Names because we renamed them at the start.
-# species_descr_ext.csv usually has "Abbreviation". Let's check species_map content.
-
-# species_map was loaded with read.csv("./species_descr_ext.csv")
-# It has "Species" (Full) and "Abbreviation".
-# auc_by_species$species is Full Name.
 trait_df <- auc_by_species %>%
   left_join(species_map, by = c("species" = "Species"))
 
-# Helper for boxplots
+# --- RECODE TRAIT LABELS ---
+trait_df <- trait_df %>%
+  mutate(
+    Prevalence.Level = recode(Prevalence.Level, "l"="Low", "m"="Medium", "h"="High"),
+    Habitat = recode(Habitat, "e"="Seral", "f"="Forest"),
+    Generalist.Specialist = recode(Generalist.Specialist, "g"="Generalist", "s"="Specialist"),
+    Home.Range = recode(Home.Range, "s"="Small", "m"="Medium", "l"="Large")
+  )
+
+# Force Trait Level order for Prevalence and Home Range
+trait_df$Prevalence.Level <- factor(trait_df$Prevalence.Level, levels=c("Low", "Medium", "High"))
+trait_df$Home.Range <- factor(trait_df$Home.Range, levels=c("Small", "Medium", "Large"))
+
+
+# Helper for boxplots (UPDATED: No sub-facets, Trait on X-Axis)
 plot_trait_panel <- function(data, trait_col, title_str) {
   
   # Filter NAs
   plot_data <- data %>% filter(!is.na(.data[[trait_col]]))
   
-  # Order methods by performance
-  m_ord <- plot_data %>% group_by(method) %>% summarise(m=mean(mean_perc_diff)) %>% arrange(m) %>% pull(method)
-  plot_data$method <- factor(plot_data$method, levels = m_ord)
+  # Apply User's Fixed Algorithm Order
+  alg_order <- c("lat-long", "1-kmSq", "DBSC", "1to10", "2to10-sameObs", 
+                 "2to10", "rounded-4", "BayesOptClustGeo", "best-clustGeo")
   
-  ggplot(plot_data, aes(x = method, y = mean_perc_diff, fill = method)) +
+  # Filter to only keep methods in the order list (safety check)
+  plot_data <- plot_data %>% filter(method %in% alg_order)
+  plot_data$method <- factor(plot_data$method, levels = alg_order)
+  
+  ggplot(plot_data, aes(x = .data[[trait_col]], y = mean_perc_diff, fill = method)) +
     geom_boxplot(outlier.size = 0.5) +
-    facet_wrap(vars(.data[[trait_col]]), scales = "fixed") +
     geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
     scale_fill_manual(values = colors) +
     theme_bw() +
     theme(
-      axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size=8),
       legend.position = "none",
       strip.background = element_rect(fill = "white")
     ) +
@@ -367,8 +380,6 @@ cat("GENERATING KAPPA DIFFERENCE PLOT\n")
 cat("###############################################\n")
 
 # 1. Load best-clustGeo params (Grid Search Best)
-# Already saved as best_params_combined (filtered for AUC inside the file usually, check structure)
-# best_params_combined has columns: species, metric, method, rho, kappa
 grid_kappa <- best_params_combined %>%
   filter(metric == "AUC") %>%
   mutate(kappa_grid = as.numeric(kappa)) %>%
@@ -387,14 +398,6 @@ if(file.exists(bayes_file)) {
     select(species, kappa_bayes)
   
   # 3. Join and Compare
-  # Ensure species names match (Full names vs Abbr? Check files).
-  # best_params_combined used full names (from the join at start).
-  # BayesOptClustGeo_params.csv usually saves whatever 'species_name' was in the loop. 
-  # In species_clusters.R, 'species_names' was Abbreviations (e.g. "AMCR").
-  # But in THIS script, we converted 'data' to full names. 
-  # best_params_combined was built from 'data', so it has Full Names.
-  
-  # We need to map bayes_kappa species (Abbreviations) to Full Names
   bayes_kappa <- bayes_kappa %>%
     left_join(species_map %>% select(Species, Abbreviation), by = c("species" = "Abbreviation")) %>%
     mutate(species_full = ifelse(!is.na(Species), Species, species)) %>%
@@ -413,8 +416,8 @@ if(file.exists(bayes_file)) {
     theme_classic() +
     labs(
       title = "Difference in Selected Kappa",
-      subtitle = "Positive = Grid Search chose larger K than BayesOpt",
-      y = "Kappa Difference (BestGrid - BayesOpt)",
+      subtitle = NULL, # REMOVED subtitle
+      y = "Kappa Difference (best-clustGeo - BayesOptClustGeo)", # UPDATED Label
       x = "Species"
     )
   
