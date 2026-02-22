@@ -5,8 +5,8 @@
 # INCLUDES:
 # 1. Raw Performance Plots
 # 2. Percentage Improvement Plots
-# 3. Significance Heatmaps (Raw AUC)
-# 4. Trait-based Analysis (Mixed-Effects Models with sjPlot)
+# 3. Significance Heatmaps (% Improvement)
+# 4. Trait-based Analysis (Mixed-Effects on RAW AUC)
 # 5. Kappa Selection Analysis & Saving Params
 # 6. Maps
 ################################################################
@@ -240,17 +240,17 @@ plot_improvement(auprc_by_repeat, "Average % AUPRC Improvement", file.path(outpu
 # (6) Statistical Significance Heatmap
 # -------------------------------------------------------------------------
 cat("\n###############################################\n")
-cat("GENERATING STATISTICAL SIGNIFICANCE HEATMAP (RAW AUC)\n")
+cat("GENERATING STATISTICAL SIGNIFICANCE HEATMAP (% IMPROVEMENT)\n")
 cat("###############################################\n")
 
-# Use RAW AUC data for the test (More robust than % diff)
-stats_df <- final_data_auc
+# Use Percentage Improvement data for the test (As requested)
+stats_df <- auc_by_species
 
 # Ensure factors
 stats_df$method <- factor(stats_df$method)
 
 # Run Dunn's Test
-dunn_res <- dunnTest(auc ~ method, data = stats_df, method = "bh")$res
+dunn_res <- dunnTest(mean_perc_diff ~ method, data = stats_df, method = "bh")$res
 
 # Parse comparisons (e.g., "A - B")
 dunn_res <- dunn_res %>%
@@ -266,7 +266,7 @@ dunn_res <- bind_rows(dunn_res, dunn_res_inv)
 # Sort methods by performance for the axis order
 method_perf_order <- stats_df %>%
   group_by(method) %>%
-  summarise(mean_val = mean(auc)) %>%
+  summarise(mean_val = mean(mean_perc_diff)) %>%
   arrange(mean_val) %>%
   pull(method)
 
@@ -304,7 +304,7 @@ p_heatmap <- ggplot(dunn_res, aes(x = Method1, y = Method2, fill = P.adj)) +
     panel.grid = element_blank()
   ) +
   labs(
-    title = "Pairwise Significance (Raw AUC, Dunn's Test)",
+    title = "Pairwise Significance (% AUC Improvement, Dunn's Test)",
     x = NULL, y = NULL
   )
 
@@ -313,14 +313,16 @@ cat("Significance heatmap saved.\n")
 
 
 # -------------------------------------------------------------------------
-# (7) Species Traits Plots (Mixed-Effects Models)
+# (7) Species Traits Plots (Mixed-Effects Models on RAW AUC)
 # -------------------------------------------------------------------------
 cat("\n###############################################\n")
-cat("GENERATING TRAITS ANALYSIS PLOTS (MIXED-EFFECTS)\n")
+cat("GENERATING TRAITS ANALYSIS PLOTS (RAW AUC, Mixed-Effects)\n")
 cat("###############################################\n")
 
-# Merge AUC improvement data with traits
-trait_df <- auc_by_species %>%
+# 1. Summarize Raw AUC by Species & Method
+trait_df <- final_data_auc %>%
+  group_by(species, method) %>%
+  summarise(mean_auc = mean(auc, na.rm = TRUE), .groups = "drop") %>%
   left_join(species_map, by = c("species" = "Species"))
 
 # --- RECODE TRAIT LABELS ---
@@ -348,12 +350,12 @@ trait_df$method <- factor(trait_df$method, levels = alg_order)
 # Set global theme for sjPlot
 sjPlot::set_theme(base = theme_classic(), axis.angle.x = 45)
 
-# --- RUN LMER MODELS ---
+# --- RUN LMER MODELS (Response = mean_auc) ---
 # Using interaction (method:Trait) to get estimates for each combo
-m_prev <- lmer(mean_perc_diff ~ method:Prevalence.Level + (1|species), data=trait_df, control=lmerControl(check.rankX="silent.drop.cols"))
-m_hab  <- lmer(mean_perc_diff ~ method:Habitat + (1|species), data=trait_df, control=lmerControl(check.rankX="silent.drop.cols"))
-m_spec <- lmer(mean_perc_diff ~ method:Generalist.Specialist + (1|species), data=trait_df, control=lmerControl(check.rankX="silent.drop.cols"))
-m_home <- lmer(mean_perc_diff ~ method:Home.Range + (1|species), data=trait_df, control=lmerControl(check.rankX="silent.drop.cols"))
+m_prev <- lmer(mean_auc ~ method:Prevalence.Level + (1|species), data=trait_df, control=lmerControl(check.rankX="silent.drop.cols"))
+m_hab  <- lmer(mean_auc ~ method:Habitat + (1|species), data=trait_df, control=lmerControl(check.rankX="silent.drop.cols"))
+m_spec <- lmer(mean_auc ~ method:Generalist.Specialist + (1|species), data=trait_df, control=lmerControl(check.rankX="silent.drop.cols"))
+m_home <- lmer(mean_auc ~ method:Home.Range + (1|species), data=trait_df, control=lmerControl(check.rankX="silent.drop.cols"))
 
 # Helper for plotting mixed effects with sjPlot (Plots & Lines)
 plot_lmer_effects <- function(model, trait_col, title_str) {
@@ -366,12 +368,11 @@ plot_lmer_effects <- function(model, trait_col, title_str) {
     type = "pred", 
     terms = c(trait_col, "method"), # X-axis = Trait, Group = Method
     title = title_str, 
-    axis.title = c(title_str, "% Impr."),
+    axis.title = c(title_str, "AUC"),
     colors = model_colors, 
     dodge = 0.6,
     legend.title = "Algorithm"
-  ) +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "gray") 
+  ) 
 }
 
 # Create 4 panels
@@ -383,11 +384,11 @@ p_home <- plot_lmer_effects(m_home, "Home.Range", "Home Range")
 # Combine with Common Legend
 p_traits <- ( (p_prev + p_hab) / (p_spec + p_home) ) + 
   plot_layout(guides = "collect") + 
-  plot_annotation(title = "Algorithm Performance by Species Traits (Mixed-Effects)") & 
+  plot_annotation(title = "Algorithm Performance by Species Traits (Raw AUC)") & 
   theme(legend.position = "bottom")
 
 ggsave(file.path(output_plot_dir, "traits.png"), plot = p_traits, width = 12, height = 10, dpi = 300)
-cat("Traits plot saved (Mixed-Effects/sjPlot).\n")
+cat("Traits plot saved (Mixed-Effects/sjPlot/Raw AUC).\n")
 
 
 # -------------------------------------------------------------------------
