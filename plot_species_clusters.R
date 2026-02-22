@@ -5,9 +5,9 @@
 # INCLUDES:
 # 1. Raw Performance Plots
 # 2. Percentage Improvement Plots
-# 3. Significance Heatmaps (Raw AUC, Clean Scale, Empty NS)
-# 4. Trait-based Analysis (Mixed-Effects on Raw AUC, Flat Labels)
-# 5. Kappa Selection Analysis (Flat Labels, No Title)
+# 3. Significance Heatmaps (Raw AUC, Outlined Cells
+# 4. Trait-based Analysis (Mixed-Effects on Raw AUC
+# 5. Kappa Selection Analysis
 # 6. Maps
 ################################################################
 
@@ -286,26 +286,37 @@ dunn_res_final <- dunn_res_final %>%
       P.adj < 0.001 ~ "***",
       P.adj < 0.01  ~ "**",
       P.adj < 0.05  ~ "*",
-      TRUE          ~ "" # Leave empty if not significant
+      TRUE          ~ ""
     ),
     label_color = ifelse(P.adj < 0.05, "white", "black")
   )
 
 # Plot Heatmap (Bottom-Left Triangle)
 p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj)) +
-  geom_tile(color = "white") +
-  # Custom scale focused on significant values (0 to 0.1)
+  geom_tile(color = "lightgrey") + # Added light grey outline
+  
+  # Main Gradient Scale
   scale_fill_gradientn(
     colors = c("darkred", "red", "orange", "white"),
-    values = c(0, 0.1, 0.5, 1), # Normalize positions to the 0-0.1 limit
-    limits = c(0, 0.1),         # Cap the legend at 0.1
-    oob = scales::squish,       # Squish values > 0.1 into the white color
-    name = "Adj. P-Value"
+    values = c(0, 0.1, 0.5, 1),
+    limits = c(0, 0.1),
+    oob = scales::squish,
+    name = "Adj. p-value" # Lowercase p and v
   ) +
+  
+  # Dummy layer for generating the Star Legend
+  geom_point(data = filter(dunn_res_final, stars != ""), 
+             aes(shape = stars), alpha = 0) +
+  scale_shape_manual(
+    name = "Significance",
+    values = c("*"=8, "**"=8, "***"=8), # Shape 8 is a star/asterisk
+    labels = c("*" = "p < 0.05", "**" = "p < 0.01", "***" = "p < 0.001")
+  ) +
+  
   geom_text(aes(label = stars, color = label_color), size = 5, vjust = 0.7) +
   scale_color_identity() +
   
-  # REMOVE EXTRA LABELS:
+  # Remove extra labels to clean up triangle edges
   scale_x_discrete(drop = FALSE, breaks = method_perf_order[-length(method_perf_order)]) + 
   scale_y_discrete(drop = FALSE, limits = rev(levels(dunn_res_full$Method2)), 
                    breaks = method_perf_order[-1]) +
@@ -314,14 +325,20 @@ p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj))
   theme(
     axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
     axis.text.y = element_text(size = 10),
-    panel.grid = element_blank()
+    panel.grid = element_blank(),
+    legend.box = "vertical",
+    legend.margin = margin()
+  ) +
+  # Force the shape legend to show visible points
+  guides(
+    shape = guide_legend(override.aes = list(alpha = 1, size = 3, color = "black"), order = 1),
+    fill = guide_colorbar(order = 2)
   ) +
   labs(
     title = NULL,
     x = NULL, y = NULL
   )
 
-# Save as significance.png
 ggsave(file.path(output_plot_dir, "significance.png"), plot = p_heatmap, width = 8, height = 7, dpi = 300)
 cat("Significance heatmap saved (significance.png).\n")
 
@@ -537,7 +554,7 @@ predict_occuN_psi <- function(cov_stack, param_row, state_covs, cell_area) {
 
 for (sp in species_list) {
   
-  cat(sprintf("Generating map for %s (WGS84)...\n", sp))
+  cat(sprintf("Generating map for %s ...\n", sp))
   train_file <- file.path("checklist_data", "species", sp, paste0(sp, "_zf_filtered_region_2017.csv"))
   test_file  <- file.path("checklist_data", "species", sp, paste0(sp, "_zf_filtered_region_2018.csv"))
   
