@@ -277,18 +277,24 @@ plot_improvement(auprc_by_repeat,
 
 print("Plots generated successfully in simulation_experiments/output/plots/")
 
+
+
+
 # -------------------------------------------------------------------------
-# (5) Generate Maps (Occupancy Probability Only) - WGS84 Version
+# (5) Generate Maps (Occupancy Probability Only) - Albers Projection
 # -------------------------------------------------------------------------
 
 cat("\n###############################################\n")
-cat("GENERATING SPECIES MAPS (PSI ONLY - WGS84)\n")
+cat("GENERATING SPECIES MAPS (PSI ONLY - ALBERS)\n")
 cat("###############################################\n")
 
 # --- 0. SETUP & LIBRARIES ---
 library(patchwork) # For layout
 library(terra)     # For raster operations
 library(sf)        # For vector operations
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
 
 # Source helpers to access 'standardize_state_covs' if available
 if(file.exists(file.path("R", "data_helpers.R"))) source(file.path("R", "data_helpers.R"))
@@ -300,24 +306,37 @@ if (!dir.exists(map_output_dir)) dir.create(map_output_dir, recursive = TRUE)
 # 2. Load Parameters
 params_df <- read.csv(file.path(output_dir, "estimated_parameters.csv"))
 
+# --- Load Best clustGeo Definition (Created in Step 1.5) ---
+best_cg_file <- file.path(output_plot_dir, "best-clustGeo_params.csv")
+if(file.exists(best_cg_file)) {
+  best_cg_params <- read.csv(best_cg_file)
+} else {
+  warning("best-clustGeo_params.csv not found. 'best-clustGeo' map may fail.")
+  best_cg_params <- NULL
+}
+
 # --- Define species_names from the already loaded species_map ---
 species_names <- as.character(species_map$Abbreviation)
 
-# 3. Define Spatial Constants (Model uses Albers, Plotting uses WGS84)
+# 3. Define Spatial Constants & Load Raster
+# Albers CRS (Equal Area)
 albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
-wgs84_crs_str  <- "EPSG:4326"
 boundary_shapefile_path <- file.path("state_covariate_raster", "boundary", "boundary.shp")
 
-cat("Loading and preparing environmental rasters...\n")
+cat("Loading and preparing environmental rasters (Albers)...\n")
 
-# A. Prepare ALBERS Raster (For Model Predictions)
-# We must use Albers to predict because the model betas correspond to Albers-derived covariates.
+# Load and Project Raster
 state_cov_raster_raw <- terra::rast(file.path("state_covariate_raster", "state_covariates.tif"))
 names(state_cov_raster_raw) <- c("elevation", "TCB", "TCG", "TCW", "TCA") 
-
 cov_tif_albers_raw <- terra::project(state_cov_raster_raw, albers_crs_str, method="bilinear", res = 100)
 
-# Standardize Albers Raster (Matches Training Data)
+# Mask and Crop to Boundary
+valid_boundary <- terra::vect(boundary_shapefile_path)
+valid_boundary_proj <- terra::project(valid_boundary, albers_crs_str)
+cov_tif_albers_raw <- terra::mask(cov_tif_albers_raw, valid_boundary_proj)
+cov_tif_albers_raw <- terra::crop(cov_tif_albers_raw, valid_boundary_proj)
+
+# Standardize
 if(exists("standardize_state_covs")) {
   standardization_results <- standardize_state_covs(cov_tif_albers_raw)
   cov_tif_albers <- standardization_results$raster
@@ -332,22 +351,8 @@ if(exists("standardize_state_covs")) {
 }
 cell_area_km2 <- (100 / 1000) * (100 / 1000)
 
-# B. Prepare WGS84 Boundary & Background (For Plotting)
-# Project boundary to WGS84 for clipping the final maps
-valid_boundary <- terra::vect(boundary_shapefile_path)
-boundary_wgs84 <- terra::project(valid_boundary, wgs84_crs_str)
-
-# Create a WGS84 background raster (using Elevation) for the Left Plot
-# We project the raw elevation (before standardization) to WGS84
-bg_raster_wgs84 <- terra::project(state_cov_raster_raw[["elevation"]], wgs84_crs_str)
-bg_raster_wgs84 <- terra::mask(bg_raster_wgs84, boundary_wgs84)
-bg_raster_wgs84 <- terra::crop(bg_raster_wgs84, boundary_wgs84)
-
-# Convert background to DF once to save time
-bg_df_wgs84 <- as.data.frame(bg_raster_wgs84, xy = TRUE, na.rm = TRUE)
-colnames(bg_df_wgs84)[3] <- "value" # Generic name for fill
-
 # 4. Define Methods to Map
+# Note: "best-clustGeo" is a placeholder we will handle dynamically
 methods_for_maps <- c(
   "1to10", 
   "2to10", 
@@ -357,7 +362,7 @@ methods_for_maps <- c(
   "rounded-4", 
   "DBSC", 
   "BayesOptClustGeo",
-  "clustGeo-50-60" 
+  "best-clustGeo" 
 )
 
 # 5. Define Prediction Function (Psi Only)
@@ -365,26 +370,21 @@ predict_occuN_rasters <- function(cov_stack, param_row, state_covs, cell_area) {
   intercept <- param_row$state_intercept
   betas <- as.numeric(param_row[state_covs])
   
-  # Linear Predictor (Albers)
   lin_pred <- cov_stack[[1]] * 0 + intercept
   for(i in seq_along(state_covs)) {
     lin_pred <- lin_pred + (cov_stack[[state_covs[i]]] * betas[i])
   }
   
-  # Lambda = exp(lin_pred) * area
   lambda_rast <- exp(lin_pred) * cell_area
-  
-  # Psi = 1 - exp(-lambda)
   psi_rast <- 1 - exp(-lambda_rast)
   names(psi_rast) <- "psi"
-  
   return(psi_rast)
 }
 
 # 6. Loop over Species
 for (sp in species_names) {
   
-  cat(sprintf("Generating map for %s (WGS84)...\n", sp))
+  cat(sprintf("Generating map for %s (Albers)...\n", sp))
   
   # --- A. Prepare Observations ---
   train_file <- file.path("checklist_data", "species", sp, paste0(sp, "_zf_filtered_region_2017.csv"))
@@ -398,14 +398,14 @@ for (sp in species_names) {
   obs_train <- read.delim(train_file, sep=",")
   obs_test  <- read.delim(test_file, sep=",")
   
-  # Fix for bind_rows error
+  # Fix types
   if("observation_count" %in% names(obs_train)) obs_train$observation_count <- as.character(obs_train$observation_count)
   if("observation_count" %in% names(obs_test))  obs_test$observation_count  <- as.character(obs_test$observation_count)
 
   obs_train <- obs_train[!is.na(obs_train$duration_minutes) & obs_train$observation_date >= "2017-05-15" & obs_train$observation_date <= "2017-07-09",]
   obs_test  <- obs_test[!is.na(obs_test$duration_minutes) & obs_test$observation_date >= "2018-05-15" & obs_test$observation_date <= "2018-07-09",]
   
-  # Points are already in WGS84 (Longitude/Latitude)
+  # Combine
   pts_df <- bind_rows(obs_train, obs_test) %>%
     mutate(
       species_observed_label = ifelse(species_observed == 1 | species_observed == TRUE, "Detection", "Non-detection"),
@@ -413,17 +413,25 @@ for (sp in species_names) {
     ) %>%
     arrange(species_observed_label)
   
-  # --- B. Create Left Plot (Observations - WGS84) ---
+  # Project Points to Albers for plotting
+  pts_sf <- st_as_sf(pts_df, coords = c("longitude", "latitude"), crs = 4326)
+  pts_sf_albers <- st_transform(pts_sf, albers_crs_str)
   
-  # Calculate WGS84 bounds from the background dataframe
-  x_min <- min(bg_df_wgs84$x); x_max <- max(bg_df_wgs84$x)
-  y_min <- min(bg_df_wgs84$y); y_max <- max(bg_df_wgs84$y)
+  # Extract coordinates back to DF columns
+  coords <- st_coordinates(pts_sf_albers)
+  pts_df$x_albers <- coords[,1]
+  pts_df$y_albers <- coords[,2]
+  
+  # --- B. Create Left Plot (Observations - Albers) ---
+  bg_df <- as.data.frame(cov_tif_albers[[1]], xy = TRUE, na.rm = TRUE)
+  
+  x_min <- min(bg_df$x); x_max <- max(bg_df$x)
+  y_min <- min(bg_df$y); y_max <- max(bg_df$y)
   
   obs_plot <- ggplot() + 
     geom_rect(aes(xmin = x_min, xmax = x_max, ymin = y_min, ymax = y_max), fill = "darkgray", show.legend = FALSE) +
-    # Use the WGS84 background
-    geom_raster(data = bg_df_wgs84, aes(x = x, y = y), fill = "#E6E6E6", show.legend = FALSE) +
-    geom_point(data = pts_df, aes(x = longitude, y = latitude, 
+    geom_raster(data = bg_df, aes(x = x, y = y), fill = "#E6E6E6", show.legend = FALSE) +
+    geom_point(data = pts_df, aes(x = x_albers, y = y_albers, 
                                   color = species_observed_label, 
                                   shape = species_observed_label, 
                                   fill = species_observed_label, 
@@ -434,10 +442,9 @@ for (sp in species_names) {
     scale_size_manual(name = "Observation", values = c("Detection" = 1.6, "Non-detection" = 1.5)) +
     labs(title = "Species Observations") +
     theme_void() +
-    # Ratio 1.3 is approx correct for Oregon latitudes in WGS84 to avoid squashing
-    coord_fixed(ratio = 1.3) +
+    coord_fixed() + # Albers is equal area, ratio 1 is correct
     theme(
-      plot.title = element_text(hjust = 0.5, vjust = -56, face = "bold", size = 15),
+      plot.title = element_text(hjust = 0.5, vjust = 5, face = "bold", size = 15), # Moved title up with vjust
       legend.position = "inside",
       legend.position.inside = c(0.5, -0.16),
       legend.direction = "vertical",
@@ -445,52 +452,73 @@ for (sp in species_names) {
       legend.title = element_text(size = 15, margin = margin(l = 20, b = 10)), 
       legend.spacing.x = unit(3, "cm"), 
       legend.key.size = unit(1, 'cm'),
-      plot.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "cm")
+      plot.margin = margin(t = 1, r = 0, b = 0, l = 0, unit = "cm") # Added top margin
     )
 
-  # --- C. Generate Prediction Rasters (Psi Only - Projected to WGS84) ---
+  # --- C. Generate Prediction Rasters (Psi Only) ---
   psi_plots <- list()
   sp_params <- params_df %>% filter(species == sp)
   
+  # Determine the specific method name for "best-clustGeo" for this species
+  # (Since AUC is usually the metric of choice for "best", we filter by metric="AUC" if available, else take first)
+  best_cg_row <- best_cg_params %>% filter(species == sp, metric == "AUC")
+  if(nrow(best_cg_row) == 0) best_cg_row <- best_cg_params %>% filter(species == sp) # Fallback
+  
+  actual_best_method <- if(nrow(best_cg_row) > 0) best_cg_row$method[1] else NA
+  
   for (i in seq_along(methods_for_maps)) {
-    m <- methods_for_maps[i]
-    m_param <- sp_params %>% filter(method == m)
+    m_label <- methods_for_maps[i]
+    
+    # Logic to find the correct parameters
+    if (m_label == "best-clustGeo") {
+      # Look up the actual method string (e.g., "clustGeo-50-80")
+      if(is.na(actual_best_method)) {
+         psi_plots[[i]] <- ggplot() + theme_void() + labs(title = "best-clustGeo (NA)")
+         next
+      }
+      m_lookup <- actual_best_method
+      plot_title <- "best-clustGeo"
+    } else {
+      m_lookup <- m_label
+      plot_title <- m_label
+    }
+
+    # Fetch params
+    m_param <- sp_params %>% filter(method == m_lookup)
     
     if (nrow(m_param) == 0) {
-      psi_plots[[i]] <- ggplot() + theme_void() + labs(title = m)
+      psi_plots[[i]] <- ggplot() + theme_void() + labs(title = plot_title) + theme(plot.title = element_text(hjust = 0.5, size = 10, face = "bold"))
       next
     }
     
-    # 1. Predict in Albers (Matching model coefficients)
-    psi_albers <- predict_occuN_rasters(cov_tif_albers, m_param, c("elevation","TCB","TCG","TCW","TCA"), cell_area_km2)
+    # Predict
+    psi_rast <- predict_occuN_rasters(cov_tif_albers, m_param, c("elevation","TCB","TCG","TCW","TCA"), cell_area_km2)
     
-    # 2. Project to WGS84 for plotting
-    psi_wgs84 <- terra::project(psi_albers, wgs84_crs_str)
-    
-    # 3. Clip (Mask + Crop) using WGS84 boundary
-    psi_wgs84 <- terra::mask(psi_wgs84, boundary_wgs84)
-    psi_wgs84 <- terra::crop(psi_wgs84, boundary_wgs84)
-    
-    # 4. Convert to DF for ggplot
-    # Aggregation is handled implicitly by project if res isn't specified, 
-    # but we can explicitly aggregate if needed for speed. Here we trust project default.
-    psi_df <- as.data.frame(psi_wgs84, xy = TRUE, na.rm=TRUE)
+    # Convert to DF
+    psi_df <- as.data.frame(terra::aggregate(psi_rast, fact = 6, fun = mean, na.rm=TRUE), xy = TRUE, na.rm=TRUE)
     
     psi_plots[[i]] <- ggplot() +
       geom_rect(aes(xmin = x_min, xmax = x_max, ymin = y_min, ymax = y_max), fill = "darkgray", show.legend = FALSE) +
       geom_raster(data = psi_df, aes(x = x, y = y, fill = psi)) +
       scale_fill_viridis_c(option = "B", limits = c(0.0, 1.0), name = "Occupancy Probability") +
       theme_void() + 
-      coord_fixed(ratio = 1.3) + 
-      labs(title = NULL) +
-      theme(legend.position = "bottom", legend.text = element_text(size = 14), legend.title = element_text(size = 16, vjust = 1), legend.key.width = unit(1.5, "cm"))
+      coord_fixed() + 
+      labs(title = plot_title) +
+      theme(
+        legend.position = "bottom", 
+        legend.text = element_text(size = 14), 
+        legend.title = element_text(size = 16, vjust = 1), 
+        legend.key.width = unit(1.5, "cm"),
+        plot.title = element_text(hjust = 0.5, size = 10, face = "bold") # Center title
+      )
   }
   
   # --- D. Arrange and Save ---
-  grid_p <- ggarrange(plotlist = psi_plots, nrow = 2, ncol = 5, common.legend = TRUE, legend = "bottom", labels = methods_for_maps, font.label = list(size = 10, face = "bold"))
+  # Note: labels=NULL because we added titles directly to subplots
+  grid_p <- ggarrange(plotlist = psi_plots, nrow = 2, ncol = 5, common.legend = TRUE, legend = "bottom")
+  
   final <- obs_plot + grid_p + plot_layout(nrow = 1, widths = c(1, 5))
   
-  # Save as Species.png
   ggsave(file.path(map_output_dir, paste0(sp, ".png")), plot = final, width = 17, height = 9.5, dpi = 300)
 }
 
