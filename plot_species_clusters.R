@@ -279,45 +279,63 @@ dunn_res_final <- dunn_res_full %>%
   filter(as.numeric(Method2) > as.numeric(Method1))
 # ----------------------------------
 
-# Add significance stars
-# UPDATED: Included "-" for p > 0.05
+# Add significance stars and label color logic
 dunn_res_final <- dunn_res_final %>%
   mutate(
     stars = case_when(
       P.adj < 0.001 ~ "***",
       P.adj < 0.01  ~ "**",
       P.adj < 0.05  ~ "*",
-      TRUE          ~ "-"  # Change from "" to "-"
+      TRUE          ~ "-"
     ),
+    # Use white text for dark backgrounds (low p-val) and black for light
     label_color = ifelse(P.adj < 0.05, "white", "black")
   )
 
 # Plot Heatmap (Bottom-Left Triangle)
 p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj)) +
-  geom_tile(color = "lightgrey") + # Added light grey outline
+  geom_tile(color = "lightgrey") + 
   
-  # Main Gradient Scale
+  # 1. Fill Scale (Adj. p-value) - ORDER 1
   scale_fill_gradientn(
     colors = c("darkred", "red", "orange", "white"),
     values = c(0, 0.1, 0.5, 1),
     limits = c(0, 0.1),
     oob = scales::squish,
-    name = "Adj. p-value" # Lowercase p and v
+    name = "Adj. p-value"
   ) +
   
-  # Dummy layer for generating the Star Legend
-  geom_point(data = filter(dunn_res_final, stars %in% c("*", "**", "***", "-")), 
-             aes(shape = stars), alpha = 0) +
+  # 2. Main Text Layer (Identity Color)
+  # Uses pre-calculated label_color for visibility on the plot
+  geom_text(aes(label = stars, color = label_color), size = 5, vjust = 0.75) +
+  scale_color_identity() +
   
-  # UPDATED: Added "-" to shapes and labels
-  scale_shape_manual(
+  # 3. Dummy Legend Layer (Alpha) - ORDER 2
+  # We use a dummy text layer to generate the legend keys as TEXT (*, **, ***)
+  # We map 'stars' to 'alpha' to create a separate legend, then override the look.
+  geom_text(
+    data = filter(dunn_res_final, stars %in% c("*", "**", "***", "-")), 
+    aes(label = stars, alpha = stars), 
+    color = "black", # Legend text is black
+    size = 0,        # Hidden in plot
+    key_glyph = "text" # Crucial: Makes the legend key a text character
+  ) +
+  
+  # Define the Legend Labels
+  scale_alpha_manual(
     name = "Significance",
-    values = c("*"=8, "**"=8, "***"=8, "-"=95), # Shape 8 is star, 95 is dash
+    values = c("*"=0, "**"=0, "***"=0, "-"=0), # Invisible in plot
     labels = c("*" = "p < 0.05", "**" = "p < 0.01", "***" = "p < 0.001", "-" = "p > 0.05")
   ) +
   
-  geom_text(aes(label = stars, color = label_color), size = 5, vjust = 0.7) +
-  scale_color_identity() +
+  # Guides to Control Order and Appearance
+  guides(
+    fill = guide_colorbar(order = 1),
+    alpha = guide_legend(
+      order = 2, 
+      override.aes = list(alpha = 1, size = 6) # Make text visible and large in legend
+    )
+  ) +
   
   # Remove extra labels to clean up triangle edges
   scale_x_discrete(drop = FALSE, breaks = method_perf_order[-length(method_perf_order)]) + 
@@ -331,11 +349,6 @@ p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj))
     panel.grid = element_blank(),
     legend.box = "vertical",
     legend.margin = margin()
-  ) +
-  # Force the shape legend to show visible points
-  guides(
-    shape = guide_legend(override.aes = list(alpha = 1, size = 3, color = "black"), order = 1),
-    fill = guide_colorbar(order = 2)
   ) +
   labs(
     title = NULL,
