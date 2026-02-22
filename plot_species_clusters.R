@@ -289,21 +289,29 @@ dunn_res_final <- dunn_res_final %>%
       P.adj < 0.05  ~ "*",
       TRUE          ~ "-"
     ),
-    # -----------------------------------------------------------------------
-    # CRITICAL FIX 1: Convert to FACTOR with explicit levels IN ORDER.
-    # This determines the legend order: -, *, **, ***
-    # -----------------------------------------------------------------------
-    stars = factor(stars, levels = c("-", "*", "**", "***")), 
-    
     # Use white text for dark backgrounds (low p-val) and black for light
     label_color = ifelse(P.adj < 0.05, "white", "black")
   )
 
+# -----------------------------------------------------------------------
+# CRITICAL FIX: Create Dummy Data to force Legend Keys
+# This ensures that even if a significance level (e.g., "*") is missing
+# from your specific dataset, it still appears in the legend in the correct order.
+# -----------------------------------------------------------------------
+dummy_legend_data <- data.frame(
+  Method1 = method_perf_order[1],
+  Method2 = method_perf_order[2],
+  P.adj = NA,
+  stars = factor(c("-", "*", "**", "***"), levels = c("-", "*", "**", "***")),
+  label_color = "black"
+)
+
 # Plot Heatmap (Bottom-Left Triangle)
-p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj)) +
-  geom_tile(color = "lightgrey") + 
+p_heatmap <- ggplot() +
+  # 1. Main Tile Layer
+  geom_tile(data = dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj), color = "lightgrey") + 
   
-  # 1. Fill Scale (Adj. p-value) - ORDER 1
+  # 2. Fill Scale (Adj. p-value) - ORDER 1
   scale_fill_gradientn(
     colors = c("darkred", "red", "orange", "white"),
     values = c(0, 0.1, 0.5, 1),
@@ -312,20 +320,21 @@ p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj))
     name = "Adj. p-value"
   ) +
   
-  # 2. Main Text Layer (Identity Color)
-  geom_text(aes(label = stars, color = label_color), size = 5, vjust = 0.75) +
+  # 3. Main Text Layer (Identity Color) - Visible on Plot
+  geom_text(data = dunn_res_final, aes(x = Method1, y = Method2, label = stars, color = label_color), size = 5, vjust = 0.75) +
   scale_color_identity() +
   
-  # 3. Dummy Legend Layer (Alpha) - ORDER 2
-  # Use the factor mapping so drop=FALSE works.
+  # 4. Dummy Legend Layer (Using dummy_legend_data) - ORDER 2
+  # This layer is invisible (size=0) but sets the legend keys.
   geom_text(
-    aes(label = stars, alpha = stars), 
+    data = dummy_legend_data, 
+    aes(x = Method1, y = Method2, label = stars, alpha = stars), 
     color = "black", 
     size = 0,        
     key_glyph = "text" 
   ) +
   
-  # Define the Legend Labels (Must match factor level order)
+  # Define the Legend Labels (Must match factor level order of dummy data)
   scale_alpha_manual(
     name = "Significance",
     values = c("-"=0, "*"=0, "**"=0, "***"=0), # Invisible in plot
@@ -359,7 +368,8 @@ p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj))
     panel.grid = element_blank(),
     legend.box = "vertical",
     legend.margin = margin(),
-    legend.spacing.y = unit(1.5, "cm") # Increased spacing
+    # INCREASED SPACING HERE
+    legend.spacing = unit(1.0, "cm") 
   ) +
   labs(
     title = NULL,
