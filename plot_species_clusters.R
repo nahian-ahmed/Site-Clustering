@@ -542,3 +542,92 @@ for (sp in species_names) {
 }
 
 cat("Maps generated successfully in output/species_experiments/clusters/plots/maps/\n")
+
+
+# --- (6) Statistical Significance Heatmap ---
+library(reshape2)
+
+# We use the existing auc_diff_raw to get the pairwise comparison
+# Re-run Dunn test specifically for the 9 methods in alg_order
+alg_order_9 <- c("2to10", "2to10-sameObs", "1to10", "1-kmSq", "lat-long", 
+                 "rounded-4", "best-clustGeo", "DBSC", "BayesOptClustGeo")
+
+auc_for_stats <- final_data_auc %>% filter(method %in% alg_order_9)
+dunn_res <- FSA::dunnTest(auc ~ method, data = auc_for_stats, method = "bh")$res
+
+# Create a matrix for the heatmap
+p_matrix <- matrix(NA, nrow=9, ncol=9, dimnames=list(alg_order_9, alg_order_9))
+
+for(i in 1:nrow(dunn_res)) {
+  comp <- strsplit(dunn_res$Comparison[i], " - ")[[1]]
+  if(all(comp %in% alg_order_9)) {
+    p_matrix[comp[1], comp[2]] <- dunn_res$P.adj[i]
+    p_matrix[comp[2], comp[1]] <- dunn_res$P.adj[i]
+  }
+}
+
+p_melted <- melt(p_matrix, na.rm = TRUE)
+# Filter for lower triangle to avoid redundancy
+p_melted <- p_melted[as.numeric(factor(p_melted$Var1, levels=alg_order_9)) > 
+                     as.numeric(factor(p_melted$Var2, levels=alg_order_9)), ]
+
+p_heat <- ggplot(p_melted, aes(Var1, Var2, fill = value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "red", mid = "yellow", high = "white", 
+                       midpoint = 0.05, limit = c(0, 1), name="Adj. P-Value") +
+  geom_text(aes(label = ifelse(value < 0.001, "***", ifelse(value < 0.05, "*", ""))), size=5) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  labs(title = "Pairwise Significance (AUC)", x = "", y = "")
+
+ggsave(file.path(output_plot_dir, "significance_tests.png"), p_heat, width = 8, height = 7)
+
+
+# --- (7) Species Traits Plots ---
+# Join performance with traits
+traits_df <- final_data_auc %>%
+  left_join(species_map, by = c("species" = "Species")) %>%
+  filter(method %in% alg_order_9)
+
+plot_trait <- function(trait_col, title) {
+  ggplot(traits_df, aes(x = .data[[trait_col]], y = auc, fill = method)) +
+    geom_boxplot(outlier.size = 0.5) +
+    scale_fill_manual(values = colors) +
+    theme_classic() +
+    labs(title = title, x = "", y = "AUC") +
+    theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
+}
+
+p_prev <- plot_trait("Prevalence.Level", "By Prevalence")
+p_hab  <- plot_trait("Habitat", "By Habitat")
+p_gen  <- plot_trait("Generalist.Specialist", "By Specialization")
+p_hr   <- plot_trait("Home.Range", "By Home Range")
+
+trait_grid <- (p_prev + p_hab) / (p_gen + p_hr) + plot_layout(guides = "collect")
+ggsave(file.path(output_plot_dir, "traits.png"), trait_grid, width = 10, height = 10)
+
+
+# --- (8) Kappa Difference Plot ---
+# 1. Get BayesOpt selected parameters
+bo_params <- read.csv(file.path(output_dir, "BayesOptClustGeo_params.csv")) %>%
+  group_by(species) %>%
+  slice_max(AUC, n = 1, with_ties = FALSE) %>%
+  select(species, kappa_bo = kappa)
+
+# 2. Get manual best-clustGeo parameters (already filtered for AUC in step 1.5)
+manual_params <- best_params_auc %>%
+  mutate(kappa_manual = as.numeric(kappa)) %>%
+  select(species, kappa_manual)
+
+kappa_comp <- inner_join(bo_params, manual_params, by = "species") %>%
+  mutate(diff = kappa_bo - kappa_manual)
+
+p_kappa <- ggplot(kappa_comp, aes(x = reorder(species, diff), y = diff)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  theme_classic() +
+  labs(title = "Difference in Selected Kappa (BayesOpt - Manual)",
+       subtitle = "Positive means BayesOpt selected more clusters",
+       x = "Species", y = "Delta Kappa")
+
+ggsave(file.path(output_plot_dir, "kappa_diff.png"), p_kappa, width = 7, height = 10)
