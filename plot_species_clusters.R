@@ -368,8 +368,8 @@ p_heatmap <- ggplot() +
     panel.grid = element_blank(),
     legend.box = "vertical",
     legend.margin = margin(),
-    # INCREASED SPACING HERE
-    legend.spacing = unit(1.0, "cm") 
+    legend.spacing = unit(1.0, "cm"),      # Vertical space between the two legends
+    legend.box.spacing = unit(0.1, "cm")   # Horizontal space between plot and legend box
   ) +
   labs(
     title = NULL,
