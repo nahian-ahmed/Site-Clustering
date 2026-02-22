@@ -5,8 +5,8 @@
 # INCLUDES:
 # 1. Raw Performance Plots
 # 2. Percentage Improvement Plots
-# 3. Significance Heatmaps (% Impr, Lower Triangle)
-# 4. Trait-based Analysis (Mixed-Effects on Raw AUC)
+# 3. Significance Heatmaps (Raw AUC, Upper Triangle)
+# 4. Trait-based Analysis (Mixed-Effects Models on Raw AUC)
 # 5. Kappa Selection Analysis & Saving Params
 # 6. Maps
 ################################################################
@@ -240,23 +240,23 @@ plot_improvement(auprc_by_repeat, "Average % AUPRC Improvement", file.path(outpu
 # (6) Statistical Significance Heatmap
 # -------------------------------------------------------------------------
 cat("\n###############################################\n")
-cat("GENERATING STATISTICAL SIGNIFICANCE HEATMAP (% IMPROVEMENT)\n")
+cat("GENERATING STATISTICAL SIGNIFICANCE HEATMAP (RAW AUC, UPPER TRIANGLE)\n")
 cat("###############################################\n")
 
-# Use Percentage Improvement data for the test
-stats_df <- auc_by_species
+# Use RAW AUC data for the test (As requested)
+stats_df <- final_data_auc
 
 # Ensure factors
 stats_df$method <- factor(stats_df$method)
 
 # Run Dunn's Test
-dunn_res <- dunnTest(mean_perc_diff ~ method, data = stats_df, method = "bh")$res
+dunn_res <- dunnTest(auc ~ method, data = stats_df, method = "bh")$res
 
 # Parse comparisons (e.g., "A - B")
 dunn_res <- dunn_res %>%
   separate(Comparison, into = c("Method1", "Method2"), sep = " - ")
 
-# --- CREATE LOWER TRIANGLE ONLY ---
+# --- CREATE UPPER TRIANGLE ONLY ---
 # 1. Create both directions to ensure full coverage
 dunn_res_inv <- dunn_res
 dunn_res_inv$Method1 <- dunn_res$Method2
@@ -266,16 +266,17 @@ dunn_res_full <- bind_rows(dunn_res, dunn_res_inv)
 # 2. Define performance order for axes
 method_perf_order <- stats_df %>%
   group_by(method) %>%
-  summarise(mean_val = mean(mean_perc_diff)) %>%
+  summarise(mean_val = mean(auc)) %>%
   arrange(mean_val) %>%
   pull(method)
 
 dunn_res_full$Method1 <- factor(dunn_res_full$Method1, levels = method_perf_order)
 dunn_res_full$Method2 <- factor(dunn_res_full$Method2, levels = method_perf_order)
 
-# 3. Filter for Lower Triangle: Method2 (Y) < Method1 (X)
+# 3. Filter for Upper Triangle: Method2 (Y) > Method1 (X)
+# This creates the "mirrored" effect of the lower diagonal
 dunn_res_final <- dunn_res_full %>%
-  filter(as.numeric(Method2) < as.numeric(Method1))
+  filter(as.numeric(Method2) > as.numeric(Method1))
 # ----------------------------------
 
 # Add significance stars
@@ -290,7 +291,7 @@ dunn_res_final <- dunn_res_final %>%
     label_color = ifelse(P.adj < 0.05, "white", "black")
   )
 
-# Plot Heatmap (Lower Triangle)
+# Plot Heatmap (Upper Triangle)
 p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj)) +
   geom_tile(color = "white") +
   # Custom scale to emphasize significant values (p < 0.05)
@@ -311,12 +312,12 @@ p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj))
     panel.grid = element_blank()
   ) +
   labs(
-    title = "Pairwise Significance (% AUC Improvement, Dunn's Test)",
+    title = "Pairwise Significance (Raw AUC, Dunn's Test)",
     x = NULL, y = NULL
   )
 
 ggsave(file.path(output_plot_dir, "significance_tests.png"), plot = p_heatmap, width = 8, height = 7, dpi = 300)
-cat("Significance heatmap saved (Lower Triangle).\n")
+cat("Significance heatmap saved (Upper Triangle).\n")
 
 
 # -------------------------------------------------------------------------
