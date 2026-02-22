@@ -278,11 +278,11 @@ plot_improvement(auprc_by_repeat,
 print("Plots generated successfully in simulation_experiments/output/plots/")
 
 # -------------------------------------------------------------------------
-# (5) Generate Maps (Psi and Lambda)
+# (5) Generate Maps (Occupancy Probability Only)
 # -------------------------------------------------------------------------
 
 cat("\n###############################################\n")
-cat("GENERATING SPECIES MAPS (PSI & LAMBDA)\n")
+cat("GENERATING SPECIES MAPS (PSI ONLY)\n")
 cat("###############################################\n")
 
 # --- 0. SETUP & LIBRARIES ---
@@ -297,15 +297,14 @@ if(file.exists(file.path("R", "data_helpers.R"))) source(file.path("R", "data_he
 map_output_dir <- file.path(output_plot_dir, "maps")
 if (!dir.exists(map_output_dir)) dir.create(map_output_dir, recursive = TRUE)
 
-# 2. Load Parameters (Required for mapping, as the main script only loaded predictive performance)
+# 2. Load Parameters
 params_df <- read.csv(file.path(output_dir, "estimated_parameters.csv"))
 
-# --- FIX: Define species_names from the already loaded species_map ---
+# --- Define species_names from the already loaded species_map ---
 # We use the 'Abbreviation' column (e.g., "AMCR", "COHA") from the existing species_map object
 species_names <- as.character(species_map$Abbreviation)
 
 # 3. Define Spatial Constants & Load Raster
-# (Required to generate predictions matching the model's standardized coefficients)
 albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
 boundary_shapefile_path <- file.path("state_covariate_raster", "boundary", "boundary.shp")
 
@@ -314,14 +313,22 @@ cat("Loading and standardizing environmental raster...\n")
 state_cov_raster_raw <- terra::rast(file.path("state_covariate_raster", "state_covariates.tif"))
 names(state_cov_raster_raw) <- c("elevation", "TCB", "TCG", "TCW", "TCA") 
 
-# Project and Standardize (Must match training logic)
+# Project to Albers
 cov_tif_albers_raw <- terra::project(state_cov_raster_raw, albers_crs_str, method="bilinear", res = 100)
-# Standardize using the helper function or manually if helper missing
+
+# --- Mask and Crop Raster to Boundary (Clipping Step) ---
+cat("Clipping raster to boundary...\n")
+valid_boundary <- terra::vect(boundary_shapefile_path)
+valid_boundary_proj <- terra::project(valid_boundary, albers_crs_str)
+
+cov_tif_albers_raw <- terra::mask(cov_tif_albers_raw, valid_boundary_proj)
+cov_tif_albers_raw <- terra::crop(cov_tif_albers_raw, valid_boundary_proj)
+
+# Standardize (using the clipped raster)
 if(exists("standardize_state_covs")) {
   standardization_results <- standardize_state_covs(cov_tif_albers_raw)
   cov_tif_albers <- standardization_results$raster
 } else {
-  # Fallback manual standardization if helper source failed
   cat("Helper not found, performing manual standardization...\n")
   cov_tif_albers <- cov_tif_albers_raw
   for(nm in names(cov_tif_albers)) {
@@ -333,7 +340,7 @@ if(exists("standardize_state_covs")) {
 
 cell_area_km2 <- (100 / 1000) * (100 / 1000)
 
-# 4. Define Methods to Map (Selecting 9 for the grid)
+# 4. Define Methods to Map
 methods_for_maps <- c(
   "1to10", 
   "2to10", 
@@ -346,7 +353,7 @@ methods_for_maps <- c(
   "clustGeo-50-60" 
 )
 
-# 5. Define Plotting Helper Function
+# 5. Define Plotting Helper Function (Psi Only)
 predict_occuN_rasters <- function(cov_stack, param_row, state_covs, cell_area) {
   intercept <- param_row$state_intercept
   betas <- as.numeric(param_row[state_covs])
@@ -357,24 +364,22 @@ predict_occuN_rasters <- function(cov_stack, param_row, state_covs, cell_area) {
     lin_pred <- lin_pred + (cov_stack[[state_covs[i]]] * betas[i])
   }
   
-  # Lambda = exp(lin_pred) * area
+  # Lambda = exp(lin_pred) * area (Intermediate step)
   lambda_rast <- exp(lin_pred) * cell_area
-  names(lambda_rast) <- "lambda"
   
   # Psi = 1 - exp(-lambda)
   psi_rast <- 1 - exp(-lambda_rast)
   names(psi_rast) <- "psi"
   
-  return(list(lambda = lambda_rast, psi = psi_rast))
+  return(list(psi = psi_rast))
 }
 
 # 6. Loop over Species
 for (sp in species_names) {
   
-  cat(sprintf("Generating maps for %s...\n", sp))
+  cat(sprintf("Generating map for %s...\n", sp))
   
-  # --- A. Prepare Observations (Train + Test) ---
-  # Check if files exist to avoid errors for missing species data
+  # --- A. Prepare Observations ---
   train_file <- file.path("checklist_data", "species", sp, paste0(sp, "_zf_filtered_region_2017.csv"))
   test_file  <- file.path("checklist_data", "species", sp, paste0(sp, "_zf_filtered_region_2018.csv"))
   
@@ -386,7 +391,10 @@ for (sp in species_names) {
   obs_train <- read.delim(train_file, sep=",")
   obs_test  <- read.delim(test_file, sep=",")
   
-  # Apply filters
+  # Fix for bind_rows error: Ensure character type
+  if("observation_count" %in% names(obs_train)) obs_train$observation_count <- as.character(obs_train$observation_count)
+  if("observation_count" %in% names(obs_test))  obs_test$observation_count  <- as.character(obs_test$observation_count)
+
   obs_train <- obs_train[!is.na(obs_train$duration_minutes) & obs_train$observation_date >= "2017-05-15" & obs_train$observation_date <= "2017-07-09",]
   obs_test  <- obs_test[!is.na(obs_test$duration_minutes) & obs_test$observation_date >= "2018-05-15" & obs_test$observation_date <= "2018-07-09",]
   
@@ -398,11 +406,7 @@ for (sp in species_names) {
     arrange(species_observed_label)
   
   # --- B. Create Left Plot (Observations) ---
-  valid_boundary <- terra::vect(boundary_shapefile_path)
-  valid_boundary_proj <- terra::project(valid_boundary, albers_crs_str)
-  
-  bg_raster <- terra::crop(cov_tif_albers[[1]], valid_boundary_proj, mask = TRUE)
-  bg_df <- as.data.frame(bg_raster, xy = TRUE)
+  bg_df <- as.data.frame(cov_tif_albers[[1]], xy = TRUE, na.rm = TRUE)
   
   x_min <- min(bg_df$x); x_max <- max(bg_df$x)
   y_min <- min(bg_df$y); y_max <- max(bg_df$y)
@@ -434,9 +438,8 @@ for (sp in species_names) {
       plot.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "cm")
     )
 
-  # --- C. Generate Prediction Rasters ---
+  # --- C. Generate Prediction Rasters (Psi Only) ---
   psi_plots <- list()
-  lambda_plots <- list()
   sp_params <- params_df %>% filter(species == sp)
   
   for (i in seq_along(methods_for_maps)) {
@@ -445,41 +448,28 @@ for (sp in species_names) {
     
     if (nrow(m_param) == 0) {
       psi_plots[[i]] <- ggplot() + theme_void() + labs(title = m)
-      lambda_plots[[i]] <- ggplot() + theme_void() + labs(title = m)
       next
     }
     
-    # Calculate surfaces
     preds <- predict_occuN_rasters(cov_tif_albers, m_param, c("elevation","TCB","TCG","TCW","TCA"), cell_area_km2)
     
-    # Psi Plot (Occupancy)
-    psi_df <- as.data.frame(terra::aggregate(preds$psi, fact = 6, fun = mean), xy = TRUE)
+    # Psi Plot
+    psi_df <- as.data.frame(terra::aggregate(preds$psi, fact = 6, fun = mean, na.rm=TRUE), xy = TRUE, na.rm=TRUE)
+    
     psi_plots[[i]] <- ggplot() +
       geom_rect(aes(xmin = x_min, xmax = x_max, ymin = y_min, ymax = y_max), fill = "darkgray", show.legend = FALSE) +
       geom_raster(data = psi_df, aes(x = x, y = y, fill = psi)) +
       scale_fill_viridis_c(option = "B", limits = c(0.0, 1.0), name = "Occupancy Probability") +
       theme_void() + coord_fixed() + labs(title = NULL) +
       theme(legend.position = "bottom", legend.text = element_text(size = 14), legend.title = element_text(size = 16, vjust = 1), legend.key.width = unit(1.5, "cm"))
-
-    # Lambda Plot (Abundance)
-    lambda_df <- as.data.frame(terra::aggregate(preds$lambda, fact = 6, fun = mean), xy = TRUE)
-    lambda_plots[[i]] <- ggplot() +
-      geom_rect(aes(xmin = x_min, xmax = x_max, ymin = y_min, ymax = y_max), fill = "darkgray", show.legend = FALSE) +
-      geom_raster(data = lambda_df, aes(x = x, y = y, fill = lambda)) +
-      scale_fill_viridis_c(option = "B", name = "Abundance Intensity") +
-      theme_void() + coord_fixed() + labs(title = NULL) +
-      theme(legend.position = "bottom", legend.text = element_text(size = 14), legend.title = element_text(size = 16, vjust = 1), legend.key.width = unit(1.5, "cm"))
   }
   
   # --- D. Arrange and Save ---
-  save_map <- function(plots, fname) {
-    grid_p <- ggarrange(plotlist = plots, nrow = 2, ncol = 5, common.legend = TRUE, legend = "bottom", labels = methods_for_maps, font.label = list(size = 10, face = "bold"))
-    final <- obs_plot + grid_p + plot_layout(nrow = 1, widths = c(1, 5))
-    ggsave(fname, plot = final, width = 17, height = 9.5, dpi = 300)
-  }
+  grid_p <- ggarrange(plotlist = psi_plots, nrow = 2, ncol = 5, common.legend = TRUE, legend = "bottom", labels = methods_for_maps, font.label = list(size = 10, face = "bold"))
+  final <- obs_plot + grid_p + plot_layout(nrow = 1, widths = c(1, 5))
   
-  save_map(psi_plots, file.path(map_output_dir, paste0(sp, "_psi.png")))
-  save_map(lambda_plots, file.path(map_output_dir, paste0(sp, "_lambda.png")))
+  # Save as Species.png
+  ggsave(file.path(map_output_dir, paste0(sp, ".png")), plot = final, width = 17, height = 9.5, dpi = 300)
 }
 
 cat("Maps generated successfully in output/species_experiments/clusters/plots/maps/\n")
