@@ -278,11 +278,11 @@ plot_improvement(auprc_by_repeat,
 print("Plots generated successfully in simulation_experiments/output/plots/")
 
 # -------------------------------------------------------------------------
-# (5) Generate Maps (Occupancy Probability Only)
+# (5) Generate Maps (Occupancy Probability Only) - WGS84 Version
 # -------------------------------------------------------------------------
 
 cat("\n###############################################\n")
-cat("GENERATING SPECIES MAPS (PSI ONLY)\n")
+cat("GENERATING SPECIES MAPS (PSI ONLY - WGS84)\n")
 cat("###############################################\n")
 
 # --- 0. SETUP & LIBRARIES ---
@@ -301,30 +301,23 @@ if (!dir.exists(map_output_dir)) dir.create(map_output_dir, recursive = TRUE)
 params_df <- read.csv(file.path(output_dir, "estimated_parameters.csv"))
 
 # --- Define species_names from the already loaded species_map ---
-# We use the 'Abbreviation' column (e.g., "AMCR", "COHA") from the existing species_map object
 species_names <- as.character(species_map$Abbreviation)
 
-# 3. Define Spatial Constants & Load Raster
+# 3. Define Spatial Constants (Model uses Albers, Plotting uses WGS84)
 albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
+wgs84_crs_str  <- "EPSG:4326"
 boundary_shapefile_path <- file.path("state_covariate_raster", "boundary", "boundary.shp")
 
-cat("Loading and standardizing environmental raster...\n")
-# Load raw raster
+cat("Loading and preparing environmental rasters...\n")
+
+# A. Prepare ALBERS Raster (For Model Predictions)
+# We must use Albers to predict because the model betas correspond to Albers-derived covariates.
 state_cov_raster_raw <- terra::rast(file.path("state_covariate_raster", "state_covariates.tif"))
 names(state_cov_raster_raw) <- c("elevation", "TCB", "TCG", "TCW", "TCA") 
 
-# Project to Albers
 cov_tif_albers_raw <- terra::project(state_cov_raster_raw, albers_crs_str, method="bilinear", res = 100)
 
-# --- Mask and Crop Raster to Boundary (Clipping Step) ---
-cat("Clipping raster to boundary...\n")
-valid_boundary <- terra::vect(boundary_shapefile_path)
-valid_boundary_proj <- terra::project(valid_boundary, albers_crs_str)
-
-cov_tif_albers_raw <- terra::mask(cov_tif_albers_raw, valid_boundary_proj)
-cov_tif_albers_raw <- terra::crop(cov_tif_albers_raw, valid_boundary_proj)
-
-# Standardize (using the clipped raster)
+# Standardize Albers Raster (Matches Training Data)
 if(exists("standardize_state_covs")) {
   standardization_results <- standardize_state_covs(cov_tif_albers_raw)
   cov_tif_albers <- standardization_results$raster
@@ -337,8 +330,22 @@ if(exists("standardize_state_covs")) {
     cov_tif_albers[[nm]] <- (cov_tif_albers[[nm]] - mu) / sd_val
   }
 }
-
 cell_area_km2 <- (100 / 1000) * (100 / 1000)
+
+# B. Prepare WGS84 Boundary & Background (For Plotting)
+# Project boundary to WGS84 for clipping the final maps
+valid_boundary <- terra::vect(boundary_shapefile_path)
+boundary_wgs84 <- terra::project(valid_boundary, wgs84_crs_str)
+
+# Create a WGS84 background raster (using Elevation) for the Left Plot
+# We project the raw elevation (before standardization) to WGS84
+bg_raster_wgs84 <- terra::project(state_cov_raster_raw[["elevation"]], wgs84_crs_str)
+bg_raster_wgs84 <- terra::mask(bg_raster_wgs84, boundary_wgs84)
+bg_raster_wgs84 <- terra::crop(bg_raster_wgs84, boundary_wgs84)
+
+# Convert background to DF once to save time
+bg_df_wgs84 <- as.data.frame(bg_raster_wgs84, xy = TRUE, na.rm = TRUE)
+colnames(bg_df_wgs84)[3] <- "value" # Generic name for fill
 
 # 4. Define Methods to Map
 methods_for_maps <- c(
@@ -353,31 +360,31 @@ methods_for_maps <- c(
   "clustGeo-50-60" 
 )
 
-# 5. Define Plotting Helper Function (Psi Only)
+# 5. Define Prediction Function (Psi Only)
 predict_occuN_rasters <- function(cov_stack, param_row, state_covs, cell_area) {
   intercept <- param_row$state_intercept
   betas <- as.numeric(param_row[state_covs])
   
-  # Linear Predictor
+  # Linear Predictor (Albers)
   lin_pred <- cov_stack[[1]] * 0 + intercept
   for(i in seq_along(state_covs)) {
     lin_pred <- lin_pred + (cov_stack[[state_covs[i]]] * betas[i])
   }
   
-  # Lambda = exp(lin_pred) * area (Intermediate step)
+  # Lambda = exp(lin_pred) * area
   lambda_rast <- exp(lin_pred) * cell_area
   
   # Psi = 1 - exp(-lambda)
   psi_rast <- 1 - exp(-lambda_rast)
   names(psi_rast) <- "psi"
   
-  return(list(psi = psi_rast))
+  return(psi_rast)
 }
 
 # 6. Loop over Species
 for (sp in species_names) {
   
-  cat(sprintf("Generating map for %s...\n", sp))
+  cat(sprintf("Generating map for %s (WGS84)...\n", sp))
   
   # --- A. Prepare Observations ---
   train_file <- file.path("checklist_data", "species", sp, paste0(sp, "_zf_filtered_region_2017.csv"))
@@ -391,13 +398,14 @@ for (sp in species_names) {
   obs_train <- read.delim(train_file, sep=",")
   obs_test  <- read.delim(test_file, sep=",")
   
-  # Fix for bind_rows error: Ensure character type
+  # Fix for bind_rows error
   if("observation_count" %in% names(obs_train)) obs_train$observation_count <- as.character(obs_train$observation_count)
   if("observation_count" %in% names(obs_test))  obs_test$observation_count  <- as.character(obs_test$observation_count)
 
   obs_train <- obs_train[!is.na(obs_train$duration_minutes) & obs_train$observation_date >= "2017-05-15" & obs_train$observation_date <= "2017-07-09",]
   obs_test  <- obs_test[!is.na(obs_test$duration_minutes) & obs_test$observation_date >= "2018-05-15" & obs_test$observation_date <= "2018-07-09",]
   
+  # Points are already in WGS84 (Longitude/Latitude)
   pts_df <- bind_rows(obs_train, obs_test) %>%
     mutate(
       species_observed_label = ifelse(species_observed == 1 | species_observed == TRUE, "Detection", "Non-detection"),
@@ -405,15 +413,16 @@ for (sp in species_names) {
     ) %>%
     arrange(species_observed_label)
   
-  # --- B. Create Left Plot (Observations) ---
-  bg_df <- as.data.frame(cov_tif_albers[[1]], xy = TRUE, na.rm = TRUE)
+  # --- B. Create Left Plot (Observations - WGS84) ---
   
-  x_min <- min(bg_df$x); x_max <- max(bg_df$x)
-  y_min <- min(bg_df$y); y_max <- max(bg_df$y)
+  # Calculate WGS84 bounds from the background dataframe
+  x_min <- min(bg_df_wgs84$x); x_max <- max(bg_df_wgs84$x)
+  y_min <- min(bg_df_wgs84$y); y_max <- max(bg_df_wgs84$y)
   
   obs_plot <- ggplot() + 
     geom_rect(aes(xmin = x_min, xmax = x_max, ymin = y_min, ymax = y_max), fill = "darkgray", show.legend = FALSE) +
-    geom_raster(data = bg_df, aes(x = x, y = y), fill = "#E6E6E6", show.legend = FALSE) +
+    # Use the WGS84 background
+    geom_raster(data = bg_df_wgs84, aes(x = x, y = y), fill = "#E6E6E6", show.legend = FALSE) +
     geom_point(data = pts_df, aes(x = longitude, y = latitude, 
                                   color = species_observed_label, 
                                   shape = species_observed_label, 
@@ -425,7 +434,8 @@ for (sp in species_names) {
     scale_size_manual(name = "Observation", values = c("Detection" = 1.6, "Non-detection" = 1.5)) +
     labs(title = "Species Observations") +
     theme_void() +
-    coord_fixed() +
+    # Ratio 1.3 is approx correct for Oregon latitudes in WGS84 to avoid squashing
+    coord_fixed(ratio = 1.3) +
     theme(
       plot.title = element_text(hjust = 0.5, vjust = -56, face = "bold", size = 15),
       legend.position = "inside",
@@ -438,7 +448,7 @@ for (sp in species_names) {
       plot.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "cm")
     )
 
-  # --- C. Generate Prediction Rasters (Psi Only) ---
+  # --- C. Generate Prediction Rasters (Psi Only - Projected to WGS84) ---
   psi_plots <- list()
   sp_params <- params_df %>% filter(species == sp)
   
@@ -451,16 +461,28 @@ for (sp in species_names) {
       next
     }
     
-    preds <- predict_occuN_rasters(cov_tif_albers, m_param, c("elevation","TCB","TCG","TCW","TCA"), cell_area_km2)
+    # 1. Predict in Albers (Matching model coefficients)
+    psi_albers <- predict_occuN_rasters(cov_tif_albers, m_param, c("elevation","TCB","TCG","TCW","TCA"), cell_area_km2)
     
-    # Psi Plot
-    psi_df <- as.data.frame(terra::aggregate(preds$psi, fact = 6, fun = mean, na.rm=TRUE), xy = TRUE, na.rm=TRUE)
+    # 2. Project to WGS84 for plotting
+    psi_wgs84 <- terra::project(psi_albers, wgs84_crs_str)
+    
+    # 3. Clip (Mask + Crop) using WGS84 boundary
+    psi_wgs84 <- terra::mask(psi_wgs84, boundary_wgs84)
+    psi_wgs84 <- terra::crop(psi_wgs84, boundary_wgs84)
+    
+    # 4. Convert to DF for ggplot
+    # Aggregation is handled implicitly by project if res isn't specified, 
+    # but we can explicitly aggregate if needed for speed. Here we trust project default.
+    psi_df <- as.data.frame(psi_wgs84, xy = TRUE, na.rm=TRUE)
     
     psi_plots[[i]] <- ggplot() +
       geom_rect(aes(xmin = x_min, xmax = x_max, ymin = y_min, ymax = y_max), fill = "darkgray", show.legend = FALSE) +
       geom_raster(data = psi_df, aes(x = x, y = y, fill = psi)) +
       scale_fill_viridis_c(option = "B", limits = c(0.0, 1.0), name = "Occupancy Probability") +
-      theme_void() + coord_fixed() + labs(title = NULL) +
+      theme_void() + 
+      coord_fixed(ratio = 1.3) + 
+      labs(title = NULL) +
       theme(legend.position = "bottom", legend.text = element_text(size = 14), legend.title = element_text(size = 16, vjust = 1), legend.key.width = unit(1.5, "cm"))
   }
   
