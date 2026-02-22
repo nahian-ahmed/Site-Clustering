@@ -5,8 +5,8 @@
 # INCLUDES:
 # 1. Raw Performance Plots
 # 2. Percentage Improvement Plots
-# 3. Significance Heatmaps (% Improvement)
-# 4. Trait-based Analysis (Mixed-Effects on RAW AUC)
+# 3. Significance Heatmaps (% Impr, Lower Triangle)
+# 4. Trait-based Analysis (Mixed-Effects on Raw AUC)
 # 5. Kappa Selection Analysis & Saving Params
 # 6. Maps
 ################################################################
@@ -243,7 +243,7 @@ cat("\n###############################################\n")
 cat("GENERATING STATISTICAL SIGNIFICANCE HEATMAP (% IMPROVEMENT)\n")
 cat("###############################################\n")
 
-# Use Percentage Improvement data for the test (As requested)
+# Use Percentage Improvement data for the test
 stats_df <- auc_by_species
 
 # Ensure factors
@@ -256,25 +256,30 @@ dunn_res <- dunnTest(mean_perc_diff ~ method, data = stats_df, method = "bh")$re
 dunn_res <- dunn_res %>%
   separate(Comparison, into = c("Method1", "Method2"), sep = " - ")
 
-# --- MAKE SYMMETRICAL ---
+# --- CREATE LOWER TRIANGLE ONLY ---
+# 1. Create both directions to ensure full coverage
 dunn_res_inv <- dunn_res
 dunn_res_inv$Method1 <- dunn_res$Method2
 dunn_res_inv$Method2 <- dunn_res$Method1
-dunn_res <- bind_rows(dunn_res, dunn_res_inv)
-# ------------------------
+dunn_res_full <- bind_rows(dunn_res, dunn_res_inv)
 
-# Sort methods by performance for the axis order
+# 2. Define performance order for axes
 method_perf_order <- stats_df %>%
   group_by(method) %>%
   summarise(mean_val = mean(mean_perc_diff)) %>%
   arrange(mean_val) %>%
   pull(method)
 
-dunn_res$Method1 <- factor(dunn_res$Method1, levels = method_perf_order)
-dunn_res$Method2 <- factor(dunn_res$Method2, levels = method_perf_order)
+dunn_res_full$Method1 <- factor(dunn_res_full$Method1, levels = method_perf_order)
+dunn_res_full$Method2 <- factor(dunn_res_full$Method2, levels = method_perf_order)
+
+# 3. Filter for Lower Triangle: Method2 (Y) < Method1 (X)
+dunn_res_final <- dunn_res_full %>%
+  filter(as.numeric(Method2) < as.numeric(Method1))
+# ----------------------------------
 
 # Add significance stars
-dunn_res <- dunn_res %>%
+dunn_res_final <- dunn_res_final %>%
   mutate(
     stars = case_when(
       P.adj < 0.001 ~ "***",
@@ -285,8 +290,8 @@ dunn_res <- dunn_res %>%
     label_color = ifelse(P.adj < 0.05, "white", "black")
   )
 
-# Plot Heatmap
-p_heatmap <- ggplot(dunn_res, aes(x = Method1, y = Method2, fill = P.adj)) +
+# Plot Heatmap (Lower Triangle)
+p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj)) +
   geom_tile(color = "white") +
   # Custom scale to emphasize significant values (p < 0.05)
   scale_fill_gradientn(
@@ -297,6 +302,8 @@ p_heatmap <- ggplot(dunn_res, aes(x = Method1, y = Method2, fill = P.adj)) +
   ) +
   geom_text(aes(label = stars, color = label_color), size = 5, vjust = 0.7) +
   scale_color_identity() +
+  scale_x_discrete(drop = FALSE) + 
+  scale_y_discrete(drop = FALSE) +
   theme_minimal() +
   theme(
     axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
@@ -309,7 +316,7 @@ p_heatmap <- ggplot(dunn_res, aes(x = Method1, y = Method2, fill = P.adj)) +
   )
 
 ggsave(file.path(output_plot_dir, "significance_tests.png"), plot = p_heatmap, width = 8, height = 7, dpi = 300)
-cat("Significance heatmap saved.\n")
+cat("Significance heatmap saved (Lower Triangle).\n")
 
 
 # -------------------------------------------------------------------------
