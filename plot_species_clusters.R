@@ -453,7 +453,7 @@ for (sp in species_names) {
         expand = FALSE
     ) +
     theme(
-      plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold", size = 24), # Increased Title Size
+      plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold", size = 18), # Increased Title Size
       legend.position = "inside",
       legend.position.inside = c(0.5, -0.16),
       legend.direction = "vertical",
@@ -525,7 +525,7 @@ for (sp in species_names) {
       theme(
         legend.position = "bottom", 
         legend.text = element_text(size = 14), 
-        legend.title = element_text(size = 15, vjust = 1), 
+        legend.title = element_text(size = 16, vjust = 1), 
         legend.key.width = unit(1.5, "cm"),
         legend.box.margin = margin(t = 30), # Move legend down
         plot.title = element_text(hjust = 0.5, size = 14) # Bigger Title
@@ -536,7 +536,7 @@ for (sp in species_names) {
   grid_p <- ggarrange(plotlist = psi_plots, nrow = 2, ncol = 5, common.legend = TRUE, legend = "bottom")
   
   # Adjusted widths: 1:4 makes the left plot smaller relative to the previous 1:2.5
-  final <- obs_plot + grid_p + plot_layout(nrow = 1, widths = c(1, 3))
+  final <- obs_plot + grid_p + plot_layout(nrow = 1, widths = c(1, 3.5))
   
   ggsave(file.path(map_output_dir, paste0(sp, ".png")), plot = final, width = 17, height = 9.5, dpi = 300)
 }
