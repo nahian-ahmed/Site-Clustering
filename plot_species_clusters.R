@@ -279,269 +279,269 @@ print("Plots generated successfully in simulation_experiments/output/plots/")
 
 
 
-# -------------------------------------------------------------------------
-# (5) Generate Maps (Psi Only) - WGS84 (Final Layout)
-# -------------------------------------------------------------------------
+# # -------------------------------------------------------------------------
+# # (5) Generate Maps (Psi Only) - WGS84 (Final Layout)
+# # -------------------------------------------------------------------------
 
-cat("\n###############################################\n")
-cat("GENERATING SPECIES MAPS (PSI ONLY - WGS84)\n")
-cat("###############################################\n")
+# cat("\n###############################################\n")
+# cat("GENERATING SPECIES MAPS (PSI ONLY - WGS84)\n")
+# cat("###############################################\n")
 
-# --- 0. SETUP & LIBRARIES ---
-library(patchwork)  # For layout
-library(terra)      # For raster operations
-library(sf)         # For vector operations
-library(dplyr)
-library(ggplot2)
-library(ggpubr)
-library(tidyr)
+# # --- 0. SETUP & LIBRARIES ---
+# library(patchwork)  # For layout
+# library(terra)      # For raster operations
+# library(sf)         # For vector operations
+# library(dplyr)
+# library(ggplot2)
+# library(ggpubr)
+# library(tidyr)
 
-# Source helpers to access 'standardize_state_covs' if available
-if(file.exists(file.path("R", "data_helpers.R"))) source(file.path("R", "data_helpers.R"))
+# # Source helpers to access 'standardize_state_covs' if available
+# if(file.exists(file.path("R", "data_helpers.R"))) source(file.path("R", "data_helpers.R"))
 
-# 1. Setup Output Directory
-map_output_dir <- file.path(output_plot_dir, "maps")
-if (!dir.exists(map_output_dir)) dir.create(map_output_dir, recursive = TRUE)
+# # 1. Setup Output Directory
+# map_output_dir <- file.path(output_plot_dir, "maps")
+# if (!dir.exists(map_output_dir)) dir.create(map_output_dir, recursive = TRUE)
 
-# 2. Load Parameters
-params_df <- read.csv(file.path(output_dir, "estimated_parameters.csv"))
+# # 2. Load Parameters
+# params_df <- read.csv(file.path(output_dir, "estimated_parameters.csv"))
 
-# --- Load Best clustGeo Definition ---
-best_cg_file <- file.path(output_plot_dir, "best-clustGeo_params.csv")
-if(file.exists(best_cg_file)) {
-  best_cg_params <- read.csv(best_cg_file)
-} else {
-  warning("best-clustGeo_params.csv not found. 'best-clustGeo' map may fail.")
-  best_cg_params <- NULL
-}
+# # --- Load Best clustGeo Definition ---
+# best_cg_file <- file.path(output_plot_dir, "best-clustGeo_params.csv")
+# if(file.exists(best_cg_file)) {
+#   best_cg_params <- read.csv(best_cg_file)
+# } else {
+#   warning("best-clustGeo_params.csv not found. 'best-clustGeo' map may fail.")
+#   best_cg_params <- NULL
+# }
 
-# --- Define species_names from the already loaded species_map ---
-species_names <- as.character(species_map$Abbreviation)
+# # --- Define species_names from the already loaded species_map ---
+# species_names <- as.character(species_map$Abbreviation)
 
-# 3. Define Spatial Constants & Load Raster
-# Model uses Albers, Plotting uses WGS84
-albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
-wgs84_crs_str  <- "EPSG:4326"
-boundary_shapefile_path <- file.path("state_covariate_raster", "boundary", "boundary.shp")
+# # 3. Define Spatial Constants & Load Raster
+# # Model uses Albers, Plotting uses WGS84
+# albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
+# wgs84_crs_str  <- "EPSG:4326"
+# boundary_shapefile_path <- file.path("state_covariate_raster", "boundary", "boundary.shp")
 
-cat("Loading and preparing environmental rasters...\n")
+# cat("Loading and preparing environmental rasters...\n")
 
-# A. Prepare ALBERS Raster (For Model Predictions)
-state_cov_raster_raw <- terra::rast(file.path("state_covariate_raster", "state_covariates.tif"))
-names(state_cov_raster_raw) <- c("elevation", "TCB", "TCG", "TCW", "TCA") 
-cov_tif_albers_raw <- terra::project(state_cov_raster_raw, albers_crs_str, method="bilinear", res = 100)
+# # A. Prepare ALBERS Raster (For Model Predictions)
+# state_cov_raster_raw <- terra::rast(file.path("state_covariate_raster", "state_covariates.tif"))
+# names(state_cov_raster_raw) <- c("elevation", "TCB", "TCG", "TCW", "TCA") 
+# cov_tif_albers_raw <- terra::project(state_cov_raster_raw, albers_crs_str, method="bilinear", res = 100)
 
-# Mask and Crop to Boundary (in Albers)
-valid_boundary <- terra::vect(boundary_shapefile_path)
-valid_boundary_proj <- terra::project(valid_boundary, albers_crs_str)
-cov_tif_albers_raw <- terra::mask(cov_tif_albers_raw, valid_boundary_proj)
-cov_tif_albers_raw <- terra::crop(cov_tif_albers_raw, valid_boundary_proj)
+# # Mask and Crop to Boundary (in Albers)
+# valid_boundary <- terra::vect(boundary_shapefile_path)
+# valid_boundary_proj <- terra::project(valid_boundary, albers_crs_str)
+# cov_tif_albers_raw <- terra::mask(cov_tif_albers_raw, valid_boundary_proj)
+# cov_tif_albers_raw <- terra::crop(cov_tif_albers_raw, valid_boundary_proj)
 
-# Standardize Albers Raster
-if(exists("standardize_state_covs")) {
-  standardization_results <- standardize_state_covs(cov_tif_albers_raw)
-  cov_tif_albers <- standardization_results$raster
-} else {
-  cat("Helper not found, performing manual standardization...\n")
-  cov_tif_albers <- cov_tif_albers_raw
-  for(nm in names(cov_tif_albers)) {
-    mu <- mean(values(cov_tif_albers[[nm]]), na.rm=TRUE)
-    sd_val <- sd(values(cov_tif_albers[[nm]]), na.rm=TRUE)
-    cov_tif_albers[[nm]] <- (cov_tif_albers[[nm]] - mu) / sd_val
-  }
-}
-cell_area_km2 <- (100 / 1000) * (100 / 1000)
+# # Standardize Albers Raster
+# if(exists("standardize_state_covs")) {
+#   standardization_results <- standardize_state_covs(cov_tif_albers_raw)
+#   cov_tif_albers <- standardization_results$raster
+# } else {
+#   cat("Helper not found, performing manual standardization...\n")
+#   cov_tif_albers <- cov_tif_albers_raw
+#   for(nm in names(cov_tif_albers)) {
+#     mu <- mean(values(cov_tif_albers[[nm]]), na.rm=TRUE)
+#     sd_val <- sd(values(cov_tif_albers[[nm]]), na.rm=TRUE)
+#     cov_tif_albers[[nm]] <- (cov_tif_albers[[nm]] - mu) / sd_val
+#   }
+# }
+# cell_area_km2 <- (100 / 1000) * (100 / 1000)
 
-# B. Prepare WGS84 Background (For Plotting)
-bg_raster_wgs84 <- terra::project(state_cov_raster_raw[["elevation"]], wgs84_crs_str)
-valid_boundary_wgs84 <- terra::project(valid_boundary, wgs84_crs_str)
-bg_raster_wgs84 <- terra::mask(bg_raster_wgs84, valid_boundary_wgs84)
-bg_raster_wgs84 <- terra::crop(bg_raster_wgs84, valid_boundary_wgs84)
+# # B. Prepare WGS84 Background (For Plotting)
+# bg_raster_wgs84 <- terra::project(state_cov_raster_raw[["elevation"]], wgs84_crs_str)
+# valid_boundary_wgs84 <- terra::project(valid_boundary, wgs84_crs_str)
+# bg_raster_wgs84 <- terra::mask(bg_raster_wgs84, valid_boundary_wgs84)
+# bg_raster_wgs84 <- terra::crop(bg_raster_wgs84, valid_boundary_wgs84)
 
-# Get Extent for coord_fixed
-bbox_full <- terra::ext(bg_raster_wgs84)
-bg_df_wgs84 <- as.data.frame(bg_raster_wgs84, xy = TRUE, na.rm = TRUE)
+# # Get Extent for coord_fixed
+# bbox_full <- terra::ext(bg_raster_wgs84)
+# bg_df_wgs84 <- as.data.frame(bg_raster_wgs84, xy = TRUE, na.rm = TRUE)
 
-# 4. Define Methods to Map
-methods_for_maps <- c(
-  "1to10", 
-  "2to10", 
-  "2to10-sameObs", 
-  "1-kmSq",
-  "lat-long", 
-  "rounded-4", 
-  "DBSC", 
-  "BayesOptClustGeo",
-  "best-clustGeo" 
-)
+# # 4. Define Methods to Map
+# methods_for_maps <- c(
+#   "1to10", 
+#   "2to10", 
+#   "2to10-sameObs", 
+#   "1-kmSq",
+#   "lat-long", 
+#   "rounded-4", 
+#   "DBSC", 
+#   "BayesOptClustGeo",
+#   "best-clustGeo" 
+# )
 
-# 5. Define Prediction Function (Psi Only)
-predict_occuN_psi <- function(cov_stack, param_row, state_covs, cell_area) {
-  intercept <- param_row$state_intercept
-  betas <- as.numeric(param_row[state_covs])
+# # 5. Define Prediction Function (Psi Only)
+# predict_occuN_psi <- function(cov_stack, param_row, state_covs, cell_area) {
+#   intercept <- param_row$state_intercept
+#   betas <- as.numeric(param_row[state_covs])
   
-  lin_pred <- cov_stack[[1]] * 0 + intercept
-  for(i in seq_along(state_covs)) {
-    lin_pred <- lin_pred + (cov_stack[[state_covs[i]]] * betas[i])
-  }
+#   lin_pred <- cov_stack[[1]] * 0 + intercept
+#   for(i in seq_along(state_covs)) {
+#     lin_pred <- lin_pred + (cov_stack[[state_covs[i]]] * betas[i])
+#   }
   
-  lambda_rast <- exp(lin_pred) * cell_area
-  psi_rast <- 1 - exp(-lambda_rast)
-  names(psi_rast) <- "psi"
-  return(psi_rast)
-}
+#   lambda_rast <- exp(lin_pred) * cell_area
+#   psi_rast <- 1 - exp(-lambda_rast)
+#   names(psi_rast) <- "psi"
+#   return(psi_rast)
+# }
 
-# 6. Loop over Species
-for (sp in species_names) {
+# # 6. Loop over Species
+# for (sp in species_names) {
   
-  cat(sprintf("Generating map for %s (WGS84)...\n", sp))
+#   cat(sprintf("Generating map for %s (WGS84)...\n", sp))
   
-  # --- A. Prepare Observations ---
-  train_file <- file.path("checklist_data", "species", sp, paste0(sp, "_zf_filtered_region_2017.csv"))
-  test_file  <- file.path("checklist_data", "species", sp, paste0(sp, "_zf_filtered_region_2018.csv"))
+#   # --- A. Prepare Observations ---
+#   train_file <- file.path("checklist_data", "species", sp, paste0(sp, "_zf_filtered_region_2017.csv"))
+#   test_file  <- file.path("checklist_data", "species", sp, paste0(sp, "_zf_filtered_region_2018.csv"))
   
-  if(!file.exists(train_file) || !file.exists(test_file)) {
-    cat(sprintf("Skipping %s (Data files not found)\n", sp))
-    next
-  }
+#   if(!file.exists(train_file) || !file.exists(test_file)) {
+#     cat(sprintf("Skipping %s (Data files not found)\n", sp))
+#     next
+#   }
 
-  obs_train <- read.delim(train_file, sep=",")
-  obs_test  <- read.delim(test_file, sep=",")
+#   obs_train <- read.delim(train_file, sep=",")
+#   obs_test  <- read.delim(test_file, sep=",")
   
-  if("observation_count" %in% names(obs_train)) obs_train$observation_count <- as.character(obs_train$observation_count)
-  if("observation_count" %in% names(obs_test))  obs_test$observation_count  <- as.character(obs_test$observation_count)
+#   if("observation_count" %in% names(obs_train)) obs_train$observation_count <- as.character(obs_train$observation_count)
+#   if("observation_count" %in% names(obs_test))  obs_test$observation_count  <- as.character(obs_test$observation_count)
 
-  obs_train <- obs_train[!is.na(obs_train$duration_minutes) & obs_train$observation_date >= "2017-05-15" & obs_train$observation_date <= "2017-07-09",]
-  obs_test  <- obs_test[!is.na(obs_test$duration_minutes) & obs_test$observation_date >= "2018-05-15" & obs_test$observation_date <= "2018-07-09",]
+#   obs_train <- obs_train[!is.na(obs_train$duration_minutes) & obs_train$observation_date >= "2017-05-15" & obs_train$observation_date <= "2017-07-09",]
+#   obs_test  <- obs_test[!is.na(obs_test$duration_minutes) & obs_test$observation_date >= "2018-05-15" & obs_test$observation_date <= "2018-07-09",]
   
-  pts_df <- bind_rows(obs_train, obs_test) %>%
-    mutate(
-      species_observed_label = ifelse(species_observed == 1 | species_observed == TRUE, "Detection", "Non-detection"),
-      species_observed_label = factor(species_observed_label, levels = c("Non-detection", "Detection"))
-    ) %>%
-    arrange(species_observed_label)
+#   pts_df <- bind_rows(obs_train, obs_test) %>%
+#     mutate(
+#       species_observed_label = ifelse(species_observed == 1 | species_observed == TRUE, "Detection", "Non-detection"),
+#       species_observed_label = factor(species_observed_label, levels = c("Non-detection", "Detection"))
+#     ) %>%
+#     arrange(species_observed_label)
   
-  # --- B. Create Left Plot (Observations - WGS84) ---
+#   # --- B. Create Left Plot (Observations - WGS84) ---
   
-  obs_plot <- ggplot() + 
-    # Background Box
-    geom_rect(aes(xmin = bbox_full$xmin, xmax = bbox_full$xmax, 
-                  ymin = bbox_full$ymin, ymax = bbox_full$ymax), 
-              fill = "darkgray", show.legend = FALSE) +
+#   obs_plot <- ggplot() + 
+#     # Background Box
+#     geom_rect(aes(xmin = bbox_full$xmin, xmax = bbox_full$xmax, 
+#                   ymin = bbox_full$ymin, ymax = bbox_full$ymax), 
+#               fill = "darkgray", show.legend = FALSE) +
     
-    # Landmass (Solid Light Grey)
-    geom_raster(data = bg_df_wgs84, aes(x = x, y = y), fill = "#E6E6E6", show.legend = FALSE) +
+#     # Landmass (Solid Light Grey)
+#     geom_raster(data = bg_df_wgs84, aes(x = x, y = y), fill = "#E6E6E6", show.legend = FALSE) +
     
-    # Observation Points
-    geom_point(data = pts_df, aes(x = longitude, y = latitude, 
-                                  color = species_observed_label, 
-                                  shape = species_observed_label, 
-                                  fill = species_observed_label, 
-                                  size = species_observed_label), show.legend = TRUE) +
+#     # Observation Points
+#     geom_point(data = pts_df, aes(x = longitude, y = latitude, 
+#                                   color = species_observed_label, 
+#                                   shape = species_observed_label, 
+#                                   fill = species_observed_label, 
+#                                   size = species_observed_label), show.legend = TRUE) +
     
-    scale_color_manual(name = "Observation", values = c("Detection" = "black", "Non-detection" = "black")) +
-    scale_fill_manual(name = "Observation", values = c("Detection" = "#39FF14", "Non-detection" = "#83A1CD")) +
-    scale_shape_manual(name = "Observation", values = c("Detection" = 24, "Non-detection" = 22)) +
-    scale_size_manual(name = "Observation", values = c("Detection" = 1.6, "Non-detection" = 1.5)) +
+#     scale_color_manual(name = "Observation", values = c("Detection" = "black", "Non-detection" = "black")) +
+#     scale_fill_manual(name = "Observation", values = c("Detection" = "#39FF14", "Non-detection" = "#83A1CD")) +
+#     scale_shape_manual(name = "Observation", values = c("Detection" = 24, "Non-detection" = 22)) +
+#     scale_size_manual(name = "Observation", values = c("Detection" = 1.6, "Non-detection" = 1.5)) +
     
-    labs(title = "Species Observations") +
-    theme_void() +
-    coord_fixed(
-        ratio = 1.0, 
-        xlim = c(bbox_full$xmin, bbox_full$xmax), 
-        ylim = c(bbox_full$ymin, bbox_full$ymax), 
-        expand = FALSE
-    ) +
-    theme(
-      plot.title = element_text(hjust = 0.5, vjust = -25, face = "bold", size = 18), # Increased Title Size
-      legend.position = "inside",
-      legend.position.inside = c(0.5, -0.125),
-      legend.direction = "vertical",
-      legend.text = element_text(size = 14), 
-      legend.title = element_text(size = 14, margin = margin(l = 20, b = 10)), 
-      legend.spacing.x = unit(3, "cm"), 
-      legend.key.size = unit(1, 'cm'),
-      plot.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "cm")
-    )
+#     labs(title = "Species Observations") +
+#     theme_void() +
+#     coord_fixed(
+#         ratio = 1.0, 
+#         xlim = c(bbox_full$xmin, bbox_full$xmax), 
+#         ylim = c(bbox_full$ymin, bbox_full$ymax), 
+#         expand = FALSE
+#     ) +
+#     theme(
+#       plot.title = element_text(hjust = 0.5, vjust = -25, face = "bold", size = 18), # Increased Title Size
+#       legend.position = "inside",
+#       legend.position.inside = c(0.5, -0.125),
+#       legend.direction = "vertical",
+#       legend.text = element_text(size = 14), 
+#       legend.title = element_text(size = 14, margin = margin(l = 20, b = 10)), 
+#       legend.spacing.x = unit(3, "cm"), 
+#       legend.key.size = unit(1, 'cm'),
+#       plot.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "cm")
+#     )
 
-  # --- C. Generate Prediction Rasters ---
-  psi_plots <- list()
-  sp_params <- params_df %>% filter(species == sp)
+#   # --- C. Generate Prediction Rasters ---
+#   psi_plots <- list()
+#   sp_params <- params_df %>% filter(species == sp)
   
-  full_name_row <- species_map %>% filter(Abbreviation == sp)
-  if(nrow(full_name_row) > 0) {
-      full_name <- full_name_row$Species[1]
-  } else {
-      full_name <- sp 
-  }
+#   full_name_row <- species_map %>% filter(Abbreviation == sp)
+#   if(nrow(full_name_row) > 0) {
+#       full_name <- full_name_row$Species[1]
+#   } else {
+#       full_name <- sp 
+#   }
 
-  best_cg_row <- best_cg_params %>% filter(species == full_name, metric == "AUC")
-  if(nrow(best_cg_row) == 0) best_cg_row <- best_cg_params %>% filter(species == full_name) 
+#   best_cg_row <- best_cg_params %>% filter(species == full_name, metric == "AUC")
+#   if(nrow(best_cg_row) == 0) best_cg_row <- best_cg_params %>% filter(species == full_name) 
   
-  actual_best_method <- if(nrow(best_cg_row) > 0) best_cg_row$method[1] else NA
+#   actual_best_method <- if(nrow(best_cg_row) > 0) best_cg_row$method[1] else NA
   
-  for (i in seq_along(methods_for_maps)) {
-    m_label <- methods_for_maps[i]
+#   for (i in seq_along(methods_for_maps)) {
+#     m_label <- methods_for_maps[i]
     
-    if (m_label == "best-clustGeo") {
-      if(is.na(actual_best_method)) {
-         psi_plots[[i]] <- ggplot() + theme_void() + labs(title = "best-clustGeo (NA)") + theme(plot.title = element_text(hjust = 0.5))
-         next
-      }
-      m_lookup <- actual_best_method
-      plot_title <- "best-clustGeo"
-    } else {
-      m_lookup <- m_label
-      plot_title <- m_label
-    }
+#     if (m_label == "best-clustGeo") {
+#       if(is.na(actual_best_method)) {
+#          psi_plots[[i]] <- ggplot() + theme_void() + labs(title = "best-clustGeo (NA)") + theme(plot.title = element_text(hjust = 0.5))
+#          next
+#       }
+#       m_lookup <- actual_best_method
+#       plot_title <- "best-clustGeo"
+#     } else {
+#       m_lookup <- m_label
+#       plot_title <- m_label
+#     }
 
-    m_param <- sp_params %>% filter(method == m_lookup)
+#     m_param <- sp_params %>% filter(method == m_lookup)
     
-    if (nrow(m_param) == 0) {
-      psi_plots[[i]] <- ggplot() + theme_void() + labs(title = plot_title) + theme(plot.title = element_text(hjust = 0.5, size = 14))
-      next
-    }
+#     if (nrow(m_param) == 0) {
+#       psi_plots[[i]] <- ggplot() + theme_void() + labs(title = plot_title) + theme(plot.title = element_text(hjust = 0.5, size = 14))
+#       next
+#     }
     
-    psi_rast_albers <- predict_occuN_psi(cov_tif_albers, m_param, c("elevation","TCB","TCG","TCW","TCA"), cell_area_km2)
-    psi_rast_wgs84 <- terra::project(psi_rast_albers, wgs84_crs_str)
-    psi_rast_wgs84 <- terra::mask(psi_rast_wgs84, valid_boundary_wgs84)
-    psi_rast_wgs84 <- terra::crop(psi_rast_wgs84, valid_boundary_wgs84)
-    psi_df <- as.data.frame(psi_rast_wgs84, xy = TRUE, na.rm=TRUE)
+#     psi_rast_albers <- predict_occuN_psi(cov_tif_albers, m_param, c("elevation","TCB","TCG","TCW","TCA"), cell_area_km2)
+#     psi_rast_wgs84 <- terra::project(psi_rast_albers, wgs84_crs_str)
+#     psi_rast_wgs84 <- terra::mask(psi_rast_wgs84, valid_boundary_wgs84)
+#     psi_rast_wgs84 <- terra::crop(psi_rast_wgs84, valid_boundary_wgs84)
+#     psi_df <- as.data.frame(psi_rast_wgs84, xy = TRUE, na.rm=TRUE)
     
-    psi_plots[[i]] <- ggplot() +
-      geom_rect(aes(xmin = bbox_full$xmin, xmax = bbox_full$xmax, 
-                    ymin = bbox_full$ymin, ymax = bbox_full$ymax), 
-                fill = "darkgray", show.legend = FALSE) +
-      geom_raster(data = psi_df, aes(x = x, y = y, fill = psi)) +
-      scale_fill_viridis_c(option = "B", limits = c(0.0, 1.0), name = "Occupancy Probability") +
-      theme_void() + 
-      coord_fixed(
-        ratio = 1.0, 
-        xlim = c(bbox_full$xmin, bbox_full$xmax), 
-        ylim = c(bbox_full$ymin, bbox_full$ymax), 
-        expand = FALSE
-      ) +
-      labs(title = plot_title) +
-      theme(
-        legend.position = "bottom", 
-        legend.text = element_text(size = 14), 
-        legend.title = element_text(size = 14, vjust = 1), 
-        legend.key.width = unit(1, "cm"),
-        legend.box.margin = margin(t = 20), # Move legend down
-        plot.title = element_text(hjust = 0.5, size = 14, face = "bold") # Bigger Title
-      )
-  }
+#     psi_plots[[i]] <- ggplot() +
+#       geom_rect(aes(xmin = bbox_full$xmin, xmax = bbox_full$xmax, 
+#                     ymin = bbox_full$ymin, ymax = bbox_full$ymax), 
+#                 fill = "darkgray", show.legend = FALSE) +
+#       geom_raster(data = psi_df, aes(x = x, y = y, fill = psi)) +
+#       scale_fill_viridis_c(option = "B", limits = c(0.0, 1.0), name = "Occupancy Probability") +
+#       theme_void() + 
+#       coord_fixed(
+#         ratio = 1.0, 
+#         xlim = c(bbox_full$xmin, bbox_full$xmax), 
+#         ylim = c(bbox_full$ymin, bbox_full$ymax), 
+#         expand = FALSE
+#       ) +
+#       labs(title = plot_title) +
+#       theme(
+#         legend.position = "bottom", 
+#         legend.text = element_text(size = 14), 
+#         legend.title = element_text(size = 14, vjust = 1), 
+#         legend.key.width = unit(1, "cm"),
+#         legend.box.margin = margin(t = 20), # Move legend down
+#         plot.title = element_text(hjust = 0.5, size = 14, face = "bold") # Bigger Title
+#       )
+#   }
   
-  # --- D. Assemble and Save ---
-  grid_p <- ggarrange(plotlist = psi_plots, nrow = 2, ncol = 5, common.legend = TRUE, legend = "bottom")
+#   # --- D. Assemble and Save ---
+#   grid_p <- ggarrange(plotlist = psi_plots, nrow = 2, ncol = 5, common.legend = TRUE, legend = "bottom")
   
-  # Adjusted widths: 1:4 makes the left plot smaller relative to the previous 1:2.5
-  final <- (obs_plot + grid_p + plot_layout(nrow = 1, widths = c(1, 3.5)))
+#   # Adjusted widths: 1:4 makes the left plot smaller relative to the previous 1:2.5
+#   final <- (obs_plot + grid_p + plot_layout(nrow = 1, widths = c(1, 3.5)))
   
-  ggsave(file.path(map_output_dir, paste0(sp, ".png")), plot = final, width = 17, height = 9.5, dpi = 300)
-}
+#   ggsave(file.path(map_output_dir, paste0(sp, ".png")), plot = final, width = 17, height = 9.5, dpi = 300)
+# }
 
-cat("Maps generated successfully in output/species_experiments/clusters/plots/maps/\n")
+# cat("Maps generated successfully in output/species_experiments/clusters/plots/maps/\n")
 
 
 # --- (6) Statistical Significance Heatmap ---
