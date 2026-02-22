@@ -5,9 +5,9 @@
 # INCLUDES:
 # 1. Raw Performance Plots
 # 2. Percentage Improvement Plots
-# 3. Significance Heatmaps (Raw AUC, Upper Triangle)
-# 4. Trait-based Analysis (Mixed-Effects Models on Raw AUC)
-# 5. Kappa Selection Analysis & Saving Params
+# 3. Significance Heatmaps (% Impr, Bottom-Left Triangle)
+# 4. Trait-based Analysis (Mixed-Effects on Raw AUC, Flat Labels)
+# 5. Kappa Selection Analysis (No Title)
 # 6. Maps
 ################################################################
 
@@ -240,24 +240,24 @@ plot_improvement(auprc_by_repeat, "Average % AUPRC Improvement", file.path(outpu
 # (6) Statistical Significance Heatmap
 # -------------------------------------------------------------------------
 cat("\n###############################################\n")
-cat("GENERATING STATISTICAL SIGNIFICANCE HEATMAP (RAW AUC, UPPER TRIANGLE)\n")
+cat("GENERATING STATISTICAL SIGNIFICANCE HEATMAP (% IMPROVEMENT)\n")
 cat("###############################################\n")
 
-# Use RAW AUC data for the test (As requested)
-stats_df <- final_data_auc
+# Use Percentage Improvement data for the test
+stats_df <- auc_by_species
 
 # Ensure factors
 stats_df$method <- factor(stats_df$method)
 
 # Run Dunn's Test
-dunn_res <- dunnTest(auc ~ method, data = stats_df, method = "bh")$res
+dunn_res <- dunnTest(mean_perc_diff ~ method, data = stats_df, method = "bh")$res
 
 # Parse comparisons (e.g., "A - B")
 dunn_res <- dunn_res %>%
   separate(Comparison, into = c("Method1", "Method2"), sep = " - ")
 
-# --- CREATE UPPER TRIANGLE ONLY ---
-# 1. Create both directions to ensure full coverage
+# --- CREATE LOWER TRIANGLE VISUALIZATION ---
+# 1. Create full matrix directionality
 dunn_res_inv <- dunn_res
 dunn_res_inv$Method1 <- dunn_res$Method2
 dunn_res_inv$Method2 <- dunn_res$Method1
@@ -266,15 +266,15 @@ dunn_res_full <- bind_rows(dunn_res, dunn_res_inv)
 # 2. Define performance order for axes
 method_perf_order <- stats_df %>%
   group_by(method) %>%
-  summarise(mean_val = mean(auc)) %>%
+  summarise(mean_val = mean(mean_perc_diff)) %>%
   arrange(mean_val) %>%
   pull(method)
 
 dunn_res_full$Method1 <- factor(dunn_res_full$Method1, levels = method_perf_order)
 dunn_res_full$Method2 <- factor(dunn_res_full$Method2, levels = method_perf_order)
 
-# 3. Filter for Upper Triangle: Method2 (Y) > Method1 (X)
-# This creates the "mirrored" effect of the lower diagonal
+# 3. Filter for indices where Y (Method2) > X (Method1)
+# When we reverse the Y-axis later, these High-Y points will appear at the Bottom.
 dunn_res_final <- dunn_res_full %>%
   filter(as.numeric(Method2) > as.numeric(Method1))
 # ----------------------------------
@@ -291,7 +291,7 @@ dunn_res_final <- dunn_res_final %>%
     label_color = ifelse(P.adj < 0.05, "white", "black")
   )
 
-# Plot Heatmap (Upper Triangle)
+# Plot Heatmap (Bottom-Left Triangle)
 p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj)) +
   geom_tile(color = "white") +
   # Custom scale to emphasize significant values (p < 0.05)
@@ -304,7 +304,8 @@ p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj))
   geom_text(aes(label = stars, color = label_color), size = 5, vjust = 0.7) +
   scale_color_identity() +
   scale_x_discrete(drop = FALSE) + 
-  scale_y_discrete(drop = FALSE) +
+  # Reverse Y-axis to put High indices (Method2 > Method1) at the bottom
+  scale_y_discrete(drop = FALSE, limits = rev(levels(dunn_res_full$Method2))) +
   theme_minimal() +
   theme(
     axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
@@ -312,12 +313,13 @@ p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj))
     panel.grid = element_blank()
   ) +
   labs(
-    title = "Pairwise Significance (Raw AUC, Dunn's Test)",
+    title = NULL, # Title Removed
     x = NULL, y = NULL
   )
 
-ggsave(file.path(output_plot_dir, "significance_tests.png"), plot = p_heatmap, width = 8, height = 7, dpi = 300)
-cat("Significance heatmap saved (Upper Triangle).\n")
+# Save as significance.png
+ggsave(file.path(output_plot_dir, "significance.png"), plot = p_heatmap, width = 8, height = 7, dpi = 300)
+cat("Significance heatmap saved (significance.png).\n")
 
 
 # -------------------------------------------------------------------------
@@ -355,8 +357,8 @@ alg_order <- c("lat-long", "1-kmSq", "DBSC", "1to10", "2to10-sameObs",
 trait_df <- trait_df %>% filter(method %in% alg_order)
 trait_df$method <- factor(trait_df$method, levels = alg_order)
 
-# Set global theme for sjPlot
-sjPlot::set_theme(base = theme_classic(), axis.angle.x = 45)
+# Set global theme for sjPlot with FLAT x-axis labels (0 degrees)
+sjPlot::set_theme(base = theme_classic(), axis.angle.x = 0)
 
 # --- RUN LMER MODELS (Response = mean_auc) ---
 # Using interaction (method:Trait) to get estimates for each combo
@@ -396,7 +398,7 @@ p_traits <- ( (p_prev + p_hab) / (p_spec + p_home) ) +
   theme(legend.position = "bottom")
 
 ggsave(file.path(output_plot_dir, "traits.png"), plot = p_traits, width = 12, height = 10, dpi = 300)
-cat("Traits plot saved (Mixed-Effects/sjPlot/Raw AUC).\n")
+cat("Traits plot saved (Mixed-Effects/sjPlot/Raw AUC/Flat Labels).\n")
 
 
 # -------------------------------------------------------------------------
@@ -449,14 +451,15 @@ if(file.exists(bayes_file)) {
     geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
     theme_classic() +
     labs(
-      title = "Difference in Selected Kappa",
+      title = NULL, # Title Removed
       subtitle = NULL, 
       y = "Kappa Difference (best-clustGeo - BayesOptClustGeo)",
       x = "Species"
     )
   
-  ggsave(file.path(output_plot_dir, "kappa_diff.png"), plot = p_kappa, width = 8, height = 8, dpi = 300)
-  cat("Kappa difference plot saved.\n")
+  # Save as kappa.png
+  ggsave(file.path(output_plot_dir, "kappa.png"), plot = p_kappa, width = 8, height = 8, dpi = 300)
+  cat("Kappa difference plot saved (kappa.png).\n")
   
 } else {
   cat("Skipping Kappa Plot: BayesOptClustGeo_params.csv not found.\n")
