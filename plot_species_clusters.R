@@ -5,10 +5,10 @@
 # INCLUDES:
 # 1. Raw Performance Plots
 # 2. Percentage Improvement Plots
-# 3. Significance Heatmaps
-# 4. Trait-based Analysis (Mixed-Effects Models)
-# 5. Kappa Selection Analysis
-# 6. Maps (Fixed bind_rows error)
+# 3. Significance Heatmaps (Raw AUC)
+# 4. Trait-based Analysis (Mixed-Effects Models with sjPlot)
+# 5. Kappa Selection Analysis & Saving Params
+# 6. Maps
 ################################################################
 
 library(dplyr)
@@ -240,17 +240,17 @@ plot_improvement(auprc_by_repeat, "Average % AUPRC Improvement", file.path(outpu
 # (6) Statistical Significance Heatmap
 # -------------------------------------------------------------------------
 cat("\n###############################################\n")
-cat("GENERATING STATISTICAL SIGNIFICANCE HEATMAP\n")
+cat("GENERATING STATISTICAL SIGNIFICANCE HEATMAP (RAW AUC)\n")
 cat("###############################################\n")
 
-# Use AUC by species data for the test
-stats_df <- auc_by_species
+# Use RAW AUC data for the test (More robust than % diff)
+stats_df <- final_data_auc
 
 # Ensure factors
 stats_df$method <- factor(stats_df$method)
 
 # Run Dunn's Test
-dunn_res <- dunnTest(mean_perc_diff ~ method, data = stats_df, method = "bh")$res
+dunn_res <- dunnTest(auc ~ method, data = stats_df, method = "bh")$res
 
 # Parse comparisons (e.g., "A - B")
 dunn_res <- dunn_res %>%
@@ -266,7 +266,7 @@ dunn_res <- bind_rows(dunn_res, dunn_res_inv)
 # Sort methods by performance for the axis order
 method_perf_order <- stats_df %>%
   group_by(method) %>%
-  summarise(mean_val = mean(mean_perc_diff)) %>%
+  summarise(mean_val = mean(auc)) %>%
   arrange(mean_val) %>%
   pull(method)
 
@@ -288,10 +288,11 @@ dunn_res <- dunn_res %>%
 # Plot Heatmap
 p_heatmap <- ggplot(dunn_res, aes(x = Method1, y = Method2, fill = P.adj)) +
   geom_tile(color = "white") +
+  # Custom scale to emphasize significant values (p < 0.05)
   scale_fill_gradientn(
     colors = c("darkred", "red", "orange", "white"),
     values = c(0, 0.01, 0.05, 1),
-    limit = c(0, 1),
+    limits = c(0, 1),
     name = "Adj. P-Value"
   ) +
   geom_text(aes(label = stars, color = label_color), size = 5, vjust = 0.7) +
@@ -303,7 +304,7 @@ p_heatmap <- ggplot(dunn_res, aes(x = Method1, y = Method2, fill = P.adj)) +
     panel.grid = element_blank()
   ) +
   labs(
-    title = "Pairwise Significance (Dunn's Test, BH Adjusted)",
+    title = "Pairwise Significance (Raw AUC, Dunn's Test)",
     x = NULL, y = NULL
   )
 
@@ -337,7 +338,7 @@ trait_df$Home.Range <- factor(trait_df$Home.Range, levels=c("Small", "Medium", "
 trait_df$Habitat <- factor(trait_df$Habitat, levels=c("Forest", "Seral"))
 trait_df$Generalist.Specialist <- factor(trait_df$Generalist.Specialist, levels=c("Generalist", "Specialist"))
 
-# Apply User's Fixed Algorithm Order
+# Apply User's Fixed Algorithm Order (INCLUDING lat-long)
 alg_order <- c("lat-long", "1-kmSq", "DBSC", "1to10", "2to10-sameObs", 
                "2to10", "rounded-4", "BayesOptClustGeo", "best-clustGeo")
 
@@ -354,15 +355,19 @@ m_hab  <- lmer(mean_perc_diff ~ method:Habitat + (1|species), data=trait_df, con
 m_spec <- lmer(mean_perc_diff ~ method:Generalist.Specialist + (1|species), data=trait_df, control=lmerControl(check.rankX="silent.drop.cols"))
 m_home <- lmer(mean_perc_diff ~ method:Home.Range + (1|species), data=trait_df, control=lmerControl(check.rankX="silent.drop.cols"))
 
-# Helper for plotting mixed effects
+# Helper for plotting mixed effects with sjPlot (Plots & Lines)
 plot_lmer_effects <- function(model, trait_col, title_str) {
+  
+  # Ensure colors match the exact factor order used in the model
+  model_colors <- unname(colors[levels(trait_df$method)])
+  
   sjPlot::plot_model(
     model, 
     type = "pred", 
     terms = c(trait_col, "method"), # X-axis = Trait, Group = Method
     title = title_str, 
     axis.title = c(title_str, "% Impr."),
-    colors = unname(colors[alg_order]), # Ensure colors match the factor order
+    colors = model_colors, 
     dodge = 0.6,
     legend.title = "Algorithm"
   ) +
@@ -382,11 +387,11 @@ p_traits <- ( (p_prev + p_hab) / (p_spec + p_home) ) +
   theme(legend.position = "bottom")
 
 ggsave(file.path(output_plot_dir, "traits.png"), plot = p_traits, width = 12, height = 10, dpi = 300)
-cat("Traits plot saved (Mixed-Effects).\n")
+cat("Traits plot saved (Mixed-Effects/sjPlot).\n")
 
 
 # -------------------------------------------------------------------------
-# (8) Kappa Difference Plot
+# (8) Kappa Difference Plot & Saving BayesOpt Params
 # -------------------------------------------------------------------------
 cat("\n###############################################\n")
 cat("GENERATING KAPPA DIFFERENCE PLOT\n")
@@ -408,18 +413,25 @@ if(file.exists(bayes_file)) {
     group_by(species) %>%
     slice_max(AUC, n = 1, with_ties = FALSE) %>%
     mutate(kappa_bayes = as.numeric(kappa)) %>%
-    select(species, kappa_bayes)
+    select(species, kappa_bayes, rho, AUC)
+  
+  # --- SAVE BAYES PARAMS SUMMARY (Requested) ---
+  write.csv(bayes_kappa, file.path(output_plot_dir, "BayesOptClustGeo_best_params.csv"), row.names = FALSE)
+  cat("Saved BayesOptClustGeo_best_params.csv\n")
   
   # 3. Join and Compare
-  bayes_kappa <- bayes_kappa %>%
+  bayes_kappa_join <- bayes_kappa %>%
     left_join(species_map %>% select(Species, Abbreviation), by = c("species" = "Abbreviation")) %>%
     mutate(species_full = ifelse(!is.na(Species), Species, species)) %>%
     ungroup() %>%
     select(species_full, kappa_bayes)
   
   kappa_comp <- grid_kappa %>%
-    inner_join(bayes_kappa, by = c("species" = "species_full")) %>%
+    inner_join(bayes_kappa_join, by = c("species" = "species_full")) %>%
     mutate(kappa_diff = kappa_grid - kappa_bayes)
+  
+  # --- SAVE COMPARISON TABLE ---
+  write.csv(kappa_comp, file.path(output_plot_dir, "clustGeo_parameter_comparison.csv"), row.names = FALSE)
   
   # 4. Plot
   p_kappa <- ggplot(kappa_comp, aes(x = reorder(species, kappa_diff), y = kappa_diff)) +
