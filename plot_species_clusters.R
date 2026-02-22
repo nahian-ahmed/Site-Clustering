@@ -5,7 +5,7 @@
 # INCLUDES:
 # 1. Raw Performance Plots
 # 2. Percentage Improvement Plots
-# 3. Significance Heatmaps (Bottom-Left Triangle)
+# 3. Significance Heatmaps (Raw AUC, Bottom-Left, Trimmed Labels)
 # 4. Trait-based Analysis (Mixed-Effects on Raw AUC, Flat Labels)
 # 5. Kappa Selection Analysis (Flat Labels, No Title)
 # 6. Maps
@@ -240,17 +240,17 @@ plot_improvement(auprc_by_repeat, "Average % AUPRC Improvement", file.path(outpu
 # (6) Statistical Significance Heatmap
 # -------------------------------------------------------------------------
 cat("\n###############################################\n")
-cat("GENERATING STATISTICAL SIGNIFICANCE HEATMAP (% IMPROVEMENT)\n")
+cat("GENERATING STATISTICAL SIGNIFICANCE HEATMAP (RAW AUC)\n")
 cat("###############################################\n")
 
-# Use Percentage Improvement data for the test (As requested)
-stats_df <- auc_by_species
+# Use RAW AUC data for the test (SWITCHED FROM % IMPROVEMENT)
+stats_df <- final_data_auc
 
 # Ensure factors
 stats_df$method <- factor(stats_df$method)
 
 # Run Dunn's Test
-dunn_res <- dunnTest(mean_perc_diff ~ method, data = stats_df, method = "bh")$res
+dunn_res <- dunnTest(auc ~ method, data = stats_df, method = "bh")$res
 
 # Parse comparisons (e.g., "A - B")
 dunn_res <- dunn_res %>%
@@ -266,7 +266,7 @@ dunn_res_full <- bind_rows(dunn_res, dunn_res_inv)
 # 2. Define performance order for axes
 method_perf_order <- stats_df %>%
   group_by(method) %>%
-  summarise(mean_val = mean(mean_perc_diff)) %>%
+  summarise(mean_val = mean(auc)) %>%
   arrange(mean_val) %>%
   pull(method)
 
@@ -295,6 +295,7 @@ dunn_res_final <- dunn_res_final %>%
 # Plot Heatmap (Bottom-Left Triangle)
 p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj)) +
   geom_tile(color = "white") +
+  # Custom scale to emphasize significant values (p < 0.05)
   scale_fill_gradientn(
     colors = c("darkred", "red", "orange", "white"),
     values = c(0, 0.01, 0.05, 1),
@@ -303,9 +304,16 @@ p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj))
   ) +
   geom_text(aes(label = stars, color = label_color), size = 5, vjust = 0.7) +
   scale_color_identity() +
-  scale_x_discrete(drop = FALSE) + 
-  # Reverse Y-axis to put High indices (Method2 > Method1) at the bottom
-  scale_y_discrete(drop = FALSE, limits = rev(levels(dunn_res_full$Method2))) +
+  
+  # REMOVE EXTRA LABELS:
+  # X-axis: drop the LAST level (best-clustGeo)
+  scale_x_discrete(drop = FALSE, breaks = method_perf_order[-length(method_perf_order)]) + 
+  
+  # Y-axis: drop the FIRST level (lat-long)
+  # Note: Y-axis is reversed, so "limits" handles order, "breaks" handles labels.
+  scale_y_discrete(drop = FALSE, limits = rev(levels(dunn_res_full$Method2)), 
+                   breaks = method_perf_order[-1]) +
+  
   theme_minimal() +
   theme(
     axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
