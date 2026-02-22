@@ -5,7 +5,7 @@
 # INCLUDES:
 # 1. Raw Performance Plots
 # 2. Percentage Improvement Plots
-# 3. Significance Heatmaps (Raw AUC, Bottom-Left, Trimmed Labels)
+# 3. Significance Heatmaps (Raw AUC, Clean Scale, Empty NS)
 # 4. Trait-based Analysis (Mixed-Effects on Raw AUC, Flat Labels)
 # 5. Kappa Selection Analysis (Flat Labels, No Title)
 # 6. Maps
@@ -22,6 +22,7 @@ library(terra)    # Loaded early to avoid masking issues
 library(sf)
 library(lme4)     # Mixed-effects models
 library(sjPlot)   # Plotting estimates
+library(scales)   # For squishing scale limits
 
 # Create output directory
 output_dir <- file.path("output", "species_experiments", "clusters")
@@ -243,7 +244,7 @@ cat("\n###############################################\n")
 cat("GENERATING STATISTICAL SIGNIFICANCE HEATMAP (RAW AUC)\n")
 cat("###############################################\n")
 
-# Use RAW AUC data for the test (SWITCHED FROM % IMPROVEMENT)
+# Use RAW AUC data for the test
 stats_df <- final_data_auc
 
 # Ensure factors
@@ -273,9 +274,7 @@ method_perf_order <- stats_df %>%
 dunn_res_full$Method1 <- factor(dunn_res_full$Method1, levels = method_perf_order)
 dunn_res_full$Method2 <- factor(dunn_res_full$Method2, levels = method_perf_order)
 
-# 3. Filter for indices where Y (Method2) > X (Method1)
-# When we reverse the Y-axis (Standard Matrix view), these high indices appear at the Bottom.
-# This creates the "Flat Left, Flat Bottom" triangle.
+# 3. Filter for Bottom-Left Triangle indices
 dunn_res_final <- dunn_res_full %>%
   filter(as.numeric(Method2) > as.numeric(Method1))
 # ----------------------------------
@@ -287,7 +286,7 @@ dunn_res_final <- dunn_res_final %>%
       P.adj < 0.001 ~ "***",
       P.adj < 0.01  ~ "**",
       P.adj < 0.05  ~ "*",
-      TRUE          ~ "ns"
+      TRUE          ~ "" # Leave empty if not significant
     ),
     label_color = ifelse(P.adj < 0.05, "white", "black")
   )
@@ -295,22 +294,19 @@ dunn_res_final <- dunn_res_final %>%
 # Plot Heatmap (Bottom-Left Triangle)
 p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj)) +
   geom_tile(color = "white") +
-  # Custom scale to emphasize significant values (p < 0.05)
+  # Custom scale focused on significant values (0 to 0.1)
   scale_fill_gradientn(
     colors = c("darkred", "red", "orange", "white"),
-    values = c(0, 0.01, 0.05, 1),
-    limits = c(0, 1),
+    values = c(0, 0.1, 0.5, 1), # Normalize positions to the 0-0.1 limit
+    limits = c(0, 0.1),         # Cap the legend at 0.1
+    oob = scales::squish,       # Squish values > 0.1 into the white color
     name = "Adj. P-Value"
   ) +
   geom_text(aes(label = stars, color = label_color), size = 5, vjust = 0.7) +
   scale_color_identity() +
   
   # REMOVE EXTRA LABELS:
-  # X-axis: drop the LAST level (best-clustGeo)
   scale_x_discrete(drop = FALSE, breaks = method_perf_order[-length(method_perf_order)]) + 
-  
-  # Y-axis: drop the FIRST level (lat-long)
-  # Note: Y-axis is reversed, so "limits" handles order, "breaks" handles labels.
   scale_y_discrete(drop = FALSE, limits = rev(levels(dunn_res_full$Method2)), 
                    breaks = method_perf_order[-1]) +
   
@@ -321,7 +317,7 @@ p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj))
     panel.grid = element_blank()
   ) +
   labs(
-    title = NULL, # Title Removed
+    title = NULL,
     x = NULL, y = NULL
   )
 
@@ -369,7 +365,6 @@ trait_df$method <- factor(trait_df$method, levels = alg_order)
 sjPlot::set_theme(base = theme_classic(), axis.angle.x = 0)
 
 # --- RUN LMER MODELS (Response = mean_auc) ---
-# Using interaction (method:Trait) to get estimates for each combo
 m_prev <- lmer(mean_auc ~ method:Prevalence.Level + (1|species), data=trait_df, control=lmerControl(check.rankX="silent.drop.cols"))
 m_hab  <- lmer(mean_auc ~ method:Habitat + (1|species), data=trait_df, control=lmerControl(check.rankX="silent.drop.cols"))
 m_spec <- lmer(mean_auc ~ method:Generalist.Specialist + (1|species), data=trait_df, control=lmerControl(check.rankX="silent.drop.cols"))
@@ -459,7 +454,7 @@ if(file.exists(bayes_file)) {
     geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
     theme_classic() +
     labs(
-      title = NULL, # Title Removed
+      title = NULL,
       subtitle = NULL, 
       y = "Kappa Difference (best-clustGeo - BayesOptClustGeo)",
       x = "Species"
