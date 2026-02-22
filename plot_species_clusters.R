@@ -453,7 +453,7 @@ for (sp in species_names) {
         expand = FALSE
     ) +
     theme(
-      plot.title = element_text(hjust = 0.5, vjust = -22.5, face = "bold", size = 18), # Increased Title Size
+      plot.title = element_text(hjust = 0.5, vjust = -2, face = "bold", size = 18), # Increased Title Size
       legend.position = "inside",
       legend.position.inside = c(0.5, -0.16),
       legend.direction = "vertical",
@@ -461,7 +461,7 @@ for (sp in species_names) {
       legend.title = element_text(size = 14, margin = margin(l = 20, b = 10)), 
       legend.spacing.x = unit(3, "cm"), 
       legend.key.size = unit(1, 'cm'),
-      plot.margin = margin(t = 1, r = 0, b = 0, l = 0, unit = "cm")
+      plot.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "cm")
     )
 
   # --- C. Generate Prediction Rasters ---
@@ -528,7 +528,7 @@ for (sp in species_names) {
         legend.title = element_text(size = 14, vjust = 1), 
         legend.key.width = unit(1, "cm"),
         legend.box.margin = margin(t = 30), # Move legend down
-        plot.title = element_text(hjust = 0.5, size = 14, face = "bold") # Bigger Title
+        plot.title = element_text(hjust = 0.5, size = 14, face = "bold", margin = margin(b = -5)) # Bigger Title
       )
   }
   
@@ -536,7 +536,8 @@ for (sp in species_names) {
   grid_p <- ggarrange(plotlist = psi_plots, nrow = 2, ncol = 5, common.legend = TRUE, legend = "bottom")
   
   # Adjusted widths: 1:4 makes the left plot smaller relative to the previous 1:2.5
-  final <- obs_plot + grid_p + plot_layout(nrow = 1, widths = c(1, 3.5))
+  final <- (obs_plot + grid_p + plot_layout(nrow = 1, widths = c(1, 3.5))) & 
+         theme(plot.margin = margin(0, 0, 0, 0, "pt"))
   
   ggsave(file.path(map_output_dir, paste0(sp, ".png")), plot = final, width = 17, height = 9.5, dpi = 300)
 }
