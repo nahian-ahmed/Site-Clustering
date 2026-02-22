@@ -280,7 +280,7 @@ print("Plots generated successfully in simulation_experiments/output/plots/")
 
 
 # -------------------------------------------------------------------------
-# (5) Generate Maps (Psi Only) - WGS84 (Refined Layout)
+# (5) Generate Maps (Psi Only) - WGS84 (Final Layout)
 # -------------------------------------------------------------------------
 
 cat("\n###############################################\n")
@@ -453,7 +453,7 @@ for (sp in species_names) {
         expand = FALSE
     ) +
     theme(
-      plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold", size = 15), # vjust=1: Closer to plot
+      plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold", size = 24), # Increased Title Size
       legend.position = "inside",
       legend.position.inside = c(0.5, -0.16),
       legend.direction = "vertical",
@@ -535,8 +535,8 @@ for (sp in species_names) {
   # --- D. Assemble and Save ---
   grid_p <- ggarrange(plotlist = psi_plots, nrow = 2, ncol = 5, common.legend = TRUE, legend = "bottom")
   
-  # Adjusted widths for larger left plot (1 : 2.5 ratio instead of 1 : 5)
-  final <- obs_plot + grid_p + plot_layout(nrow = 1, widths = c(1, 2.5))
+  # Adjusted widths: 1:4 makes the left plot smaller relative to the previous 1:2.5
+  final <- obs_plot + grid_p + plot_layout(nrow = 1, widths = c(1, 4))
   
   ggsave(file.path(map_output_dir, paste0(sp, ".png")), plot = final, width = 17, height = 9.5, dpi = 300)
 }
