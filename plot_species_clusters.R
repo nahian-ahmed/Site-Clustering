@@ -282,12 +282,19 @@ dunn_res_final <- dunn_res_full %>%
 # Add significance stars and label color logic
 dunn_res_final <- dunn_res_final %>%
   mutate(
+    # Recode p-values to symbols
     stars = case_when(
       P.adj < 0.001 ~ "***",
       P.adj < 0.01  ~ "**",
       P.adj < 0.05  ~ "*",
       TRUE          ~ "-"
     ),
+    # -----------------------------------------------------------------------
+    # CRITICAL FIX 1: Convert to FACTOR with explicit levels.
+    # This ensures scale_alpha_manual knows about all levels even if missing.
+    # -----------------------------------------------------------------------
+    stars = factor(stars, levels = c("*", "**", "***", "-")), 
+    
     # Use white text for dark backgrounds (low p-val) and black for light
     label_color = ifelse(P.adj < 0.05, "white", "black")
   )
@@ -306,27 +313,25 @@ p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj))
   ) +
   
   # 2. Main Text Layer (Identity Color)
-  # Uses pre-calculated label_color for visibility on the plot
   geom_text(aes(label = stars, color = label_color), size = 5, vjust = 0.75) +
   scale_color_identity() +
   
   # 3. Dummy Legend Layer (Alpha) - ORDER 2
-  # We use a dummy text layer to generate the legend keys as TEXT (*, **, ***, -)
-  # We map 'stars' to 'alpha' to create a separate legend
+  # Use the factor mapping so drop=FALSE works.
   geom_text(
-    data = filter(dunn_res_final, stars %in% c("*", "**", "***", "-")), 
     aes(label = stars, alpha = stars), 
-    color = "black", # Legend text is black
-    size = 0,        # Hidden in plot
-    key_glyph = "text" # Makes the legend key a text character
+    color = "black", 
+    size = 0,        
+    key_glyph = "text" 
   ) +
   
   # Define the Legend Labels
   scale_alpha_manual(
     name = "Significance",
     values = c("*"=0, "**"=0, "***"=0, "-"=0), # Invisible in plot
-    breaks = c("*", "**", "***", "-"),         # Explicit Order
-    labels = c("p < 0.05", "p < 0.01", "p < 0.001", "p > 0.05")
+    breaks = c("*", "**", "***", "-"),
+    labels = c("p < 0.05", "p < 0.01", "p < 0.001", "p > 0.05"),
+    drop = FALSE # CRITICAL FIX 2: Forces all 4 keys to show, matching override.aes length
   ) +
   
   # Guides to Control Order and Appearance
@@ -335,7 +340,7 @@ p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj))
     alpha = guide_legend(
       order = 2, 
       override.aes = list(
-        label = c("*", "**", "***", "-"), # Replaces "a" with symbols
+        label = c("*", "**", "***", "-"), # Explicitly set symbols
         alpha = 1, 
         size = 6
       )
@@ -354,7 +359,7 @@ p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj))
     panel.grid = element_blank(),
     legend.box = "vertical",
     legend.margin = margin(),
-    legend.spacing.y = unit(0.5, "cm") # Increases vertical space between legends
+    legend.spacing.y = unit(0.5, "cm") 
   ) +
   labs(
     title = NULL,
@@ -601,7 +606,7 @@ for (sp in species_list) {
   
   obs_plot <- ggplot() + 
     geom_rect(aes(xmin = bbox_full$xmin, xmax = bbox_full$xmax, ymin = bbox_full$ymin, ymax = bbox_full$ymax), fill = "darkgray", show.legend = FALSE) +
-    geom_raster(data = bg_df_wgs84, aes(x = x, y = y, fill = "#E6E6E6", show.legend = FALSE) +
+    geom_raster(data = bg_df_wgs84, aes(x = x, y = y), fill = "#E6E6E6", show.legend = FALSE) +
     geom_point(data = pts_df, aes(x = longitude, y = latitude, color = species_observed_label, shape = species_observed_label, fill = species_observed_label, size = species_observed_label), show.legend = TRUE) +
     scale_color_manual(name = "Observation", values = c("Detection" = "black", "Non-detection" = "black")) +
     scale_fill_manual(name = "Observation", values = c("Detection" = "#39FF14", "Non-detection" = "#83A1CD")) +
