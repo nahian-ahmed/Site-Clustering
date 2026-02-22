@@ -22,7 +22,8 @@ library(stringr)  # For string manipulation
 # Create output directory
 output_dir <- file.path("output", "species_experiments", "clusters")
 output_plot_dir <- file.path(output_dir, "plots")
-if (!dir.exists(output_plot_dir)) dir.create(output_plot_dir, recursive = TRUE)
+map_output_dir <- file.path(output_plot_dir, "maps")
+if (!dir.exists(map_output_dir)) dir.create(map_output_dir, recursive = TRUE)
 
 # -------------------------------------------------------------------------
 # 1. Load Data
