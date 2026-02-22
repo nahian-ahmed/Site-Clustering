@@ -281,7 +281,7 @@ print("Plots generated successfully in simulation_experiments/output/plots/")
 
 
 # -------------------------------------------------------------------------
-# (5) Generate Maps (Psi Only) - WGS84 (Matches plot_sites style)
+# (5) Generate Maps (Psi Only) - WGS84 (Corrected with ggnewscale)
 # -------------------------------------------------------------------------
 
 cat("\n###############################################\n")
@@ -289,13 +289,14 @@ cat("GENERATING SPECIES MAPS (PSI ONLY - WGS84)\n")
 cat("###############################################\n")
 
 # --- 0. SETUP & LIBRARIES ---
-library(patchwork) # For layout
-library(terra)     # For raster operations
-library(sf)        # For vector operations
+library(patchwork)  # For layout
+library(terra)      # For raster operations
+library(sf)         # For vector operations
 library(dplyr)
 library(ggplot2)
 library(ggpubr)
 library(tidyr)
+library(ggnewscale) # REQUIRED: Allows multiple fill scales in one plot
 
 # Source helpers to access 'standardize_state_covs' if available
 if(file.exists(file.path("R", "data_helpers.R"))) source(file.path("R", "data_helpers.R"))
@@ -317,11 +318,10 @@ if(file.exists(best_cg_file)) {
 }
 
 # --- Define species_names from the already loaded species_map ---
-# species_map was loaded at the top of the script
 species_names <- as.character(species_map$Abbreviation)
 
 # 3. Define Spatial Constants & Load Raster
-# Model uses Albers, Plotting uses WGS84 (as per plot_sites)
+# Model uses Albers, Plotting uses WGS84
 albers_crs_str <- "+proj=aea +lat_1=42 +lat_2=48 +lon_0=-122 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
 wgs84_crs_str  <- "EPSG:4326"
 boundary_shapefile_path <- file.path("state_covariate_raster", "boundary", "boundary.shp")
@@ -354,8 +354,7 @@ if(exists("standardize_state_covs")) {
 }
 cell_area_km2 <- (100 / 1000) * (100 / 1000)
 
-# B. Prepare WGS84 Background (For Plotting - matching plot_sites logic)
-# We project the raw elevation to WGS84
+# B. Prepare WGS84 Background (For Plotting)
 bg_raster_wgs84 <- terra::project(state_cov_raster_raw[["elevation"]], wgs84_crs_str)
 valid_boundary_wgs84 <- terra::project(valid_boundary, wgs84_crs_str)
 bg_raster_wgs84 <- terra::mask(bg_raster_wgs84, valid_boundary_wgs84)
@@ -364,7 +363,7 @@ bg_raster_wgs84 <- terra::crop(bg_raster_wgs84, valid_boundary_wgs84)
 # Get Extent for coord_fixed
 bbox_full <- terra::ext(bg_raster_wgs84)
 bg_df_wgs84 <- as.data.frame(bg_raster_wgs84, xy = TRUE, na.rm = TRUE)
-colnames(bg_df_wgs84)[3] <- "elevation" # standardize name
+colnames(bg_df_wgs84)[3] <- "elevation"
 
 # 4. Define Methods to Map
 methods_for_maps <- c(
@@ -384,7 +383,6 @@ predict_occuN_psi <- function(cov_stack, param_row, state_covs, cell_area) {
   intercept <- param_row$state_intercept
   betas <- as.numeric(param_row[state_covs])
   
-  # Predict in Albers
   lin_pred <- cov_stack[[1]] * 0 + intercept
   for(i in seq_along(state_covs)) {
     lin_pred <- lin_pred + (cov_stack[[state_covs[i]]] * betas[i])
@@ -429,20 +427,27 @@ for (sp in species_names) {
     arrange(species_observed_label)
   
   # --- B. Create Left Plot (Observations - WGS84) ---
-  # Matches logic in plot_sites (plotting_helpers.R)
   
   obs_plot <- ggplot() + 
+    # 1. Background Raster (Continuous Fill)
     geom_raster(data = bg_df_wgs84, aes(x = x, y = y, fill = elevation), show.legend = FALSE) +
-    scale_fill_gradient(low = "grey90", high = "grey50") + # Simple grey scale for elevation background
+    scale_fill_gradient(low = "grey90", high = "grey50") + 
+    
+    # 2. Reset Fill Scale for Points
+    new_scale_fill() +
+    
+    # 3. Observation Points (Discrete Fill)
     geom_point(data = pts_df, aes(x = longitude, y = latitude, 
                                   color = species_observed_label, 
                                   shape = species_observed_label, 
                                   fill = species_observed_label, 
                                   size = species_observed_label), show.legend = TRUE) +
+    
     scale_color_manual(name = "Observation", values = c("Detection" = "black", "Non-detection" = "black")) +
     scale_fill_manual(name = "Observation", values = c("Detection" = "#39FF14", "Non-detection" = "#83A1CD")) +
     scale_shape_manual(name = "Observation", values = c("Detection" = 24, "Non-detection" = 22)) +
     scale_size_manual(name = "Observation", values = c("Detection" = 1.6, "Non-detection" = 1.5)) +
+    
     labs(title = "Species Observations") +
     theme_void() +
     coord_fixed(
@@ -468,17 +473,16 @@ for (sp in species_names) {
   sp_params <- params_df %>% filter(species == sp)
   
   # LOOKUP FULL NAME FOR BEST-CLUSTGEO
-  # The params file uses Full Name (e.g. "American Crow"), 'sp' is Abbr (e.g. "AMCR")
   full_name_row <- species_map %>% filter(Abbreviation == sp)
   if(nrow(full_name_row) > 0) {
       full_name <- full_name_row$Species[1]
   } else {
-      full_name <- sp # Fallback
+      full_name <- sp 
   }
 
   # Identify Best clustGeo Method
   best_cg_row <- best_cg_params %>% filter(species == full_name, metric == "AUC")
-  if(nrow(best_cg_row) == 0) best_cg_row <- best_cg_params %>% filter(species == full_name) # Fallback to any metric
+  if(nrow(best_cg_row) == 0) best_cg_row <- best_cg_params %>% filter(species == full_name) 
   
   actual_best_method <- if(nrow(best_cg_row) > 0) best_cg_row$method[1] else NA
   
@@ -509,7 +513,7 @@ for (sp in species_names) {
     # 1. Predict (Albers)
     psi_rast_albers <- predict_occuN_psi(cov_tif_albers, m_param, c("elevation","TCB","TCG","TCW","TCA"), cell_area_km2)
     
-    # 2. Project to WGS84 (to match Observation Plot)
+    # 2. Project to WGS84
     psi_rast_wgs84 <- terra::project(psi_rast_albers, wgs84_crs_str)
     
     # 3. Mask/Crop (WGS84)
