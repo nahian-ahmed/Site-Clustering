@@ -273,4 +273,238 @@ plot_improvement(auprc_by_repeat,
                  "Average % AUPRC Improvement (Average over 31 Species per Repeat)",
                  file.path(output_plot_dir, "auprc_perc_diff_repeats.png"))
 
+
+
 print("Plots generated successfully in simulation_experiments/output/plots/")
+
+# -------------------------------------------------------------------------
+# (5) Generate Maps (Psi and Lambda)
+# -------------------------------------------------------------------------
+
+cat("\n###############################################\n")
+cat("GENERATING SPECIES MAPS (PSI & LAMBDA)\n")
+cat("###############################################\n")
+
+library(patchwork) # Required for plot layout
+
+# 1. Setup Output Directory
+map_output_dir <- file.path(output_plot_dir, "maps")
+if (!dir.exists(map_output_dir)) dir.create(map_output_dir, recursive = TRUE)
+
+# 2. Load Parameters
+params_df <- read.csv(file.path(output_dir, "estimated_parameters.csv"))
+
+# 3. Define Methods to Map (Selecting 9 for the 2x5 grid)
+# Adjust this list to match the specific methods you want to visualize
+methods_for_maps <- c(
+  "1to10", 
+  "2to10", 
+  "2to10-sameObs", 
+  "1-kmSq",
+  "lat-long", 
+  "rounded-4", 
+  "DBSC", 
+  "BayesOptClustGeo",
+  "clustGeo-50-60" # Representative fixed ClustGeo
+)
+
+# 4. Define Plotting Helper Functions
+
+# Function to predict raster surfaces for OccuN (Royle-Nichols)
+predict_occuN_rasters <- function(cov_stack, param_row, state_covs, cell_area) {
+  # Extract betas
+  intercept <- param_row$state_intercept
+  betas <- as.numeric(param_row[state_covs])
+  
+  # Calculate Linear Predictor (log density)
+  # lin_pred = beta0 + beta1*x1 + ...
+  lin_pred <- cov_stack[[1]] * 0 + intercept
+  for(i in seq_along(state_covs)) {
+    cov_name <- state_covs[i]
+    lin_pred <- lin_pred + (cov_stack[[cov_name]] * betas[i])
+  }
+  
+  # Lambda (Abundance per cell) = exp(lin_pred) * area
+  lambda_rast <- exp(lin_pred) * cell_area
+  names(lambda_rast) <- "lambda"
+  
+  # Psi (Occupancy Probability) = 1 - exp(-lambda)
+  psi_rast <- 1 - exp(-lambda_rast)
+  names(psi_rast) <- "psi"
+  
+  return(list(lambda = lambda_rast, psi = psi_rast))
+}
+
+# 5. Loop over Species
+for (sp in species_names) {
+  
+  cat(sprintf("Generating maps for %s...\n", sp))
+  
+  # --- A. Prepare Observations (Train + Test) ---
+  # Load raw checklists
+  obs_train <- read.delim(file.path("checklist_data", "species", sp, paste0(sp, "_zf_filtered_region_2017.csv")), sep=",")
+  obs_test  <- read.delim(file.path("checklist_data", "species", sp, paste0(sp, "_zf_filtered_region_2018.csv")), sep=",")
+  
+  # Filter (ensure consistency with main script filters)
+  obs_train <- obs_train[!is.na(obs_train$duration_minutes) & obs_train$observation_date >= "2017-05-15" & obs_train$observation_date <= "2017-07-09",]
+  obs_test  <- obs_test[!is.na(obs_test$duration_minutes) & obs_test$observation_date >= "2018-05-15" & obs_test$observation_date <= "2018-07-09",]
+  
+  # Combine
+  pts_df <- bind_rows(obs_train, obs_test)
+  
+  # Format for Plotting
+  pts_df <- pts_df %>%
+    mutate(
+      species_observed_label = ifelse(species_observed == 1 | species_observed == TRUE, "Detection", "Non-detection"),
+      species_observed_label = factor(species_observed_label, levels = c("Non-detection", "Detection"))
+    ) %>%
+    arrange(species_observed_label) # Draw detections on top
+  
+  # --- B. Create Left Plot (Observations) ---
+  # Background extent based on raster
+  valid_boundary <- terra::vect(boundary_shapefile_path)
+  valid_boundary_proj <- terra::project(valid_boundary, albers_crs_str)
+  
+  # Use the first layer of cov_tif_albers as a template for the grey background
+  bg_raster <- terra::crop(cov_tif_albers[[1]], valid_boundary_proj, mask = TRUE)
+  bg_df <- as.data.frame(bg_raster, xy = TRUE)
+  
+  # Calculate bounds for consistent plotting
+  x_min <- min(bg_df$x)
+  x_max <- max(bg_df$x)
+  y_min <- min(bg_df$y)
+  y_max <- max(bg_df$y)
+  
+  obs_plot <- ggplot() + 
+    geom_rect(aes(xmin = x_min, xmax = x_max, ymin = y_min, ymax = y_max), fill = "darkgray", show.legend = FALSE) +
+    geom_raster(data = bg_df, aes(x = x, y = y), fill = "#E6E6E6", show.legend = FALSE) +
+    geom_point(data = pts_df, aes(x = longitude, y = latitude, 
+                                  color = species_observed_label, 
+                                  shape = species_observed_label, 
+                                  fill = species_observed_label, 
+                                  size = species_observed_label), show.legend = TRUE) +
+    scale_color_manual(name = "Observation", values = c("Detection" = "black", "Non-detection" = "black")) +
+    scale_fill_manual(name = "Observation", values = c("Detection" = "#39FF14", "Non-detection" = "#83A1CD")) +
+    scale_shape_manual(name = "Observation", values = c("Detection" = 24, "Non-detection" = 22)) +
+    scale_size_manual(name = "Observation", values = c("Detection" = 1.6, "Non-detection" = 1.5)) +
+    labs(title = "Species Observations") +
+    theme_void() +
+    coord_fixed() +
+    theme(
+      plot.title = element_text(hjust = 0.5, vjust = -56, face = "bold", size = 15),
+      legend.position = "inside",
+      legend.position.inside = c(0.5, -0.16),
+      legend.direction = "vertical",
+      legend.text = element_text(size = 14), 
+      legend.title = element_text(size = 15, margin = margin(l = 20, b = 10)), 
+      legend.spacing.x = unit(3, "cm"), 
+      legend.key.size = unit(1, 'cm'),
+      plot.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "cm")
+    )
+
+  # --- C. Generate Prediction Rasters for each Method ---
+  psi_plots <- list()
+  lambda_plots <- list()
+  
+  # Filter params for this species
+  sp_params <- params_df %>% filter(species == sp)
+  
+  for (i in seq_along(methods_for_maps)) {
+    m <- methods_for_maps[i]
+    
+    # Check if method exists for this species
+    m_param <- sp_params %>% filter(method == m)
+    
+    if (nrow(m_param) == 0) {
+      # Placeholder if method missing/failed
+      psi_plots[[i]] <- ggplot() + theme_void() + labs(title = m)
+      lambda_plots[[i]] <- ggplot() + theme_void() + labs(title = m)
+      next
+    }
+    
+    # Predict Surfaces
+    preds <- predict_occuN_rasters(cov_tif_albers, m_param, state_cov_names, cell_area_km2)
+    
+    # 1. Process Psi Map
+    # Aggregating factor 6 for speed/visuals (matches reference code)
+    psi_agg <- terra::aggregate(preds$psi, fact = 6, fun = mean)
+    psi_df <- as.data.frame(psi_agg, xy = TRUE)
+    
+    p_psi <- ggplot() +
+      geom_rect(aes(xmin = x_min, xmax = x_max, ymin = y_min, ymax = y_max), fill = "darkgray", show.legend = FALSE) +
+      geom_raster(data = psi_df, aes(x = x, y = y, fill = psi)) +
+      scale_fill_viridis_c(option = "B", limits = c(0.0, 1.0), name = "Occupancy Probability") +
+      theme_void() +
+      coord_fixed() +
+      labs(title = NULL) + # Remove title from individual plots to clean grid
+      theme(
+        legend.position = "bottom",
+        legend.text = element_text(size = 14),
+        legend.title = element_text(size = 16, vjust = 1),
+        legend.key.width = unit(1.5, "cm")
+      )
+    psi_plots[[i]] <- p_psi
+
+    # 2. Process Lambda Map
+    lambda_agg <- terra::aggregate(preds$lambda, fact = 6, fun = mean)
+    lambda_df <- as.data.frame(lambda_agg, xy = TRUE)
+    
+    # Determine limits for lambda (can be highly variable, using quantile for robustness or fixed if preferred)
+    # Using dynamic limits per plot or 0-Max
+    l_max <- max(lambda_df$lambda, na.rm = TRUE)
+    
+    p_lambda <- ggplot() +
+      geom_rect(aes(xmin = x_min, xmax = x_max, ymin = y_min, ymax = y_max), fill = "darkgray", show.legend = FALSE) +
+      geom_raster(data = lambda_df, aes(x = x, y = y, fill = lambda)) +
+      scale_fill_viridis_c(option = "B", name = "Abundance Intensity") +
+      theme_void() +
+      coord_fixed() +
+      labs(title = NULL) +
+      theme(
+        legend.position = "bottom",
+        legend.text = element_text(size = 14),
+        legend.title = element_text(size = 16, vjust = 1),
+        legend.key.width = unit(1.5, "cm")
+      )
+    lambda_plots[[i]] <- p_lambda
+  }
+  
+  # --- D. Arrange and Save ---
+  
+  # Helper to arrange grid
+  arrange_grid_plot <- function(plot_list, obs_pl, methods, filename, legend_title) {
+    
+    # Arrange the 2x5 grid of method maps
+    # We use common.legend = TRUE to share the scale bar
+    grid_p <- ggarrange(
+      plotlist = plot_list,
+      nrow = 2,
+      ncol = 5,
+      common.legend = TRUE,
+      legend = "bottom",
+      labels = methods,
+      font.label = list(size = 10, face = "bold")
+    )
+    
+    # Combine Left (Obs) and Right (Grid)
+    final_layout <- obs_pl + grid_p + 
+      plot_layout(nrow = 1, widths = c(1, 5))
+    
+    ggsave(filename, plot = final_layout, width = 17, height = 9.5, dpi = 300)
+  }
+  
+  # Save Psi Map
+  arrange_grid_plot(psi_plots, obs_plot, methods_for_maps, 
+                    file.path(map_output_dir, paste0(sp, "_psi.png")))
+  
+  # Save Lambda Map
+  arrange_grid_plot(lambda_plots, obs_plot, methods_for_maps, 
+                    file.path(map_output_dir, paste0(sp, "_lambda.png")))
+  
+  # Clean up memory
+  rm(psi_plots, lambda_plots, pts_df)
+  gc()
+}
+
+cat("Maps generated successfully in output/species_experiments/clusters/plots/maps/\n")
+
