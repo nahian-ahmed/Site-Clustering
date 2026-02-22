@@ -455,7 +455,7 @@ p_traits <- ( (p_prev + p_hab) / (p_spec + p_home) ) +
   theme(legend.position = "bottom")
 
 ggsave(file.path(output_plot_dir, "traits.png"), plot = p_traits, width = 12, height = 10, dpi = 300)
-cat("Traits plot saved (Mixed-Effects/sjPlot/Raw AUC/Flat Labels).\n")
+cat("Traits plot saved.\n")
 
 
 # -------------------------------------------------------------------------
