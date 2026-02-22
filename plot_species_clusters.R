@@ -5,10 +5,10 @@
 # INCLUDES:
 # 1. Raw Performance Plots
 # 2. Percentage Improvement Plots
-# 3. Significance Heatmaps (New)
-# 4. Trait-based Analysis (New)
-# 5. Kappa Selection Analysis (New)
-# 6. Maps
+# 3. Significance Heatmaps
+# 4. Trait-based Analysis (Updated with Legend)
+# 5. Kappa Selection Analysis
+# 6. Maps (Fixed bind_rows error)
 ################################################################
 
 library(dplyr)
@@ -18,6 +18,8 @@ library(ggpubr)
 library(patchwork)
 library(FSA)      # For Dunn's Test
 library(stringr)  # For string manipulation
+library(terra)    # Loaded early to avoid masking issues later
+library(sf)
 
 # Create output directory
 output_dir <- file.path("output", "species_experiments", "clusters")
@@ -332,7 +334,7 @@ trait_df$Prevalence.Level <- factor(trait_df$Prevalence.Level, levels=c("Low", "
 trait_df$Home.Range <- factor(trait_df$Home.Range, levels=c("Small", "Medium", "Large"))
 
 
-# Helper for boxplots (UPDATED: No sub-facets, Trait on X-Axis)
+# Helper for boxplots (UPDATED: Legend enabled for collection)
 plot_trait_panel <- function(data, trait_col, title_str) {
   
   # Filter NAs
@@ -352,7 +354,7 @@ plot_trait_panel <- function(data, trait_col, title_str) {
     scale_fill_manual(values = colors) +
     theme_bw() +
     theme(
-      legend.position = "none",
+      # REMOVED: legend.position = "none" (Now handled by patchwork collection)
       strip.background = element_rect(fill = "white")
     ) +
     labs(title = title_str, y = "% Impr.", x = "")
@@ -364,8 +366,9 @@ p_hab  <- plot_trait_panel(trait_df, "Habitat", "Habitat")
 p_spec <- plot_trait_panel(trait_df, "Generalist.Specialist", "Generalist/Specialist")
 p_home <- plot_trait_panel(trait_df, "Home.Range", "Home Range")
 
-# Combine
+# Combine with Common Legend
 p_traits <- (p_prev + p_hab) / (p_spec + p_home) + 
+  plot_layout(guides = "collect") & theme(legend.position = "bottom") + 
   plot_annotation(title = "Algorithm Performance by Species Traits")
 
 ggsave(file.path(output_plot_dir, "traits.png"), plot = p_traits, width = 12, height = 10, dpi = 300)
@@ -416,8 +419,8 @@ if(file.exists(bayes_file)) {
     theme_classic() +
     labs(
       title = "Difference in Selected Kappa",
-      subtitle = NULL, # REMOVED subtitle
-      y = "Kappa Difference (best-clustGeo - BayesOptClustGeo)", # UPDATED Label
+      subtitle = NULL, 
+      y = "Kappa Difference (best-clustGeo - BayesOptClustGeo)",
       x = "Species"
     )
   
@@ -435,10 +438,6 @@ if(file.exists(bayes_file)) {
 cat("\n###############################################\n")
 cat("GENERATING SPECIES MAPS (PSI ONLY - WGS84)\n")
 cat("###############################################\n")
-
-# Load libraries needed for mapping
-library(terra)
-library(sf)
 
 # Load Parameters
 params_df <- read.csv(file.path(output_dir, "estimated_parameters.csv"))
@@ -509,6 +508,12 @@ for (sp in species_list) {
   
   obs_train <- read.delim(train_file, sep=",")
   obs_test  <- read.delim(test_file, sep=",")
+  
+  # --- FIX: Ensure compatible types before binding ---
+  obs_train$observation_count <- as.character(obs_train$observation_count)
+  obs_test$observation_count <- as.character(obs_test$observation_count)
+  # ---------------------------------------------------
+  
   obs_train <- obs_train[!is.na(obs_train$duration_minutes) & obs_train$observation_date >= "2017-05-15" & obs_train$observation_date <= "2017-07-09",]
   obs_test  <- obs_test[!is.na(obs_test$duration_minutes) & obs_test$observation_date >= "2018-05-15" & obs_test$observation_date <= "2018-07-09",]
   
