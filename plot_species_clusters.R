@@ -5,8 +5,8 @@
 # INCLUDES:
 # 1. Raw Performance Plots
 # 2. Percentage Improvement Plots
-# 3. Significance Heatmaps (Raw AUC, Outlined Cells
-# 4. Trait-based Analysis (Mixed-Effects on Raw AUC
+# 3. Significance Heatmaps (Raw AUC, Outlined Cells)
+# 4. Trait-based Analysis (Mixed-Effects on Raw AUC)
 # 5. Kappa Selection Analysis
 # 6. Maps
 ################################################################
@@ -280,13 +280,14 @@ dunn_res_final <- dunn_res_full %>%
 # ----------------------------------
 
 # Add significance stars
+# UPDATED: Included "-" for p > 0.05
 dunn_res_final <- dunn_res_final %>%
   mutate(
     stars = case_when(
       P.adj < 0.001 ~ "***",
       P.adj < 0.01  ~ "**",
       P.adj < 0.05  ~ "*",
-      TRUE          ~ ""
+      TRUE          ~ "-"  # Change from "" to "-"
     ),
     label_color = ifelse(P.adj < 0.05, "white", "black")
   )
@@ -305,12 +306,14 @@ p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj))
   ) +
   
   # Dummy layer for generating the Star Legend
-  geom_point(data = filter(dunn_res_final, stars != ""), 
+  geom_point(data = filter(dunn_res_final, stars %in% c("*", "**", "***", "-")), 
              aes(shape = stars), alpha = 0) +
+  
+  # UPDATED: Added "-" to shapes and labels
   scale_shape_manual(
     name = "Significance",
-    values = c("*"=8, "**"=8, "***"=8), # Shape 8 is a star/asterisk
-    labels = c("*" = "p < 0.05", "**" = "p < 0.01", "***" = "p < 0.001")
+    values = c("*"=8, "**"=8, "***"=8, "-"=95), # Shape 8 is star, 95 is dash
+    labels = c("*" = "p < 0.05", "**" = "p < 0.01", "***" = "p < 0.001", "-" = "p > 0.05")
   ) +
   
   geom_text(aes(label = stars, color = label_color), size = 5, vjust = 0.7) +
