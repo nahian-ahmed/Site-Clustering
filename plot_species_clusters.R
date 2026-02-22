@@ -6,7 +6,7 @@
 # 1. Raw Performance Plots
 # 2. Percentage Improvement Plots
 # 3. Significance Heatmaps
-# 4. Trait-based Analysis (Updated with Legend)
+# 4. Trait-based Analysis (Mixed-Effects Models)
 # 5. Kappa Selection Analysis
 # 6. Maps (Fixed bind_rows error)
 ################################################################
@@ -18,8 +18,10 @@ library(ggpubr)
 library(patchwork)
 library(FSA)      # For Dunn's Test
 library(stringr)  # For string manipulation
-library(terra)    # Loaded early to avoid masking issues later
+library(terra)    # Loaded early to avoid masking issues
 library(sf)
+library(lme4)     # Mixed-effects models
+library(sjPlot)   # Plotting estimates
 
 # Create output directory
 output_dir <- file.path("output", "species_experiments", "clusters")
@@ -310,10 +312,10 @@ cat("Significance heatmap saved.\n")
 
 
 # -------------------------------------------------------------------------
-# (7) Species Traits Plots (2x2 Grid)
+# (7) Species Traits Plots (Mixed-Effects Models)
 # -------------------------------------------------------------------------
 cat("\n###############################################\n")
-cat("GENERATING TRAITS ANALYSIS PLOTS\n")
+cat("GENERATING TRAITS ANALYSIS PLOTS (MIXED-EFFECTS)\n")
 cat("###############################################\n")
 
 # Merge AUC improvement data with traits
@@ -329,50 +331,58 @@ trait_df <- trait_df %>%
     Home.Range = recode(Home.Range, "s"="Small", "m"="Medium", "l"="Large")
   )
 
-# Force Trait Level order for Prevalence and Home Range
+# Set Factor Levels and Order
 trait_df$Prevalence.Level <- factor(trait_df$Prevalence.Level, levels=c("Low", "Medium", "High"))
 trait_df$Home.Range <- factor(trait_df$Home.Range, levels=c("Small", "Medium", "Large"))
+trait_df$Habitat <- factor(trait_df$Habitat, levels=c("Forest", "Seral"))
+trait_df$Generalist.Specialist <- factor(trait_df$Generalist.Specialist, levels=c("Generalist", "Specialist"))
 
+# Apply User's Fixed Algorithm Order
+alg_order <- c("lat-long", "1-kmSq", "DBSC", "1to10", "2to10-sameObs", 
+               "2to10", "rounded-4", "BayesOptClustGeo", "best-clustGeo")
 
-# Helper for boxplots (UPDATED: Legend enabled for collection)
-plot_trait_panel <- function(data, trait_col, title_str) {
-  
-  # Filter NAs
-  plot_data <- data %>% filter(!is.na(.data[[trait_col]]))
-  
-  # Apply User's Fixed Algorithm Order
-  alg_order <- c("lat-long", "1-kmSq", "DBSC", "1to10", "2to10-sameObs", 
-                 "2to10", "rounded-4", "BayesOptClustGeo", "best-clustGeo")
-  
-  # Filter to only keep methods in the order list (safety check)
-  plot_data <- plot_data %>% filter(method %in% alg_order)
-  plot_data$method <- factor(plot_data$method, levels = alg_order)
-  
-  ggplot(plot_data, aes(x = .data[[trait_col]], y = mean_perc_diff, fill = method)) +
-    geom_boxplot(outlier.size = 0.5) +
-    geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
-    scale_fill_manual(values = colors) +
-    theme_bw() +
-    theme(
-      # REMOVED: legend.position = "none" (Now handled by patchwork collection)
-      strip.background = element_rect(fill = "white")
-    ) +
-    labs(title = title_str, y = "% Impr.", x = "")
+trait_df <- trait_df %>% filter(method %in% alg_order)
+trait_df$method <- factor(trait_df$method, levels = alg_order)
+
+# Set global theme for sjPlot
+sjPlot::set_theme(base = theme_classic(), axis.angle.x = 45)
+
+# --- RUN LMER MODELS ---
+# Using interaction (method:Trait) to get estimates for each combo
+m_prev <- lmer(mean_perc_diff ~ method:Prevalence.Level + (1|species), data=trait_df, control=lmerControl(check.rankX="silent.drop.cols"))
+m_hab  <- lmer(mean_perc_diff ~ method:Habitat + (1|species), data=trait_df, control=lmerControl(check.rankX="silent.drop.cols"))
+m_spec <- lmer(mean_perc_diff ~ method:Generalist.Specialist + (1|species), data=trait_df, control=lmerControl(check.rankX="silent.drop.cols"))
+m_home <- lmer(mean_perc_diff ~ method:Home.Range + (1|species), data=trait_df, control=lmerControl(check.rankX="silent.drop.cols"))
+
+# Helper for plotting mixed effects
+plot_lmer_effects <- function(model, trait_col, title_str) {
+  sjPlot::plot_model(
+    model, 
+    type = "pred", 
+    terms = c(trait_col, "method"), # X-axis = Trait, Group = Method
+    title = title_str, 
+    axis.title = c(title_str, "% Impr."),
+    colors = unname(colors[alg_order]), # Ensure colors match the factor order
+    dodge = 0.6,
+    legend.title = "Algorithm"
+  ) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray") 
 }
 
 # Create 4 panels
-p_prev <- plot_trait_panel(trait_df, "Prevalence.Level", "Prevalence")
-p_hab  <- plot_trait_panel(trait_df, "Habitat", "Habitat")
-p_spec <- plot_trait_panel(trait_df, "Generalist.Specialist", "Generalist/Specialist")
-p_home <- plot_trait_panel(trait_df, "Home.Range", "Home Range")
+p_prev <- plot_lmer_effects(m_prev, "Prevalence.Level", "Prevalence")
+p_hab  <- plot_lmer_effects(m_hab, "Habitat", "Habitat")
+p_spec <- plot_lmer_effects(m_spec, "Generalist.Specialist", "Generalist/Specialist")
+p_home <- plot_lmer_effects(m_home, "Home.Range", "Home Range")
 
 # Combine with Common Legend
-p_traits <- (p_prev + p_hab) / (p_spec + p_home) + 
-  plot_layout(guides = "collect") & theme(legend.position = "bottom") + 
-  plot_annotation(title = "Algorithm Performance by Species Traits")
+p_traits <- ( (p_prev + p_hab) / (p_spec + p_home) ) + 
+  plot_layout(guides = "collect") + 
+  plot_annotation(title = "Algorithm Performance by Species Traits (Mixed-Effects)") & 
+  theme(legend.position = "bottom")
 
 ggsave(file.path(output_plot_dir, "traits.png"), plot = p_traits, width = 12, height = 10, dpi = 300)
-cat("Traits plot saved.\n")
+cat("Traits plot saved (Mixed-Effects).\n")
 
 
 # -------------------------------------------------------------------------
