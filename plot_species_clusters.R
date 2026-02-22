@@ -5,9 +5,9 @@
 # INCLUDES:
 # 1. Raw Performance Plots
 # 2. Percentage Improvement Plots
-# 3. Significance Heatmaps (% Impr, Bottom-Left Triangle)
+# 3. Significance Heatmaps (Bottom-Left Triangle)
 # 4. Trait-based Analysis (Mixed-Effects on Raw AUC, Flat Labels)
-# 5. Kappa Selection Analysis (No Title)
+# 5. Kappa Selection Analysis (Flat Labels, No Title)
 # 6. Maps
 ################################################################
 
@@ -243,7 +243,7 @@ cat("\n###############################################\n")
 cat("GENERATING STATISTICAL SIGNIFICANCE HEATMAP (% IMPROVEMENT)\n")
 cat("###############################################\n")
 
-# Use Percentage Improvement data for the test
+# Use Percentage Improvement data for the test (As requested)
 stats_df <- auc_by_species
 
 # Ensure factors
@@ -256,7 +256,7 @@ dunn_res <- dunnTest(mean_perc_diff ~ method, data = stats_df, method = "bh")$re
 dunn_res <- dunn_res %>%
   separate(Comparison, into = c("Method1", "Method2"), sep = " - ")
 
-# --- CREATE LOWER TRIANGLE VISUALIZATION ---
+# --- CREATE BOTTOM-LEFT TRIANGLE ---
 # 1. Create full matrix directionality
 dunn_res_inv <- dunn_res
 dunn_res_inv$Method1 <- dunn_res$Method2
@@ -274,7 +274,8 @@ dunn_res_full$Method1 <- factor(dunn_res_full$Method1, levels = method_perf_orde
 dunn_res_full$Method2 <- factor(dunn_res_full$Method2, levels = method_perf_order)
 
 # 3. Filter for indices where Y (Method2) > X (Method1)
-# When we reverse the Y-axis later, these High-Y points will appear at the Bottom.
+# When we reverse the Y-axis (Standard Matrix view), these high indices appear at the Bottom.
+# This creates the "Flat Left, Flat Bottom" triangle.
 dunn_res_final <- dunn_res_full %>%
   filter(as.numeric(Method2) > as.numeric(Method1))
 # ----------------------------------
@@ -294,7 +295,6 @@ dunn_res_final <- dunn_res_final %>%
 # Plot Heatmap (Bottom-Left Triangle)
 p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj)) +
   geom_tile(color = "white") +
-  # Custom scale to emphasize significant values (p < 0.05)
   scale_fill_gradientn(
     colors = c("darkred", "red", "orange", "white"),
     values = c(0, 0.01, 0.05, 1),
