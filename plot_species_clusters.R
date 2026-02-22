@@ -524,10 +524,10 @@ if(file.exists(bayes_file)) {
 
 
 # -------------------------------------------------------------------------
-# (9) Generate Maps (Psi Only) - WGS84
+# (9) Generate Maps
 # -------------------------------------------------------------------------
 cat("\n###############################################\n")
-cat("GENERATING SPECIES MAPS (PSI ONLY - WGS84)\n")
+cat("GENERATING SPECIES MAPS\n")
 cat("###############################################\n")
 
 # Load Parameters
