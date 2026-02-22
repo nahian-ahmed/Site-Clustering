@@ -311,21 +311,22 @@ p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj))
   scale_color_identity() +
   
   # 3. Dummy Legend Layer (Alpha) - ORDER 2
-  # We use a dummy text layer to generate the legend keys as TEXT (*, **, ***)
-  # We map 'stars' to 'alpha' to create a separate legend, then override the look.
+  # We use a dummy text layer to generate the legend keys as TEXT (*, **, ***, -)
+  # We map 'stars' to 'alpha' to create a separate legend
   geom_text(
     data = filter(dunn_res_final, stars %in% c("*", "**", "***", "-")), 
     aes(label = stars, alpha = stars), 
     color = "black", # Legend text is black
     size = 0,        # Hidden in plot
-    key_glyph = "text" # Crucial: Makes the legend key a text character
+    key_glyph = "text" # Makes the legend key a text character
   ) +
   
   # Define the Legend Labels
   scale_alpha_manual(
     name = "Significance",
     values = c("*"=0, "**"=0, "***"=0, "-"=0), # Invisible in plot
-    labels = c("*" = "p < 0.05", "**" = "p < 0.01", "***" = "p < 0.001", "-" = "p > 0.05")
+    breaks = c("*", "**", "***", "-"),         # Explicit Order
+    labels = c("p < 0.05", "p < 0.01", "p < 0.001", "p > 0.05")
   ) +
   
   # Guides to Control Order and Appearance
@@ -333,7 +334,11 @@ p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj))
     fill = guide_colorbar(order = 1),
     alpha = guide_legend(
       order = 2, 
-      override.aes = list(alpha = 1, size = 6) # Make text visible and large in legend
+      override.aes = list(
+        label = c("*", "**", "***", "-"), # Replaces "a" with symbols
+        alpha = 1, 
+        size = 6
+      )
     )
   ) +
   
@@ -348,7 +353,8 @@ p_heatmap <- ggplot(dunn_res_final, aes(x = Method1, y = Method2, fill = P.adj))
     axis.text.y = element_text(size = 10),
     panel.grid = element_blank(),
     legend.box = "vertical",
-    legend.margin = margin()
+    legend.margin = margin(),
+    legend.spacing.y = unit(0.5, "cm") # Increases vertical space between legends
   ) +
   labs(
     title = NULL,
@@ -595,7 +601,7 @@ for (sp in species_list) {
   
   obs_plot <- ggplot() + 
     geom_rect(aes(xmin = bbox_full$xmin, xmax = bbox_full$xmax, ymin = bbox_full$ymin, ymax = bbox_full$ymax), fill = "darkgray", show.legend = FALSE) +
-    geom_raster(data = bg_df_wgs84, aes(x = x, y = y), fill = "#E6E6E6", show.legend = FALSE) +
+    geom_raster(data = bg_df_wgs84, aes(x = x, y = y, fill = "#E6E6E6", show.legend = FALSE) +
     geom_point(data = pts_df, aes(x = longitude, y = latitude, color = species_observed_label, shape = species_observed_label, fill = species_observed_label, size = species_observed_label), show.legend = TRUE) +
     scale_color_manual(name = "Observation", values = c("Detection" = "black", "Non-detection" = "black")) +
     scale_fill_manual(name = "Observation", values = c("Detection" = "#39FF14", "Non-detection" = "#83A1CD")) +
