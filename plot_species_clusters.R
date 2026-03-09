@@ -52,7 +52,7 @@ names(colors) <- c("BayesOptClustGeo", "DBSC", "best-clustGeo", "rounded-4",
                    "1-kmSq", "2to10-sameObs", "2to10", "1to10", "lat-long")
 
 # -------------------------------------------------------------------------
-# (1) Define best-clustGeo AND best-SLIC
+# (1) Define best-clustGeo
 # -------------------------------------------------------------------------
 
 # 1. Separate clustGeo variants (excluding BayesOpt)
@@ -153,7 +153,7 @@ plot_raw_performance <- function(df, metric_col, y_label, output_filename) {
     ) +
     labs(x = "Species", y = y_label)
   
-  ggsave(output_filename, plot = p, width = 8, height = 12, dpi = 300)
+  ggsave(output_filename, plot = p, width = 7.5, height = 12, dpi = 300)
 }
 
 plot_raw_performance(final_data_auc, "auc", "AUC", file.path(output_plot_dir, "auc.png"))
@@ -508,7 +508,7 @@ if(file.exists(bayes_file)) {
     labs(
       title = NULL,
       subtitle = NULL, 
-      y = "Difference in Number of Clusters Expressed as Percentage of Unique Locations (best-clustGeo - BayesOptClustGeo)",
+      y = "Difference in Number of Clusters Expressed as Percentage of Unique Locations\n(best-clustGeo - BayesOptClustGeo)",
       x = "Species"
     )
   
