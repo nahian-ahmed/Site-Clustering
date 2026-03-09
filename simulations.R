@@ -1,6 +1,5 @@
 #######################################
-# Simulation for occuN model
-# Fully simulated experiments with varying Spatial Autocorrelation
+# Simulation Experiments with varying Spatial Autocorrelation
 
 # February 20, 2026
 #######################################

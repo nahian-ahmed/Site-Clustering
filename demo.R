@@ -1,6 +1,5 @@
 #######################################
-# Simulation for occuN model
-# Fully simualted experiments
+# Simulation Experiments
 
 # February 20, 2026
 #######################################
@@ -491,7 +490,7 @@ p_err_beta_int <- ggplot(all_results_df[all_results_df$Parameter == "beta (state
   geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 1) +
   labs(title = "State Intercept", 
        x = "M (Sites)", 
-       y = "Error (True - Est.)") +
+       y = "Error (True - Estimate)") +
   theme_bw()
 
 # Plot 2: State Slope
@@ -501,7 +500,7 @@ p_err_beta_cov <- ggplot(all_results_df[all_results_df$Parameter == "beta (state
   geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 1) +
   labs(title = "State Slope", 
        x = "M (Sites)", 
-       y = "Error (True - Est.)") +
+       y = "Error (True - Estimate)") +
   theme_bw()
 
 # Plot 3: Observation Intercept
@@ -511,7 +510,7 @@ p_err_alpha_int <- ggplot(all_results_df[all_results_df$Parameter == "alpha (det
   geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 1) +
   labs(title = "Observation Intercept", 
        x = "M (Sites)", 
-       y = "Error (True - Est.)") +
+       y = "Error (True - Estimate)") +
   theme_bw()
 
 # Plot 4: Observation Slope
@@ -521,7 +520,7 @@ p_err_alpha_cov <- ggplot(all_results_df[all_results_df$Parameter == "alpha (det
   geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 1) +
   labs(title = "Observation Slope", 
        x = "M (Sites)", 
-       y = "Error (True - Est.)") +
+       y = "Error (True - Estimate)") +
   theme_bw()
 
 # Combine the 4 error plots into a 2x2 grid

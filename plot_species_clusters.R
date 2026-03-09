@@ -1,14 +1,7 @@
 ################################################################
 # Plot Species Cluster-Based Experiments
+
 # February 21, 2026
-#
-# INCLUDES:
-# 1. Raw Performance Plots
-# 2. Percentage Improvement Plots
-# 3. Significance Heatmaps (Raw AUC, Outlined Cells)
-# 4. Trait-based Analysis (Mixed-Effects on Raw AUC)
-# 5. Kappa Selection Analysis
-# 6. Maps
 ################################################################
 
 library(dplyr)
