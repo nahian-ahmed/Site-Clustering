@@ -535,7 +535,7 @@ ggsave(file.path(output_dir, "error_boxplots.png"),
        plot = combined_error_plot, 
        dpi = 300, 
        width = 10, 
-       height = 8)
+       height = 10)
 
 cat(sprintf("\n--- Error boxplots saved to %s/error_boxplots.png ---\n", output_dir))
 cat("--- Script Finished ---\n")
