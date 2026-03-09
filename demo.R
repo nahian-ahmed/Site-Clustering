@@ -401,7 +401,7 @@ for (sim in 1:n_sims) {
         geom_rect(data = site_boxes, 
                   aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                   color = "red", fill = NA, linewidth = 0.5, inherit.aes = FALSE) +
-        labs(title = sprintf(" Sites and Covariate (M = %d)", M), fill = "Covariate") +
+        labs(title = sprintf("Covariate (M = %d)", M), fill = "Covariate") +
         theme_minimal()
       
       # Plot 2: Site-Level Latent Abundance
@@ -412,7 +412,7 @@ for (sim in 1:n_sims) {
         geom_rect(data = site_boxes, 
                   aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                   color = "red", fill = NA, linewidth = 0.5, inherit.aes = FALSE) +
-        labs(title = sprintf("Site Abundance (M = %d)", M), fill = "Latent Abund.") +
+        labs(title = sprintf("Abundance (M = %d)", M), fill = "Abundance") +
         theme_minimal()
       
       # Plot 3: True Simulated Occupancy State
@@ -423,7 +423,7 @@ for (sim in 1:n_sims) {
         geom_rect(data = site_boxes, 
                   aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                   color = "red", fill = NA, linewidth = 0.5, inherit.aes = FALSE) +
-        labs(title = sprintf("Site Occupancy (M = %d)", M), fill = "Occupied") +
+        labs(title = sprintf("Occupancy (M = %d)", M), fill = "Occupancy") +
         theme_minimal()
       
       # --- Store plots for this iteration ---
@@ -466,8 +466,11 @@ combined_plot <- patchwork::wrap_plots(all_plots_list,
 ggsave(file.path(output_dir, "plot.png"), 
        plot = combined_plot, 
        dpi = 300, 
-       width = 18, 
-       height = 26) 
+       width = 16, 
+       height = 24) 
+
+# width = 18, 
+#        height = 26
 
 cat(sprintf("\n--- Combined landscape plot saved to %s/plot.png ---\n", output_dir))
 
