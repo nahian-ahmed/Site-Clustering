@@ -466,8 +466,8 @@ combined_plot <- patchwork::wrap_plots(all_plots_list,
 ggsave(file.path(output_dir, "plot.png"), 
        plot = combined_plot, 
        dpi = 300, 
-       width = 16, 
-       height = 24) 
+       width = 12, 
+       height = 18) 
 
 # width = 18, 
 #        height = 26
