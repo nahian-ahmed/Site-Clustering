@@ -168,7 +168,7 @@ plot_raw_b <- function(df, y_col, y_lab, output_filename) {
       legend.position = "bottom", 
       legend.title = element_blank(),
       strip.background = element_rect(fill = "grey90", color = "black"),
-      strip.text = element_text(face = "bold"),
+      strip.text = element_text(size = 14),
       panel.border = element_rect(colour = "black", fill = NA, linewidth = 1)
     )
   
@@ -213,7 +213,7 @@ plot_perc_b <- function(df, y_lab, output_filename) {
       legend.position = "none",
       axis.text.x = element_text(angle = 45, hjust = 1),
       strip.background = element_rect(fill = "grey90", color = "black"),
-      strip.text = element_text(face = "bold"),
+      strip.text = element_text(size = 13),
       panel.border = element_rect(colour = "black", fill = NA, linewidth = 1)
     )
   
