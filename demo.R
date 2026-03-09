@@ -467,7 +467,7 @@ ggsave(file.path(output_dir, "plot.png"),
        plot = combined_plot, 
        dpi = 300, 
        width = 12, 
-       height = 18) 
+       height = 16) 
 
 # width = 18, 
 #        height = 26
@@ -534,8 +534,8 @@ combined_error_plot <- (p_err_beta_int | p_err_beta_cov) / (p_err_alpha_int | p_
 ggsave(file.path(output_dir, "error_boxplots.png"), 
        plot = combined_error_plot, 
        dpi = 300, 
-       width = 12, 
-       height = 10)
+       width = 10, 
+       height = 8)
 
 cat(sprintf("\n--- Error boxplots saved to %s/error_boxplots.png ---\n", output_dir))
 cat("--- Script Finished ---\n")
