@@ -17,14 +17,14 @@ if(!require(dggridR)) {
 }
 
 bayesianOptimizedClustGeo <- function(
-  train_data,      
-  validation_data,   
-  state_covs, 
+  train_data,
+  validation_data,
+  state_covs,
   obs_covs,
-  cov_tif_albers,     
-  albers_crs,         
-  area_raster,        
-  buffer_m = 200,     
+  cov_tif_albers,
+  albers_crs,
+  area_raster,
+  buffer_m = 200,
   hex_m = 100,
   n_iter = 9,
   n_reps = 3,

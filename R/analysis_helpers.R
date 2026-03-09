@@ -291,7 +291,7 @@ calculate_classification_metrics <- function(pred_prob, true_labels) {
     )
   }, silent = TRUE)
   
-  # 5. Calculate AUC (ROC) - THIS WAS MISSING
+  # 5. Calculate AUC (ROC)
   roc_obj <- try({
     PRROC::roc.curve(
       scores.class0 = pred_prob[true_labels == 1], 

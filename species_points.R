@@ -223,7 +223,7 @@ test_geoms_vect <- terra::vect(voronoi_clipped_buffers(
 # 2. Extract Means
 test_means <- terra::extract(cov_tif_albers, test_geoms_vect, fun=mean, na.rm=TRUE, ID=FALSE)
 
-# 3. Bind Means (CRITICAL FIX: Remove original point covs first!)
+# 3. Bind Means
 master_test_df_buffered_occu <- master_test_df_buffered %>%
   dplyr::select(-all_of(state_cov_names)) %>%  # <--- DROPS DUPLICATES
   cbind(test_means)                            # <--- ADDS MEANS

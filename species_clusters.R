@@ -239,15 +239,15 @@ baseline_methods <- c("1to10", "lat-long")
 
 # ALL methods that should compare the "2-to-10" filtered dataset
 spatial_methods <- c(
-  "2to10",              # Moved here to ensure identical points
-  "2to10-sameObs",      # Moved here to ensure identical points
-  "1-kmSq",             # Moved per your request
-  "rounded-4",          # Moved per your request
+  "2to10",              
+  "2to10-sameObs",      
+  "1-kmSq",             
+  "rounded-4",          
   "DBSC" 
   # "BayesOptClustGeo"
 )
 
-# Add the specific parameter versions if they exist in your 'method_names' list
+# Add the specific parameter versions if they exist in 'method_names' list
 spatial_methods <- c(spatial_methods, 
                      grep("clustGeo-", method_names, value = TRUE))
 
@@ -514,7 +514,7 @@ for (species_name in species_names) {
       # Rename 'Value' to 'AUC'
       colnames(history_df)[colnames(history_df) == "Value"] <- "AUC"
       
-      # Ensure column order matches your CSV preference
+      # Ensure column order matches CSV preference
       history_df <- history_df[, c("species", "Round", "rho", "kappa", "AUC")]
       
       # Store in global list

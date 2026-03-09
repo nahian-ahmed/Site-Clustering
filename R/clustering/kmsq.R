@@ -73,11 +73,6 @@ kmsq_sites_core <- function(species_df, rad_m, filter = TRUE) {
 }
 
 
-
-
-
-
-
 kmsq_sites <- function(species_df, rad_m){
     checklists <- kmsq_sites_core(species_df, rad_m, filter = TRUE)
     return(checklists)

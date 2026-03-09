@@ -529,10 +529,3 @@ runDBSC <- function(species_df, state_covs){
     species_df$site <- species_df$clust
     return(species_df)
 }
-
-
-
-
-
-
-

@@ -197,7 +197,7 @@ plot_perc_b <- function(df, y_lab, output_filename) {
   
   df_formatted <- format_buffer_label(df)
   
-  # FORCE X-AXIS ORDER (Fixed for Experiment B)
+  # FORCE X-AXIS ORDER
   df_formatted$method <- factor(df_formatted$method, levels = c("lat-long", "1to10", "2to10"))
   
   p <- ggplot(df_formatted, aes(x = method, y = mean_perc_diff, fill = method)) +

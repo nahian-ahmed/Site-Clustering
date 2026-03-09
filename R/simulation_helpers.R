@@ -42,13 +42,6 @@ prepare_train_data <- function (
 
   # 2. Join
   train_df <- inner_join(train_df, train_env_df, by = "checklist_id")
-  
-  # if ("effort_distance_km" %in% names(train_df)) {
-  #   train_df$effort_distance_km <- log(train_df$effort_distance_km + 1)
-  # }
-  # if ("number_observers" %in% names(train_df)) {
-  #   train_df$number_observers <- log(train_df$number_observers + 1)
-  # }
 
   scale_res <- standardize_ds(
       train_df, 
@@ -97,13 +90,6 @@ prepare_test_data <- function (
   test_env_df <- extract_state_covs(test_df, cov_tif) 
   
   test_df <- inner_join(test_df, test_env_df, by = "checklist_id")
-  
-  # if ("effort_distance_km" %in% names(test_df)) {
-  #   test_df$effort_distance_km <- log(test_df$effort_distance_km + 1)
-  # }
-  # if ("number_observers" %in% names(test_df)) {
-  #   test_df$number_observers <- log(test_df$number_observers + 1)
-  # }
 
   # Use standardized var names AND the norm_list from training
   scale_res <- standardize_ds(

@@ -294,9 +294,7 @@ dunn_res_final <- dunn_res_final %>%
   )
 
 # -----------------------------------------------------------------------
-# CRITICAL FIX: Create Dummy Data to force Legend Keys
-# This ensures that even if a significance level (e.g., "*") is missing
-# from your specific dataset, it still appears in the legend in the correct order.
+# Create Dummy Data to force Legend Keys
 # -----------------------------------------------------------------------
 dummy_legend_data <- data.frame(
   Method1 = method_perf_order[1],
@@ -600,7 +598,7 @@ for (sp in species_list) {
   obs_train <- read.delim(train_file, sep=",")
   obs_test  <- read.delim(test_file, sep=",")
   
-  # --- FIX: Ensure compatible types before binding ---
+  # --- Ensure compatible types before binding ---
   obs_train$observation_count <- as.character(obs_train$observation_count)
   obs_test$observation_count <- as.character(obs_test$observation_count)
   # ---------------------------------------------------

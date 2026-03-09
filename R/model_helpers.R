@@ -88,12 +88,12 @@ voronoi_clipped_buffers <- function(points_sf, buffer_dist) {
     dplyr::select(site, geometry) %>%
     sf::st_make_valid() 
   
-  # 7. [NEW] Smoothing Step
+  # 7. Smoothing Step
   #    removes sharp Voronoi corners while keeping general shape
   #    dTolerance = 10m provides a subtle smoothing effect
   final_geoms <- sf::st_simplify(final_geoms, dTolerance = 10, preserveTopology = TRUE)
 
-  # 8. [FIXED] Robust Collection Extraction
+  # 8. Robust Collection Extraction
   #    Only run extraction if the geometry is actually a collection.
   #    This prevents the "x is already of type POLYGON" warning.
   geom_type <- sf::st_geometry_type(final_geoms, by_geometry = FALSE)
@@ -406,7 +406,7 @@ fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30,
   ))
   
   # Note: This parameter counting method assumes simple formulas (intercept + linear terms).
-  # If you use interactions (*) or factors, model.matrix would be safer to count columns.
+  # If using interactions (*) or factors, model.matrix would be safer to count columns.
   n_obs_pars <- length(all.vars(obs_formula)) + 1 
   n_state_pars <- length(all.vars(state_formula)) + 1
   n_params <- n_obs_pars + n_state_pars

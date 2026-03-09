@@ -25,7 +25,3 @@ clustGeoSites <- function(alpha, checklists, state_covs, num_sites=NULL, ratio=N
     checklists <- data.frame(checklists_filtered)
     return(checklists)
 }
-
-
-
-
