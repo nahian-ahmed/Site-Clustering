@@ -1,6 +1,6 @@
 ################################################################
 # Plot Species Cluster-Based Experiments
-# Updated: February 21, 2026
+# February 21, 2026
 #
 # INCLUDES:
 # 1. Raw Performance Plots

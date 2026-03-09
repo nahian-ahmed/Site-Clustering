@@ -175,8 +175,8 @@ plot_raw_b <- function(df, y_col, y_lab, output_filename) {
   ggsave(output_filename, plot = p, width = 18, height = 12, dpi = 300)
 }
 
-plot_raw_b(df_b_raw, "auc", "AUC (Buffered)", file.path(output_dir, "buffered_auc.png"))
-plot_raw_b(df_b_raw, "auprc", "AUPRC (Buffered)", file.path(output_dir, "buffered_auprc.png"))
+plot_raw_b(df_b_raw, "auc", "AUC", file.path(output_dir, "buffered_auc.png"))
+plot_raw_b(df_b_raw, "auprc", "AUPRC", file.path(output_dir, "buffered_auprc.png"))
 
 
 # --- Perc Diff Plots B ---
