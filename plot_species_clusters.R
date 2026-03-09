@@ -153,7 +153,7 @@ plot_raw_performance <- function(df, metric_col, y_label, output_filename) {
     ) +
     labs(x = "Species", y = y_label)
   
-  ggsave(output_filename, plot = p, width = 7, height = 12, dpi = 300)
+  ggsave(output_filename, plot = p, width = 8, height = 12, dpi = 300)
 }
 
 plot_raw_performance(final_data_auc, "auc", "AUC", file.path(output_plot_dir, "auc.png"))
@@ -449,7 +449,7 @@ p_home <- plot_lmer_effects(m_home, "Home.Range", "Home Range")
 # Combine with Common Legend
 p_traits <- ( (p_prev + p_hab) / (p_spec + p_home) ) + 
   plot_layout(guides = "collect") + 
-  plot_annotation(title = "Algorithm Performance by Species Traits (Raw AUC)") & 
+  plot_annotation(title = NULL) & 
   theme(legend.position = "bottom")
 
 ggsave(file.path(output_plot_dir, "traits.png"), plot = p_traits, width = 12, height = 10, dpi = 300)
@@ -508,7 +508,7 @@ if(file.exists(bayes_file)) {
     labs(
       title = NULL,
       subtitle = NULL, 
-      y = "Kappa Difference (best-clustGeo - BayesOptClustGeo)",
+      y = "Difference in Number of Clusters Expressed as Percentage of Unique Locations (best-clustGeo - BayesOptClustGeo)",
       x = "Species"
     )
   
@@ -665,7 +665,7 @@ for (sp in species_list) {
       labs(title = plot_title) +
       theme(
         legend.position = "bottom", legend.text = element_text(size = 14), legend.title = element_text(size = 14, vjust = 1), 
-        legend.key.width = unit(1, "cm"), legend.box.margin = margin(t = 20), plot.title = element_text(hjust = 0.5, size = 14, face = "bold")
+        legend.key.width = unit(1, "cm"), legend.box.margin = margin(t = 20), plot.title = element_text(hjust = 0.5, size = 15, face = "bold")
       )
   }
   
