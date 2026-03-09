@@ -400,7 +400,7 @@ for (sac_level in sac_levels) {
           tight_theme <- theme_minimal() + 
             theme(
               axis.title = element_blank(),
-              plot.margin = margin(t=0, r=0, b=0, l=0, unit="pt")
+              plot.margin = margin(t=10, r=10, b=10, l=10, unit="pt")
             )
           
           p_cov <- ggplot(cell_df, aes(x=x, y=y, fill=covariate)) +
@@ -500,7 +500,7 @@ for (strat in sampling_strategies) {
           geom_boxplot(outlier.size = 0.5) +
           geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
           scale_fill_manual(values = c("Low" = "yellow", "Medium" = "orange", "High" = "red")) +
-          labs(title = title, x = "M (Sites)", y = "Error", fill = "Spatial Autocorrelation") +
+          labs(title = title, x = "M (Sites)", y = "Error (True - Estimate)", fill = "Spatial Autocorrelation") +
           theme_bw() + theme(legend.position = "none")
       }
       
