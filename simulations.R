@@ -506,8 +506,8 @@ for (strat in sampling_strategies) {
       
       p1 <- create_error_plot("beta (state_int)", "State Intercept")
       p2 <- create_error_plot("beta (state_cov1)", "State Slope")
-      p3 <- create_error_plot("alpha (det_int)", "Detection Intercept")
-      p4 <- create_error_plot("alpha (det_cov1)", "Detection Slope")
+      p3 <- create_error_plot("alpha (det_int)", "Observation Intercept")
+      p4 <- create_error_plot("alpha (det_cov1)", "Observation Slope")
       
       combined_error_plot <- (p1 | p2) / (p3 | p4) +
         plot_layout(guides = "collect") & theme(legend.position = "bottom")
