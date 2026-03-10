@@ -1,6 +1,6 @@
 #######################################
 # Species Point-Based Experiments
-# Comparison Between occu and occuN models
+# Comparison Between occu and occuPPM models
 #######################################
 
 ###
@@ -69,7 +69,7 @@ if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 ###
 # 2. LOCAL HELPER FOR OCCU
 ###
-# Mirrors fit_occuN_model logic but for standard occu
+# Mirrors fit_occuPPM_model logic but for standard occu
 # Selects best model based on Negative Log Likelihood (NLL)
 # Debug version of fit_occu_model
 fit_occu_model <- function(umf, state_formula, obs_formula, n_reps, stable_reps, 
@@ -153,7 +153,7 @@ cell_area_km2 <- (res_m / 1000) * (res_m / 1000)
 area_j_raster <- cov_tif_albers[[1]] * 0 + cell_area_km2
 names(area_j_raster) <- "area"
 
-# 6. Full Raster Covs (for occuN preparation)
+# 6. Full Raster Covs (for occuPPM preparation)
 full_raster_covs <- as.data.frame(terra::values(cov_tif_albers))[, state_cov_names, drop = FALSE]
 full_raster_covs[is.na(full_raster_covs)] <- 0
 
@@ -199,7 +199,7 @@ master_test_df_unbuffered <- prepare_test_data(
   standardization_params = state_cov_params,
   placeholder_spec_name = template_species
 )
-# C. Master Test Data (Buffered 200m - for occuN)
+# C. Master Test Data (Buffered 200m - for occuPPM)
 test_structs <- prepare_test_spatial_structures(
   test_df = master_test_df_unbuffered,
   albers_crs = albers_crs_str,
@@ -270,7 +270,7 @@ for (sp in species_names) {
   curr_test_unbuf$species_observed <- NULL
   curr_test_unbuf <- inner_join(curr_test_unbuf, spec_test_obs, by="checklist_id")
   
-  # 3. Test DF (Buffered occuN)
+  # 3. Test DF (Buffered occuPPM)
   curr_test_buf <- master_test_df_buffered
   curr_test_buf$species_observed <- NULL
   curr_test_buf <- inner_join(curr_test_buf, spec_test_obs, by="checklist_id")
@@ -384,7 +384,7 @@ for (sp in species_names) {
   
   
   # =========================================================
-  # EXPERIMENT B: BUFFERED (occuN Style)
+  # EXPERIMENT B: BUFFERED (occuPPM Style)
   # Buffer = 100, 200, 500
   # =========================================================
   
@@ -422,12 +422,12 @@ for (sp in species_names) {
         inner_join(sf::st_drop_geometry(train_means), by="site")
       
       
-      # --- MODEL 1: occuN ---
+      # --- MODEL 1: occuPPM ---
       site_lookup <- filtered_train %>% dplyr::select(checklist_id, site)
-      umf_n <- prepare_occuN_data(filtered_train, site_lookup, train_w, 
+      umf_n <- prepare_occuPPM_data(filtered_train, site_lookup, train_w, 
                                 obs_cov_names, full_raster_covs)
       
-      fm_n <- fit_occuN_model(umf_n, state_form, obs_form, 
+      fm_n <- fit_occuPPM_model(umf_n, state_form, obs_form, 
                             n_reps=n_fit_repeats, stable_reps=stable_reps,
                             lower=PARAM_LOWER, upper=PARAM_UPPER,
                             init_lower=INIT_LOWER, init_upper=INIT_UPPER,
@@ -454,13 +454,13 @@ for (sp in species_names) {
         }
         
         all_pred_results[[length(all_pred_results)+1]] <- data.frame(
-          species = sp, buffer = buf, method = method, model = "occuN",
+          species = sp, buffer = buf, method = method, model = "occuPPM",
           test_repeat = 1:n_test_repeats,
           auc = auc_vec,
           auprc = auprc_vec
         )
       } else {
-         cat("occuN FAILED. ")
+         cat("occuPPM FAILED. ")
       }
       
       

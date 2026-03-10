@@ -149,7 +149,7 @@ cell_area_km2 <- (res_m / 1000) * (res_m / 1000)
 area_j_raster <- cov_tif_albers[[1]] * 0 + cell_area_km2
 names(area_j_raster) <- "area"
 
-# 6. Full Raster Covs (for occuN preparation)
+# 6. Full Raster Covs (for occuPPM preparation)
 full_raster_covs <- as.data.frame(terra::values(cov_tif_albers))[, state_cov_names, drop = FALSE]
 full_raster_covs[is.na(full_raster_covs)] <- 0
 
@@ -573,15 +573,14 @@ for (species_name in species_names) {
     }
     
     # 3. Prepare UMF
-    # Note: prepare_occuN_data uses 'current_train_df' (base) and 'clust_df' (sites).
-    # Both now have the correct species_observed.
-    umf <- prepare_occuN_data(current_train_df, clust_df, w_matrix, obs_cov_names, full_raster_covs)
+    # prepare_occuPPM_data uses 'current_train_df' (base) and 'clust_df' (sites).
+    umf <- prepare_occuPPM_data(current_train_df, clust_df, w_matrix, obs_cov_names, full_raster_covs)
     
     obs_formula <- as.formula(paste("~", paste(obs_cov_names, collapse = " + ")))
     state_formula <- as.formula(paste("~", paste(state_cov_names, collapse = " + ")))
     
     # 4. Fit Model
-    fm <- fit_occuN_model(
+    fm <- fit_occuPPM_model(
       umf, state_formula, obs_formula,
       n_reps = n_fit_repeats, stable_reps = n_fit_repeats,
       optimizer = selected_optimizer, lower = PARAM_LOWER, upper = PARAM_UPPER,

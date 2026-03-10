@@ -567,7 +567,7 @@ bg_df_wgs84 <- as.data.frame(bg_raster_wgs84, xy = TRUE, na.rm = TRUE)
 
 methods_for_maps <- c("1to10", "2to10", "2to10-sameObs", "1-kmSq", "lat-long", "rounded-4", "DBSC", "BayesOptClustGeo", "best-clustGeo")
 
-predict_occuN_psi <- function(cov_stack, param_row, state_covs, cell_area) {
+predict_occuPPM_psi <- function(cov_stack, param_row, state_covs, cell_area) {
   intercept <- param_row$state_intercept
   betas <- as.numeric(param_row[state_covs])
   lin_pred <- cov_stack[[1]] * 0 + intercept
@@ -643,7 +643,7 @@ for (sp in species_list) {
       next
     }
     
-    psi_rast_albers <- predict_occuN_psi(cov_tif_albers, m_param, c("elevation","TCB","TCG","TCW","TCA"), cell_area_km2)
+    psi_rast_albers <- predict_occuPPM_psi(cov_tif_albers, m_param, c("elevation","TCB","TCG","TCW","TCA"), cell_area_km2)
     psi_rast_wgs84 <- terra::project(psi_rast_albers, wgs84_crs_str)
     psi_rast_wgs84 <- terra::mask(psi_rast_wgs84, valid_boundary_wgs84)
     psi_rast_wgs84 <- terra::crop(psi_rast_wgs84, valid_boundary_wgs84)

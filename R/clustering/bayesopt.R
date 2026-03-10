@@ -98,14 +98,14 @@ bayesianOptimizedClustGeo <- function(
       clust_df <- split_res$data 
       w_matrix <- generate_overlap_matrix(current_geoms, cov_tif_albers)
       
-      # --- C. FIT occuN MODEL ---
+      # --- C. FIT occuPPM MODEL ---
       full_raster_covs <- as.data.frame(terra::values(cov_tif_albers))[, state_covs, drop = FALSE]
       full_raster_covs[is.na(full_raster_covs)] <- 0
       
-      umf <- prepare_occuN_data(train_data, clust_df, w_matrix, obs_covs, full_raster_covs)
+      umf <- prepare_occuPPM_data(train_data, clust_df, w_matrix, obs_covs, full_raster_covs)
       
       # Fit with explicit bounds
-      fm <- fit_occuN_model(
+      fm <- fit_occuPPM_model(
         umf, state_formula, obs_formula,
         n_reps = n_reps, stable_reps = stable_reps,
         optimizer = "nlminb",

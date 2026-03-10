@@ -329,7 +329,7 @@ for (sac_level in sac_levels) {
         obsCovs_sub <- list(obs_cov1 = obs_cov1_sub)
         
         # Fit Model
-        umf <- unmarkedFrameOccuN(
+        umf <- unmarkedFrameOccuPPM(
           y = y_sub,
           obsCovs = obsCovs_sub,
           cellCovs = full_cellCovs, 
@@ -342,7 +342,7 @@ for (sac_level in sac_levels) {
         
         for (rep in 1:n_reps) {
           rand_starts <- runif(n_params, -2, 2) 
-          fm_rep <- try(occuN(
+          fm_rep <- try(occuPPM(
             formula = ~obs_cov1 ~ cell_cov1,
             data = umf,
             starts = rand_starts,

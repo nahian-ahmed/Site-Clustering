@@ -301,11 +301,11 @@ generate_overlap_matrix <- function(site_geoms_sf, reference_raster) {
   return(w)
 }
 
-#' Prepare Data for occuN Model
+#' Prepare Data for occuPPM Model
 #' 
 #' Updated to automatically filter training data to match the provided clustering_df.
 #' This prevents false-alarm warnings when using filtering methods like 1to10.
-prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_names, cell_covs) {
+prepare_occuPPM_data <- function(train_data, clustering_df, w_matrix, obs_cov_names, cell_covs) {
 
   # --- 1. DEFINE LOOKUP FIRST ---
   comparison_site_lookup <- clustering_df %>%
@@ -384,7 +384,7 @@ prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_name
   }
   
   # --- 8. CREATE UNMARKED FRAME ---
-  umf <- unmarked::unmarkedFrameOccuN(
+  umf <- unmarked::unmarkedFrameOccuPPM(
     y = y_wide,
     obsCovs = obs_covs_wide,
     cellCovs = cell_covs,
@@ -394,13 +394,13 @@ prepare_occuN_data <- function(train_data, clustering_df, w_matrix, obs_cov_name
   return(umf)
 }
 
-#' Fit occuN Model with Random Starts and Early Stopping
-fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30, 
+#' Fit occuPPM Model with Random Starts and Early Stopping
+fit_occuPPM_model <- function(umf, state_formula, obs_formula, n_reps = 30, 
                             stable_reps = 10, optimizer = "nlminb", 
                             lower = -Inf, upper = Inf,
                             init_lower = -Inf, init_upper = Inf) {
   
-  occuN_formula <- as.formula(paste(
+  occuPPM_formula <- as.formula(paste(
     paste(deparse(obs_formula), collapse = ""), 
     paste(deparse(state_formula), collapse = "")
   ))
@@ -425,8 +425,8 @@ fit_occuN_model <- function(umf, state_formula, obs_formula, n_reps = 30,
     
 
 
-    fm_rep <- try(unmarked::occuN(
-      formula = occuN_formula,
+    fm_rep <- try(unmarked::occuPPM(
+      formula = occuPPM_formula,
       data = umf,
       starts = rand_starts,
       se = FALSE, 

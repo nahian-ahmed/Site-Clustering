@@ -144,11 +144,11 @@ colors_b <- c("lat-long" = "navy", "1to10" = "cyan", "2to10" = "pink")
 df_b_raw <- data %>% 
   filter(buffer > 0) %>%
   mutate(
-    model = factor(model, levels = c("occuN", "occu")),
+    model = factor(model, levels = c("occuPPM", "occu")),
     buffer = factor(buffer, levels = c(100, 200, 500)),
     # Combined label for 1x6 grid
     panel_label = factor(paste(model, paste0(buffer, "m"), sep = "-"), 
-                         levels = c("occuN-100m", "occuN-200m", "occuN-500m", 
+                         levels = c("occuPPM-100m", "occuPPM-200m", "occuPPM-500m", 
                                     "occu-100m", "occu-200m", "occu-500m"))
   )
 
@@ -188,7 +188,7 @@ auprc_diff_b <- calculate_improvement_local(df_b_diff, "auprc")
 # Helper to format the buffer column for plotting
 format_buffer_label <- function(df) {
   df %>% mutate(
-    model = factor(model, levels = c("occuN", "occu")),
+    model = factor(model, levels = c("occuPPM", "occu")),
     buffer_label = factor(paste0(buffer, "m"), levels = c("100m", "200m", "500m"))
   )
 }

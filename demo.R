@@ -269,10 +269,10 @@ for (sim in 1:n_sims) {
     }
     
     ##########
-    # 9. Bundle Data into unmarkedFrameOccuN
+    # 9. Bundle Data into unmarkedFrameOccuPPM
     ##########
     
-    umf <- unmarkedFrameOccuN(
+    umf <- unmarkedFrameOccuPPM(
       y = y,
       obsCovs = obsCovs,
       cellCovs = cellCovs,
@@ -280,10 +280,10 @@ for (sim in 1:n_sims) {
     )
     
     ##########
-    # 10. Fit the occuN Model (with repetitions)
+    # 10. Fit the occuPPM Model (with repetitions)
     ##########
     
-    cat(sprintf("Fitting occuN model for M=%d (running %d reps)...\n", M, n_reps))
+    cat(sprintf("Fitting occuPPM model for M=%d (running %d reps)...\n", M, n_reps))
     
     best_fm <- NULL
     min_nll <- Inf
@@ -295,7 +295,7 @@ for (sim in 1:n_sims) {
       rand_starts <- runif(n_params, -5, 5) 
       
       # Try to fit the model, suppress warnings/errors
-      fm_rep <- try(occuN(
+      fm_rep <- try(occuPPM(
         formula = ~obs_cov1 ~ cell_cov1,
         data = umf,
         starts = rand_starts, # Use random starts
