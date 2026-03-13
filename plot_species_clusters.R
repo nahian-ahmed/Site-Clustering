@@ -194,6 +194,27 @@ auprc_diff_raw <- prepare_diff_data(final_data_auprc, "auprc")
 
 auc_by_species <- aggregate_by_species(auc_diff_raw)
 auc_by_repeat  <- aggregate_by_repeat(auc_diff_raw)
+
+# --- EXTRACTION: Save % Improvement to CSV ---
+# Calculate overall average and max % improvement across all runs for each method
+overall_auc_improvement <- auc_diff_raw %>%
+  group_by(method) %>%
+  summarise(
+    mean_perc_diff = mean(perc_diff, na.rm = TRUE),
+    max_perc_diff = max(perc_diff, na.rm = TRUE),
+    min_perc_diff = min(perc_diff, na.rm = TRUE)
+  ) %>%
+  arrange(desc(mean_perc_diff))
+
+# Save the overall summary
+write.csv(overall_auc_improvement, file.path(output_plot_dir, "overall_auc_perc_improvement.csv"), row.names = FALSE)
+
+# Save the grouped summaries that the script already calculated
+write.csv(auc_by_species, file.path(output_plot_dir, "auc_perc_improvement_by_species.csv"), row.names = FALSE)
+write.csv(auc_by_repeat, file.path(output_plot_dir, "auc_perc_improvement_by_repeat.csv"), row.names = FALSE)
+cat("Percentage improvement CSVs saved.\n")
+# ---------------------------------------------
+
 auprc_by_species <- aggregate_by_species(auprc_diff_raw)
 auprc_by_repeat  <- aggregate_by_repeat(auprc_diff_raw)
 
@@ -249,6 +270,25 @@ dunn_res <- dunnTest(auc ~ method, data = stats_df, method = "bh")$res
 # Parse comparisons (e.g., "A - B")
 dunn_res <- dunn_res %>%
   separate(Comparison, into = c("Method1", "Method2"), sep = " - ")
+
+# --- EXTRACTION: Save BayesOptClustGeo P-values to CSV ---
+# Filter to only show comparisons involving BayesOptClustGeo
+bayesopt_pvalues <- dunn_res %>%
+  filter(Method1 == "BayesOptClustGeo" | Method2 == "BayesOptClustGeo") %>%
+  mutate(
+    # Create a clean column showing exactly what it is being compared to
+    Compared_To = ifelse(Method1 == "BayesOptClustGeo", Method2, Method1)
+  ) %>%
+  select(Compared_To, P.unadj, P.adj) %>%
+  arrange(P.adj)
+
+# Save the BayesOpt-specific p-values
+write.csv(bayesopt_pvalues, file.path(output_plot_dir, "bayesopt_pvalues.csv"), row.names = FALSE)
+
+# Optionally, save the entire matrix of all algorithm comparisons
+write.csv(dunn_res, file.path(output_plot_dir, "all_pairwise_pvalues.csv"), row.names = FALSE)
+cat("P-value CSVs saved.\n")
+# ---------------------------------------------------------
 
 # --- CREATE BOTTOM-LEFT TRIANGLE ---
 # 1. Create full matrix directionality
