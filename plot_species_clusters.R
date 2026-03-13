@@ -251,6 +251,26 @@ plot_improvement(auprc_by_species, "Average % AUPRC Improvement", file.path(outp
 plot_improvement(auc_by_repeat, "Average % AUC Improvement", file.path(output_plot_dir, "auc_perc_diff_repeats.png"))
 plot_improvement(auprc_by_repeat, "Average % AUPRC Improvement", file.path(output_plot_dir, "auprc_perc_diff_repeats.png"))
 
+# --- EXTRACTION: "Red Diamond" Values (Mean % Improvement) ---
+
+# 1. Calculate the exact red diamond values for the SPECIES plot
+red_diamond_species <- auc_by_species %>%
+  group_by(method) %>%
+  summarise(mean_percentage_difference = mean(mean_perc_diff, na.rm = TRUE)) %>%
+  arrange(desc(mean_percentage_difference))
+
+# 2. Calculate the exact red diamond values for the REPEATS plot
+red_diamond_repeats <- auc_by_repeat %>%
+  group_by(method) %>%
+  summarise(mean_percentage_difference = mean(mean_perc_diff, na.rm = TRUE)) %>%
+  arrange(desc(mean_percentage_difference))
+
+# 3. Save these two-column summaries to CSV
+write.csv(red_diamond_species, file.path(output_plot_dir, "red_diamond_auc_species.csv"), row.names = FALSE)
+write.csv(red_diamond_repeats, file.path(output_plot_dir, "red_diamond_auc_repeats.csv"), row.names = FALSE)
+
+cat("Red diamond summary CSVs saved.\n")
+# -------------------------------------------------------------
 # -------------------------------------------------------------------------
 # (6) Statistical Significance Heatmap
 # -------------------------------------------------------------------------
