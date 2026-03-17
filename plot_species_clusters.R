@@ -134,23 +134,42 @@ plot_raw_performance <- function(df, metric_col, y_label, output_filename) {
   df <- df %>% filter(method %in% alg_order)
   df$method <- factor(df$method, levels = alg_order)
   
-  p <- ggplot(df, aes(x = species, y = .data[[metric_col]], fill = method)) +
-    geom_boxplot(outlier.size = 0.5, lwd = 0.3) +
-    theme_classic() +
-    coord_flip()+
-    scale_fill_manual(values = colors) +
-    theme(
-      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 10),
-      legend.position = "bottom",
-      legend.title = element_blank()
-    ) +
-    labs(x = "Species", y = y_label)
+  # --- SPLIT DATA FOR TWO PANELS ---
+  # Group 1: First 16 species based on the sorted order
+  df1 <- df %>% filter(as.integer(species) <= 16)
+  # Group 2: Remaining species (next 15)
+  df2 <- df %>% filter(as.integer(species) > 16)
   
-  ggsave(output_filename, plot = p, width = 7.5, height = 12, dpi = 300)
+  # Helper function to build individual plot panels
+  build_panel <- function(data_subset, show_y_title) {
+    ggplot(data_subset, aes(x = species, y = .data[[metric_col]], fill = method)) +
+      geom_boxplot(outlier.size = 0.5, lwd = 0.3) +
+      theme_classic() +
+      coord_flip() +
+      scale_fill_manual(values = colors) +
+      theme(
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 10),
+        legend.position = "bottom",
+        legend.title = element_blank()
+      ) +
+      labs(x = if(show_y_title) "Species" else NULL, y = y_label)
+  }
+  
+  # Create left and right plots
+  p1 <- build_panel(df1, TRUE)
+  p2 <- build_panel(df2, FALSE)
+  
+  # Combine side-by-side using patchwork, collect shared legend at bottom
+  final_plot <- p1 + p2 + plot_layout(ncol = 2, guides = "collect") & 
+    theme(legend.position = "bottom")
+  
+  # Adjusted dimensions: wider and slightly shorter to accommodate the side-by-side layout
+  ggsave(output_filename, plot = final_plot, width = 12, height = 8, dpi = 300)
 }
 
 plot_raw_performance(final_data_auc, "auc", "AUC", file.path(output_plot_dir, "auc.png"))
 plot_raw_performance(final_data_auprc, "auprc", "AUPRC", file.path(output_plot_dir, "auprc.png"))
+
 
 # -------------------------------------------------------------------------
 # (3) Calculate Percentage Improvement
