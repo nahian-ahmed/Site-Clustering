@@ -148,7 +148,7 @@ plot_raw_performance <- function(df, metric_col, y_label, output_filename) {
       coord_flip() +
       scale_fill_manual(values = colors) +
       theme(
-        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 10),
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 14),
         legend.position = "bottom",
         legend.title = element_blank()
       ) +
