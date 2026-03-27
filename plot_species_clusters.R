@@ -820,7 +820,7 @@ for (sp in species_list) {
         coord_fixed(ratio = 1.0, xlim = c(bbox_full$xmin, bbox_full$xmax), ylim = c(bbox_full$ymin, bbox_full$ymax), expand = FALSE) +
         labs(title = col_title, y = row_label) +
         theme(
-          legend.position = "bottom", legend.text = element_text(size = 30), legend.title = element_text(size = 30, vjust = 1), 
+          legend.position = "bottom", legend.text = element_text(size = 26), legend.title = element_text(size = 30, vjust = 1), 
           legend.key.width = unit(2, "cm"), legend.box.margin = margin(t = 20), plot.title = element_text(hjust = 0.5, size = 30, face = "bold"),
           axis.title.y = element_text(angle = 90, size = 30, face = "bold", margin = margin(r = 10)),
           plot.margin = margin(0, 0, 0, 0, "pt")
@@ -838,7 +838,7 @@ for (sp in species_list) {
   
   # Save the scales plot directly, forcing a white background
   ggsave(file.path(map_output_dir, paste0(sp, "_scales.png")), 
-         plot = final_scales, width = 16, height = 40, dpi = 200, 
+         plot = final_scales, width = 15, height = 40, dpi = 200, 
          bg = "white") # <--- ADDED bg = "white"
   
 }
