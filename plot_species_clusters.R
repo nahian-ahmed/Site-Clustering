@@ -763,32 +763,19 @@ for (sp in species_list) {
 
   # Define the target resolutions (in meters)
   target_res <- c(100, 250, 500, 1000, 2500)
-  
-  psi_scale_plots <- list()
-  lambda_scale_plots <- list()
+  scale_plots <- list()
   plot_idx <- 1
   
-  # Outer loop is Methods (rows), Inner loop is Resolutions (columns)
-  for (i in seq_along(methods_for_maps)) {
-    m_label <- methods_for_maps[i]
-    m_lookup <- if (m_label == "best-clustGeo") actual_best_method else m_label
-    row_title <- if(m_label == "best-clustGeo") "best-clustGeo" else m_label
-    
-    m_param <- sp_params %>% filter(method == m_lookup)
-    
-    for (res in target_res) {
-      col_title <- paste0(res, "m")
+  for (res in target_res) {
+    for (i in seq_along(methods_for_maps)) {
+      m_label <- methods_for_maps[i]
+      m_lookup <- if (m_label == "best-clustGeo") actual_best_method else m_label
+      plot_title <- paste0(if(m_label == "best-clustGeo") "best-clustGeo" else m_label, "\n(", res, "m)")
       
-      # Blank plot for missing models or models that failed to converge
+      m_param <- sp_params %>% filter(method == m_lookup)
+      
       if (nrow(m_param) == 0 || is.na(m_lookup)) {
-        blank_p <- ggplot() + theme_void()
-        
-        # Add headers to blank plots so grid structure is maintained
-        if (i == 1) blank_p <- blank_p + ggtitle(col_title) + theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"))
-        if (res == 100) blank_p <- blank_p + ylab(row_title) + theme(axis.title.y = element_text(angle = 90, size = 12, face = "bold", margin = margin(r = 10)))
-        
-        psi_scale_plots[[plot_idx]] <- blank_p
-        lambda_scale_plots[[plot_idx]] <- blank_p
+        scale_plots[[plot_idx]] <- ggplot() + theme_void() + labs(title = plot_title) + theme(plot.title = element_text(hjust = 0.5, size = 10))
         plot_idx <- plot_idx + 1
         next
       }
@@ -800,73 +787,45 @@ for (sp in species_list) {
       if (res == 100) {
         lambda_agg <- lambda_100
       } else {
+        # Create a blank template raster at the new resolution
         template_rast <- terra::rast(ext(lambda_100), crs=crs(lambda_100), res=res)
+        # Resample using "sum" to add all 100m abundances together
         lambda_agg <- terra::resample(lambda_100, template_rast, method = "sum")
       }
       
       # 3. Calculate Psi (Occupancy) at the aggregated scale
       psi_agg <- 1 - exp(-lambda_agg)
       
-      # 4. Prepare DataFrames for Plotting (Psi)
+      # Prepare for plotting
       psi_rast_wgs84 <- terra::project(psi_agg, wgs84_crs_str)
       psi_rast_wgs84 <- terra::mask(psi_rast_wgs84, valid_boundary_wgs84)
       psi_rast_wgs84 <- terra::crop(psi_rast_wgs84, valid_boundary_wgs84)
       psi_df <- as.data.frame(psi_rast_wgs84, xy = TRUE, na.rm=TRUE)
       names(psi_df)[3] <- "psi"
       
-      # 5. Prepare DataFrames for Plotting (Lambda)
-      lambda_rast_wgs84 <- terra::project(lambda_agg, wgs84_crs_str)
-      lambda_rast_wgs84 <- terra::mask(lambda_rast_wgs84, valid_boundary_wgs84)
-      lambda_rast_wgs84 <- terra::crop(lambda_rast_wgs84, valid_boundary_wgs84)
-      lambda_df <- as.data.frame(lambda_rast_wgs84, xy = TRUE, na.rm=TRUE)
-      names(lambda_df)[3] <- "lambda"
-      
-      # --- Build Psi Plot ---
-      p_psi <- ggplot() +
+      scale_plots[[plot_idx]] <- ggplot() +
         geom_rect(aes(xmin = bbox_full$xmin, xmax = bbox_full$xmax, ymin = bbox_full$ymin, ymax = bbox_full$ymax), fill = "darkgray", show.legend = FALSE) +
         geom_raster(data = psi_df, aes(x = x, y = y, fill = psi)) +
         scale_fill_viridis_c(option = "B", limits = c(0.0, 1.0), name = "Occupancy Prob.") +
         theme_void() + 
         coord_fixed(ratio = 1.0, xlim = c(bbox_full$xmin, bbox_full$xmax), ylim = c(bbox_full$ymin, bbox_full$ymax), expand = FALSE) +
-        theme(legend.position = "none") # Handled globally by ggarrange
-        
-      # --- Build Lambda Plot ---
-      p_lambda <- ggplot() +
-        geom_rect(aes(xmin = bbox_full$xmin, xmax = bbox_full$xmax, ymin = bbox_full$ymin, ymax = bbox_full$ymax), fill = "darkgray", show.legend = FALSE) +
-        geom_raster(data = lambda_df, aes(x = x, y = y, fill = lambda)) +
-        scale_fill_viridis_c(option = "magma", name = "Expected Abundance") +
-        theme_void() + 
-        coord_fixed(ratio = 1.0, xlim = c(bbox_full$xmin, bbox_full$xmax), ylim = c(bbox_full$ymin, bbox_full$ymax), expand = FALSE) +
-        theme(legend.position = "none")
-
-      # --- Apply Headers ---
-      # Add Column Headers (resolutions) only to the FIRST ROW
-      if (i == 1) {
-        p_psi <- p_psi + ggtitle(col_title) + theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"))
-        p_lambda <- p_lambda + ggtitle(col_title) + theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"))
-      }
+        labs(title = plot_title) +
+        theme(
+          legend.position = "none", # Hide legend for individual subplots
+          plot.title = element_text(hjust = 0.5, size = 11, face = "bold")
+        )
       
-      # Add Row Headers (methods) only to the FIRST COLUMN
-      if (res == 100) {
-        # theme_void natively hides axes text, we turn it back on explicitly
-        p_psi <- p_psi + ylab(row_title) + theme(axis.title.y = element_text(angle = 90, size = 12, face = "bold", margin = margin(r = 10)))
-        p_lambda <- p_lambda + ylab(row_title) + theme(axis.title.y = element_text(angle = 90, size = 12, face = "bold", margin = margin(r = 10)))
-      }
-      
-      psi_scale_plots[[plot_idx]] <- p_psi
-      lambda_scale_plots[[plot_idx]] <- p_lambda
       plot_idx <- plot_idx + 1
     }
   }
   
-  # Assemble and save the 9x5 grids directly (no left observation plot included)
-  # A 12x24 ratio handles the taller subplots efficiently in a single page
+  # Assemble the 5x9 grid using patchwork/ggarrange
+  grid_scales <- ggarrange(plotlist = scale_plots, nrow = 5, ncol = 9, common.legend = TRUE, legend = "bottom")
+  final_scales <- (obs_plot + grid_scales + plot_layout(nrow = 1, widths = c(1, 6)))
   
-  grid_psi_scales <- ggarrange(plotlist = psi_scale_plots, nrow = 9, ncol = 5, common.legend = TRUE, legend = "bottom")
-  ggsave(file.path(map_output_dir, paste0(sp, "_psi_scales.png")), plot = grid_psi_scales, width = 12, height = 24, dpi = 300)
+  # Save the scales plot
+  ggsave(file.path(map_output_dir, paste0(sp, "_scales.png")), plot = final_scales, width = 24, height = 14, dpi = 300)
   
-  grid_lambda_scales <- ggarrange(plotlist = lambda_scale_plots, nrow = 9, ncol = 5, common.legend = TRUE, legend = "bottom")
-  ggsave(file.path(map_output_dir, paste0(sp, "_lambda_scales.png")), plot = grid_lambda_scales, width = 12, height = 24, dpi = 300)
 }
 
 cat("Maps generated.\n")
