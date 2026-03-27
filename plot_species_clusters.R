@@ -784,7 +784,7 @@ for (sp in species_list) {
           theme(
             plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
             axis.title.y = element_text(angle = 90, size = 12, face = "bold", margin = margin(r = 10)),
-            plot.margin = margin(0, 0, 0, 0, "pt") # <--- ADD THIS TO REMOVE PADDING
+            plot.margin = margin(-5, -5, -5, -5, "pt")
           )
         plot_idx <- plot_idx + 1
         next
@@ -823,7 +823,7 @@ for (sp in species_list) {
           legend.position = "bottom", legend.text = element_text(size = 24), legend.title = element_text(size = 24, vjust = 1), 
           legend.key.width = unit(2, "cm"), legend.box.margin = margin(t = 20), plot.title = element_text(hjust = 0.5, size = 24, face = "bold"),
           axis.title.y = element_text(angle = 90, size = 24, face = "bold", margin = margin(r = 10)),
-          plot.margin = margin(0, 0, 0, 0, "pt")
+          plot.margin = margin(-5, -5, -5, -5, "pt")
         )
       
       plot_idx <- plot_idx + 1
