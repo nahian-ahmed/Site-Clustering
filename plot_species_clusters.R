@@ -761,24 +761,30 @@ for (sp in species_list) {
   ggsave(file.path(map_output_dir, paste0(sp, ".png")), plot = final, width = 17, height = 9.5, dpi = 300)
 
 
-  # Define the target resolutions (in meters)
-  target_res <- c(100, 250, 500, 1000, 2500)
+  # Define the target resolutions (in meters) - STRICT MULTIPLES OF 100
+  target_res <- c(100, 200, 500, 1000, 2500)
   scale_plots <- list()
   plot_idx <- 1
   
-  # SWAPPED: Outer loop is now Methods (Rows) and Inner loop is Resolutions (Columns)
   for (i in seq_along(methods_for_maps)) {
     for (res in target_res) {
       m_label <- methods_for_maps[i]
       m_lookup <- if (m_label == "best-clustGeo") actual_best_method else m_label
       
-      # UPDATED: Removed "\n" to keep the title on a single line
-      plot_title <- paste0(if(m_label == "best-clustGeo") "best-clustGeo" else m_label, " (", res, "m)")
+      # CONDITIONAL LABELS: Top row gets resolutions, first column gets method names
+      col_title <- if (i == 1) paste0(res, "m") else NULL
+      row_label <- if (res == 100) (if(m_label == "best-clustGeo") "best-clustGeo" else m_label) else NULL
       
       m_param <- sp_params %>% filter(method == m_lookup)
       
       if (nrow(m_param) == 0 || is.na(m_lookup)) {
-        scale_plots[[plot_idx]] <- ggplot() + theme_void() + labs(title = plot_title) + theme(plot.title = element_text(hjust = 0.5, size = 10))
+        scale_plots[[plot_idx]] <- ggplot() + 
+          theme_void() + 
+          labs(title = col_title, y = row_label) + 
+          theme(
+            plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+            axis.title.y = element_text(angle = 90, size = 12, face = "bold", margin = margin(r = 10))
+          )
         plot_idx <- plot_idx + 1
         next
       }
@@ -786,14 +792,13 @@ for (sp in species_list) {
       # 1. Predict Lambda at the native 100m resolution
       lambda_100 <- predict_occuPPM_lambda(cov_tif_albers, m_param, c("elevation","TCB","TCG","TCW","TCA"), cell_area_km2)
       
-      # 2. Aggregate Lambda to the target resolution
+      # 2. Aggregate Lambda to the target resolution using STRICT ADDITION
       if (res == 100) {
         lambda_agg <- lambda_100
       } else {
-        # Create a blank template raster at the new resolution
-        template_rast <- terra::rast(ext(lambda_100), crs=crs(lambda_100), res=res)
-        # Resample using "sum" to add all 100m abundances together
-        lambda_agg <- terra::resample(lambda_100, template_rast, method = "sum")
+        # Because resolutions are strict multiples of 100, we use a simple aggregation factor
+        agg_factor <- res / 100
+        lambda_agg <- terra::aggregate(lambda_100, fact = agg_factor, fun = "sum", na.rm = TRUE)
       }
       
       # 3. Calculate Psi (Occupancy) at the aggregated scale
@@ -812,22 +817,22 @@ for (sp in species_list) {
         scale_fill_viridis_c(option = "B", limits = c(0.0, 1.0), name = "Occupancy Probability") +
         theme_void() + 
         coord_fixed(ratio = 1.0, xlim = c(bbox_full$xmin, bbox_full$xmax), ylim = c(bbox_full$ymin, bbox_full$ymax), expand = FALSE) +
-        labs(title = plot_title) +
+        labs(title = col_title, y = row_label) +
         theme(
-          legend.position = "none", # Hide legend for individual subplots
-          plot.title = element_text(hjust = 0.5, size = 14, face = "bold")
+          legend.position = "none",
+          plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+          axis.title.y = element_text(angle = 90, size = 12, face = "bold", margin = margin(r = 10))
         )
       
       plot_idx <- plot_idx + 1
     }
   }
   
-  # Assemble the 9x5 grid using patchwork/ggarrange
-  grid_scales <- ggarrange(plotlist = scale_plots, nrow = 9, ncol = 5, common.legend = TRUE, legend = "bottom")
-  final_scales <- (obs_plot + grid_scales + plot_layout(nrow = 1, widths = c(1, 4)))
+  # Assemble the 9x5 grid using ggarrange
+  final_scales <- ggarrange(plotlist = scale_plots, nrow = 9, ncol = 5, common.legend = TRUE, legend = "bottom")
   
-  # Save the scales plot (Swapped width and height to accommodate the taller layout)
-  ggsave(file.path(map_output_dir, paste0(sp, "_scales.png")), plot = final_scales, width = 16, height = 26, dpi = 300)
+  # Save the scales plot directly (Width reduced slightly since the left plot is removed)
+  ggsave(file.path(map_output_dir, paste0(sp, "_scales.png")), plot = final_scales, width = 14, height = 26, dpi = 300)
   
 }
 
