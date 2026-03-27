@@ -784,7 +784,7 @@ for (sp in species_list) {
           theme(
             plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
             axis.title.y = element_text(angle = 90, size = 12, face = "bold", margin = margin(r = 10)),
-            plot.margin = margin(-5, -5, -5, -5, "pt")
+            plot.margin = margin(0, 0, 0, 0, "pt")
           )
         plot_idx <- plot_idx + 1
         next
@@ -820,10 +820,10 @@ for (sp in species_list) {
         coord_fixed(ratio = 1.0, xlim = c(bbox_full$xmin, bbox_full$xmax), ylim = c(bbox_full$ymin, bbox_full$ymax), expand = FALSE) +
         labs(title = col_title, y = row_label) +
         theme(
-          legend.position = "bottom", legend.text = element_text(size = 24), legend.title = element_text(size = 24, vjust = 1), 
-          legend.key.width = unit(2, "cm"), legend.box.margin = margin(t = 20), plot.title = element_text(hjust = 0.5, size = 24, face = "bold"),
-          axis.title.y = element_text(angle = 90, size = 24, face = "bold", margin = margin(r = 10)),
-          plot.margin = margin(-5, -5, -5, -5, "pt")
+          legend.position = "bottom", legend.text = element_text(size = 30), legend.title = element_text(size = 30, vjust = 1), 
+          legend.key.width = unit(2, "cm"), legend.box.margin = margin(t = 20), plot.title = element_text(hjust = 0.5, size = 30, face = "bold"),
+          axis.title.y = element_text(angle = 90, size = 30, face = "bold", margin = margin(r = 10)),
+          plot.margin = margin(0, 0, 0, 0, "pt")
         )
       
       plot_idx <- plot_idx + 1
@@ -838,7 +838,7 @@ for (sp in species_list) {
   
   # Save the scales plot directly, forcing a white background
   ggsave(file.path(map_output_dir, paste0(sp, "_scales.png")), 
-         plot = final_scales, width = 13, height = 36, dpi = 200, 
+         plot = final_scales, width = 14, height = 45, dpi = 200, 
          bg = "white") # <--- ADDED bg = "white"
   
 }
