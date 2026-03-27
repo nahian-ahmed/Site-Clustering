@@ -766,11 +766,14 @@ for (sp in species_list) {
   scale_plots <- list()
   plot_idx <- 1
   
-  for (res in target_res) {
-    for (i in seq_along(methods_for_maps)) {
+  # SWAPPED: Outer loop is now Methods (Rows) and Inner loop is Resolutions (Columns)
+  for (i in seq_along(methods_for_maps)) {
+    for (res in target_res) {
       m_label <- methods_for_maps[i]
       m_lookup <- if (m_label == "best-clustGeo") actual_best_method else m_label
-      plot_title <- paste0(if(m_label == "best-clustGeo") "best-clustGeo" else m_label, "\n(", res, "m)")
+      
+      # UPDATED: Removed "\n" to keep the title on a single line
+      plot_title <- paste0(if(m_label == "best-clustGeo") "best-clustGeo" else m_label, " (", res, "m)")
       
       m_param <- sp_params %>% filter(method == m_lookup)
       
@@ -819,12 +822,12 @@ for (sp in species_list) {
     }
   }
   
-  # Assemble the 5x9 grid using patchwork/ggarrange
-  grid_scales <- ggarrange(plotlist = scale_plots, nrow = 5, ncol = 9, common.legend = TRUE, legend = "bottom")
-  final_scales <- (obs_plot + grid_scales + plot_layout(nrow = 1, widths = c(1, 6)))
+  # Assemble the 9x5 grid using patchwork/ggarrange
+  grid_scales <- ggarrange(plotlist = scale_plots, nrow = 9, ncol = 5, common.legend = TRUE, legend = "bottom")
+  final_scales <- (obs_plot + grid_scales + plot_layout(nrow = 1, widths = c(1, 4)))
   
-  # Save the scales plot
-  ggsave(file.path(map_output_dir, paste0(sp, "_scales.png")), plot = final_scales, width = 24, height = 14, dpi = 300)
+  # Save the scales plot (Swapped width and height to accommodate the taller layout)
+  ggsave(file.path(map_output_dir, paste0(sp, "_scales.png")), plot = final_scales, width = 18, height = 24, dpi = 300)
   
 }
 
