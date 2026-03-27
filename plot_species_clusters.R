@@ -761,85 +761,97 @@ for (sp in species_list) {
   ggsave(file.path(map_output_dir, paste0(sp, ".png")), plot = final, width = 17, height = 9.5, dpi = 300)
 
 
-  # Define the target resolutions (in meters) - STRICT MULTIPLES OF 100
+  # Define the target resolutions (in meters)
   target_res <- c(100, 200, 500, 1000, 2500)
-  scale_plots <- list()
+  
+  all_psi_data <- list()
   plot_idx <- 1
   
   for (i in seq_along(methods_for_maps)) {
     for (res in target_res) {
       m_label <- methods_for_maps[i]
       m_lookup <- if (m_label == "best-clustGeo") actual_best_method else m_label
-      
-      # CONDITIONAL LABELS: Top row gets resolutions, first column gets method names
-      col_title <- if (i == 1) paste0(res, "m") else NULL
-      row_label <- if (res == 100) (if(m_label == "best-clustGeo") "best-clustGeo" else m_label) else NULL
-      
       m_param <- sp_params %>% filter(method == m_lookup)
       
-      if (nrow(m_param) == 0 || is.na(m_lookup)) {
-        scale_plots[[plot_idx]] <- ggplot() + 
-          theme_void() + 
-          labs(title = col_title, y = row_label) + 
-          theme(
-            plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
-            axis.title.y = element_text(angle = 90, size = 12, face = "bold", margin = margin(r = 10)),
-            plot.margin = margin(0, 0, 0, 0, "pt")
-          )
-        plot_idx <- plot_idx + 1
-        next
-      }
+      # If no model parameters exist, skip adding to the list
+      # (facet_grid will naturally leave this panel blank/gray)
+      if (nrow(m_param) == 0 || is.na(m_lookup)) next
       
-      # 1. Predict Lambda at the native 100m resolution
+      # 1. Predict Lambda
       lambda_100 <- predict_occuPPM_lambda(cov_tif_albers, m_param, c("elevation","TCB","TCG","TCW","TCA"), cell_area_km2)
       
-      # 2. Aggregate Lambda to the target resolution using STRICT ADDITION
+      # 2. Aggregate
       if (res == 100) {
         lambda_agg <- lambda_100
       } else {
-        # Because resolutions are strict multiples of 100, we use a simple aggregation factor
         agg_factor <- res / 100
         lambda_agg <- terra::aggregate(lambda_100, fact = agg_factor, fun = "sum", na.rm = TRUE)
       }
       
-      # 3. Calculate Psi (Occupancy) at the aggregated scale
+      # 3. Calculate Psi (Occupancy)
       psi_agg <- 1 - exp(-lambda_agg)
       
       # Prepare for plotting
       psi_rast_wgs84 <- terra::project(psi_agg, wgs84_crs_str)
       psi_rast_wgs84 <- terra::mask(psi_rast_wgs84, valid_boundary_wgs84)
       psi_rast_wgs84 <- terra::crop(psi_rast_wgs84, valid_boundary_wgs84)
-      psi_df <- as.data.frame(psi_rast_wgs84, xy = TRUE, na.rm=TRUE)
+      psi_df <- as.data.frame(psi_rast_wgs84, xy = TRUE, na.rm = TRUE)
       names(psi_df)[3] <- "psi"
       
-      scale_plots[[plot_idx]] <- ggplot() +
-        geom_rect(aes(xmin = bbox_full$xmin, xmax = bbox_full$xmax, ymin = bbox_full$ymin, ymax = bbox_full$ymax), fill = "darkgray", show.legend = FALSE) +
-        geom_raster(data = psi_df, aes(x = x, y = y, fill = psi)) +
-        scale_fill_viridis_c(option = "B", limits = c(0.0, 1.0), name = "Occupancy Probability") +
-        theme_void() + 
-        coord_fixed(ratio = 1.0, xlim = c(bbox_full$xmin, bbox_full$xmax), ylim = c(bbox_full$ymin, bbox_full$ymax), expand = FALSE) +
-        labs(title = col_title, y = row_label) +
-        theme(
-          legend.position = "bottom", legend.text = element_text(size = 26), legend.title = element_text(size = 26, vjust = 1), 
-          legend.key.width = unit(2, "cm"), legend.box.margin = margin(t = 20), plot.title = element_text(hjust = 0.5, size = 30, face = "bold"),
-          axis.title.y = element_text(angle = 90, size = 30, face = "bold", margin = margin(r = 10)),
-          plot.margin = margin(0, 0, 0, 0, "pt")
-        )
+      # Add identifying columns for facet_grid
+      psi_df$method <- m_label
+      psi_df$resolution <- paste0(res, "m")
       
+      all_psi_data[[plot_idx]] <- psi_df
       plot_idx <- plot_idx + 1
     }
   }
   
-
-  # Assemble the 9x5 grid using ggarrange, forcing horizontal and vertical alignment
-  final_scales <- ggarrange(plotlist = scale_plots, nrow = 9, ncol = 5, 
-                            common.legend = TRUE, legend = "bottom", 
-                            align = "hv") # <--- ADDED align = "hv"
+  # Bind all raster data together into one master dataframe
+  final_psi_df <- do.call(rbind, all_psi_data)
   
-  # Save the scales plot directly, forcing a white background
+  # Enforce factor levels so the grid is ordered exactly how you want it
+  final_psi_df$method <- factor(final_psi_df$method, levels = methods_for_maps)
+  final_psi_df$resolution <- factor(final_psi_df$resolution, levels = paste0(target_res, "m"))
+  
+  # Create a single background rectangle dataframe
+  bg_df <- data.frame(
+    xmin = bbox_full$xmin, xmax = bbox_full$xmax, 
+    ymin = bbox_full$ymin, ymax = bbox_full$ymax
+  )
+  
+  # Generate the single faceted plot
+  final_scales <- ggplot() +
+    # Draw gray background across all facets
+    geom_rect(data = bg_df, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = "darkgray", inherit.aes = FALSE) +
+    # Draw raster data
+    geom_raster(data = final_psi_df, aes(x = x, y = y, fill = psi)) +
+    scale_fill_viridis_c(option = "B", limits = c(0.0, 1.0), name = "Occupancy Probability") +
+    # Facet grid: drop = FALSE ensures missing data plots stay gray instead of breaking the grid
+    facet_grid(method ~ resolution, switch = "y", drop = FALSE) + 
+    theme_void() + 
+    coord_fixed(ratio = 1.0, xlim = c(bbox_full$xmin, bbox_full$xmax), ylim = c(bbox_full$ymin, bbox_full$ymax), expand = FALSE) +
+    theme(
+      legend.position = "bottom", 
+      legend.text = element_text(size = 26), 
+      legend.title = element_text(size = 26, vjust = 1), 
+      legend.key.width = unit(2, "cm"), 
+      legend.box.margin = margin(t = 20), 
+      
+      # Strip text replaces your individual titles and y-labels
+      strip.text.x = element_text(size = 30, face = "bold", margin = margin(b = 10)),
+      strip.text.y.left = element_text(size = 30, face = "bold", angle = 90, margin = margin(r = 10)),
+      
+      # This completely eliminates the gaps between panels
+      panel.spacing = unit(0.1, "lines"), 
+      
+      plot.background = element_rect(fill = "white", color = NA),
+      plot.margin = margin(10, 10, 10, 10, "pt")
+    )
+  
+  # Save the single plot
   ggsave(file.path(map_output_dir, paste0(sp, "_scales.png")), 
-         plot = final_scales, width = 18, height = 45, dpi = 240, 
-         bg = "white") # <--- ADDED bg = "white"
+         plot = final_scales, width = 16, height = 30, dpi = 240)
   
 }
 
