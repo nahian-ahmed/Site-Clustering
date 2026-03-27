@@ -661,6 +661,19 @@ predict_occuPPM_psi <- function(cov_stack, param_row, state_covs, cell_area) {
   return(psi_rast)
 }
 
+predict_occuPPM_lambda <- function(cov_stack, param_row, state_covs, cell_area) {
+  intercept <- param_row$state_intercept
+  betas <- as.numeric(param_row[state_covs])
+  lin_pred <- cov_stack[[1]] * 0 + intercept
+  for(i in seq_along(state_covs)) {
+    lin_pred <- lin_pred + (cov_stack[[state_covs[i]]] * betas[i])
+  }
+  # Return Lambda (Abundance) instead of Psi (Occupancy)
+  lambda_rast <- exp(lin_pred) * cell_area
+  names(lambda_rast) <- "lambda"
+  return(lambda_rast)
+}
+
 for (sp in species_list) {
   
   cat(sprintf("Generating map for %s ...\n", sp))
@@ -746,6 +759,72 @@ for (sp in species_list) {
   grid_p <- ggarrange(plotlist = psi_plots, nrow = 2, ncol = 5, common.legend = TRUE, legend = "bottom")
   final <- (obs_plot + grid_p + plot_layout(nrow = 1, widths = c(1, 3.5)))
   ggsave(file.path(map_output_dir, paste0(sp, ".png")), plot = final, width = 17, height = 9.5, dpi = 300)
+
+
+  # Define the target resolutions (in meters)
+  target_res <- c(100, 250, 500, 1000, 2500)
+  scale_plots <- list()
+  plot_idx <- 1
+  
+  for (res in target_res) {
+    for (i in seq_along(methods_for_maps)) {
+      m_label <- methods_for_maps[i]
+      m_lookup <- if (m_label == "best-clustGeo") actual_best_method else m_label
+      plot_title <- paste0(if(m_label == "best-clustGeo") "best-clustGeo" else m_label, "\n(", res, "m)")
+      
+      m_param <- sp_params %>% filter(method == m_lookup)
+      
+      if (nrow(m_param) == 0 || is.na(m_lookup)) {
+        scale_plots[[plot_idx]] <- ggplot() + theme_void() + labs(title = plot_title) + theme(plot.title = element_text(hjust = 0.5, size = 10))
+        plot_idx <- plot_idx + 1
+        next
+      }
+      
+      # 1. Predict Lambda at the native 100m resolution
+      lambda_100 <- predict_occuPPM_lambda(cov_tif_albers, m_param, c("elevation","TCB","TCG","TCW","TCA"), cell_area_km2)
+      
+      # 2. Aggregate Lambda to the target resolution
+      if (res == 100) {
+        lambda_agg <- lambda_100
+      } else {
+        # Create a blank template raster at the new resolution
+        template_rast <- terra::rast(ext(lambda_100), crs=crs(lambda_100), res=res)
+        # Resample using "sum" to add all 100m abundances together
+        lambda_agg <- terra::resample(lambda_100, template_rast, method = "sum")
+      }
+      
+      # 3. Calculate Psi (Occupancy) at the aggregated scale
+      psi_agg <- 1 - exp(-lambda_agg)
+      
+      # Prepare for plotting
+      psi_rast_wgs84 <- terra::project(psi_agg, wgs84_crs_str)
+      psi_rast_wgs84 <- terra::mask(psi_rast_wgs84, valid_boundary_wgs84)
+      psi_rast_wgs84 <- terra::crop(psi_rast_wgs84, valid_boundary_wgs84)
+      psi_df <- as.data.frame(psi_rast_wgs84, xy = TRUE, na.rm=TRUE)
+      names(psi_df)[3] <- "psi"
+      
+      scale_plots[[plot_idx]] <- ggplot() +
+        geom_rect(aes(xmin = bbox_full$xmin, xmax = bbox_full$xmax, ymin = bbox_full$ymin, ymax = bbox_full$ymax), fill = "darkgray", show.legend = FALSE) +
+        geom_raster(data = psi_df, aes(x = x, y = y, fill = psi)) +
+        scale_fill_viridis_c(option = "B", limits = c(0.0, 1.0), name = "Occupancy Prob.") +
+        theme_void() + 
+        coord_fixed(ratio = 1.0, xlim = c(bbox_full$xmin, bbox_full$xmax), ylim = c(bbox_full$ymin, bbox_full$ymax), expand = FALSE) +
+        labs(title = plot_title) +
+        theme(
+          legend.position = "none", # Hide legend for individual subplots
+          plot.title = element_text(hjust = 0.5, size = 11, face = "bold")
+        )
+      
+      plot_idx <- plot_idx + 1
+    }
+  }
+  
+  # Assemble the 5x9 grid using patchwork/ggarrange
+  grid_scales <- ggarrange(plotlist = scale_plots, nrow = 5, ncol = 9, common.legend = TRUE, legend = "bottom")
+  final_scales <- (obs_plot + grid_scales + plot_layout(nrow = 1, widths = c(1, 6)))
+  
+  # Save the scales plot
+  ggsave(file.path(map_output_dir, paste0(sp, "_scales.png")), plot = final_scales, width = 24, height = 14, dpi = 300)
 }
 
 cat("Maps generated.\n")
