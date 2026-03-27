@@ -838,7 +838,7 @@ for (sp in species_list) {
   
   # Save the scales plot directly, forcing a white background
   ggsave(file.path(map_output_dir, paste0(sp, "_scales.png")), 
-         plot = final_scales, width = 15.5, height = 40, dpi = 240, 
+         plot = final_scales, width = 16, height = 40, dpi = 240, 
          bg = "white") # <--- ADDED bg = "white"
   
 }
