@@ -622,18 +622,20 @@ state_cov_raster_raw <- terra::rast(file.path("state_covariate_raster", "state_c
 names(state_cov_raster_raw) <- c("elevation", "TCB", "TCG", "TCW", "TCA") 
 cov_tif_albers_raw <- terra::project(state_cov_raster_raw, albers_crs_str, method="bilinear", res = 100)
 
-valid_boundary <- terra::vect(boundary_shapefile_path)
-valid_boundary_proj <- terra::project(valid_boundary, albers_crs_str)
-cov_tif_albers_raw <- terra::mask(cov_tif_albers_raw, valid_boundary_proj)
-cov_tif_albers_raw <- terra::crop(cov_tif_albers_raw, valid_boundary_proj)
-
-# Standardize
+# Standardize (calculates mu and sd on the full raster, matching training)
 cov_tif_albers <- cov_tif_albers_raw
 for(nm in names(cov_tif_albers)) {
   mu <- mean(values(cov_tif_albers[[nm]]), na.rm=TRUE)
   sd_val <- sd(values(cov_tif_albers[[nm]]), na.rm=TRUE)
   cov_tif_albers[[nm]] <- (cov_tif_albers[[nm]] - mu) / sd_val
 }
+
+# Mask and crop the standardized raster
+valid_boundary <- terra::vect(boundary_shapefile_path)
+valid_boundary_proj <- terra::project(valid_boundary, albers_crs_str)
+cov_tif_albers <- terra::mask(cov_tif_albers, valid_boundary_proj)
+cov_tif_albers <- terra::crop(cov_tif_albers, valid_boundary_proj)
+
 cell_area_km2 <- (100 / 1000) * (100 / 1000)
 
 # Background for plotting
