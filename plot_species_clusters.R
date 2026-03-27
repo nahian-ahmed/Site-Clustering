@@ -852,6 +852,13 @@ for (sp in species_list) {
   # Save the single plot
   ggsave(file.path(map_output_dir, paste0(sp, "_scales.png")), 
          plot = final_scales, width = 11, height = 30, dpi = 240)
+
+  # --- MEMORY CLEANUP ---
+  # Explicitly remove massive plotting dataframes and ggplot objects
+  rm(final_psi_df, all_psi_data, final_scales, grid_p, final, obs_plot, psi_plots, bg_df, pts_df)
+  
+  # Force R's Garbage Collector to release the RAM back to the Mac OS immediately
+  gc()
   
 }
 
