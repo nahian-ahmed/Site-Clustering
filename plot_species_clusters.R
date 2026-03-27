@@ -828,11 +828,15 @@ for (sp in species_list) {
     }
   }
   
-  # Assemble the 9x5 grid using ggarrange
-  final_scales <- ggarrange(plotlist = scale_plots, nrow = 9, ncol = 5, common.legend = TRUE, legend = "bottom")
+  # Assemble the 9x5 grid using ggarrange, forcing horizontal and vertical alignment
+  final_scales <- ggarrange(plotlist = scale_plots, nrow = 9, ncol = 5, 
+                            common.legend = TRUE, legend = "bottom", 
+                            align = "hv") # <--- ADDED align = "hv"
   
-  # Save the scales plot directly (Width reduced slightly since the left plot is removed)
-  ggsave(file.path(map_output_dir, paste0(sp, "_scales.png")), plot = final_scales, width = 14, height = 26, dpi = 300)
+  # Save the scales plot directly, forcing a white background
+  ggsave(file.path(map_output_dir, paste0(sp, "_scales.png")), 
+         plot = final_scales, width = 14, height = 26, dpi = 300, 
+         bg = "white") # <--- ADDED bg = "white"
   
 }
 
