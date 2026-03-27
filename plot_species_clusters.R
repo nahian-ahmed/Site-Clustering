@@ -831,15 +831,26 @@ for (sp in species_list) {
   }
   
 
-  # Assemble the 9x5 grid using ggarrange, forcing horizontal and vertical alignment
+  # Assemble the 9x5 grid
   final_scales <- ggarrange(plotlist = scale_plots, nrow = 9, ncol = 5, 
                             common.legend = TRUE, legend = "bottom", 
-                            align = "hv") # <--- ADDED align = "hv"
+                            align = "hv")
   
-  # Save the scales plot directly, forcing a white background
+  # 1. Calculate the spatial aspect ratio of a single map
+  x_range <- bbox_full[2] - bbox_full[1] # xmax - xmin
+  y_range <- bbox_full[4] - bbox_full[3] # ymax - ymin
+  
+  # 2. Calculate the perfect height for a 16-inch width canvas
+  # Formula: width * (rows / cols) * (y_range / x_range)
+  grid_height <- 16 * (9 / 5) * (y_range / x_range)
+  
+  # Add ~1.5 inches to accommodate the shared legend and top titles
+  perfect_height <- grid_height + 1.5 
+  
+  # 3. Save with the calculated height
   ggsave(file.path(map_output_dir, paste0(sp, "_scales.png")), 
-         plot = final_scales, width = 16, height = 40, dpi = 240, 
-         bg = "white") # <--- ADDED bg = "white"
+         plot = final_scales, width = 16, height = perfect_height, dpi = 240, 
+         bg = "white")
   
 }
 
