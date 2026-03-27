@@ -851,7 +851,7 @@ for (sp in species_list) {
   
   # Save the single plot
   ggsave(file.path(map_output_dir, paste0(sp, "_scales.png")), 
-         plot = final_scales, width = 11.5, height = 30, dpi = 240)
+         plot = final_scales, width = 11, height = 30, dpi = 240)
   
 }
 
