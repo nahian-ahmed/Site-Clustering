@@ -819,8 +819,8 @@ for (sp in species_list) {
         coord_fixed(ratio = 1.0, xlim = c(bbox_full$xmin, bbox_full$xmax), ylim = c(bbox_full$ymin, bbox_full$ymax), expand = FALSE) +
         labs(title = col_title, y = row_label) +
         theme(
-          legend.position = "none",
-          plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+          legend.position = "bottom", legend.text = element_text(size = 14), legend.title = element_text(size = 14, vjust = 1), 
+          legend.key.width = unit(1, "cm"), legend.box.margin = margin(t = 20), plot.title = element_text(hjust = 0.5, size = 15, face = "bold"),
           axis.title.y = element_text(angle = 90, size = 12, face = "bold", margin = margin(r = 10))
         )
       
@@ -828,6 +828,7 @@ for (sp in species_list) {
     }
   }
   
+
   # Assemble the 9x5 grid using ggarrange, forcing horizontal and vertical alignment
   final_scales <- ggarrange(plotlist = scale_plots, nrow = 9, ncol = 5, 
                             common.legend = TRUE, legend = "bottom", 
@@ -835,7 +836,7 @@ for (sp in species_list) {
   
   # Save the scales plot directly, forcing a white background
   ggsave(file.path(map_output_dir, paste0(sp, "_scales.png")), 
-         plot = final_scales, width = 14, height = 26, dpi = 300, 
+         plot = final_scales, width = 12, height = 26, dpi = 300, 
          bg = "white") # <--- ADDED bg = "white"
   
 }
