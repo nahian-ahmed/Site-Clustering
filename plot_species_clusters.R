@@ -752,7 +752,7 @@ for (sp in species_list) {
       labs(title = plot_title) +
       theme(
         legend.position = "bottom", legend.text = element_text(size = 14), legend.title = element_text(size = 14, vjust = 1), 
-        legend.key.width = unit(2, "cm"), legend.box.margin = margin(t = 20), plot.title = element_text(hjust = 0.5, size = 15, face = "bold")
+        legend.key.width = unit(1.25, "cm"), legend.box.margin = margin(t = 20), plot.title = element_text(hjust = 0.5, size = 15, face = "bold")
       )
   }
   
@@ -828,19 +828,19 @@ for (sp in species_list) {
     geom_raster(data = final_psi_df, aes(x = x, y = y, fill = psi)) +
     scale_fill_viridis_c(option = "B", limits = c(0.0, 1.0), name = "Occupancy Probability") +
     # Facet grid: drop = FALSE ensures missing data plots stay gray instead of breaking the grid
-    facet_grid(method ~ resolution, switch = "y", drop = FALSE) + 
-    theme_void() + 
+    facet_grid(method ~ resolution, switch = "y", drop = FALSE) +
+    theme_void() +
     coord_fixed(ratio = 1.0, xlim = c(bbox_full$xmin, bbox_full$xmax), ylim = c(bbox_full$ymin, bbox_full$ymax), expand = FALSE) +
     theme(
       legend.position = "bottom", 
       legend.text = element_text(size = 24), 
-      legend.title = element_text(size = 26, vjust = 1), 
+      legend.title = element_text(size = 24, vjust = 1), 
       legend.key.width = unit(2, "cm"), 
       legend.box.margin = margin(t = 20), 
       
       # Strip text replaces your individual titles and y-labels
-      strip.text.x = element_text(size = 28, face = "bold", margin = margin(b = 10)),
-      strip.text.y.left = element_text(size = 28, face = "bold", angle = 90, margin = margin(r = 10)),
+      strip.text.x = element_text(size = 24, face = "bold", margin = margin(b = 10)),
+      strip.text.y.left = element_text(size = 24, face = "bold", angle = 90, margin = margin(r = 10)),
       
       # This completely eliminates the gaps between panels
       panel.spacing = unit(0.1, "lines"), 
@@ -851,7 +851,7 @@ for (sp in species_list) {
   
   # Save the single plot
   ggsave(file.path(map_output_dir, paste0(sp, "_scales.png")), 
-         plot = final_scales, width = 12, height = 30, dpi = 240)
+         plot = final_scales, width = 11.5, height = 30, dpi = 240)
   
 }
 
