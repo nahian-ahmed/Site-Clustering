@@ -809,13 +809,13 @@ for (sp in species_list) {
       scale_plots[[plot_idx]] <- ggplot() +
         geom_rect(aes(xmin = bbox_full$xmin, xmax = bbox_full$xmax, ymin = bbox_full$ymin, ymax = bbox_full$ymax), fill = "darkgray", show.legend = FALSE) +
         geom_raster(data = psi_df, aes(x = x, y = y, fill = psi)) +
-        scale_fill_viridis_c(option = "B", limits = c(0.0, 1.0), name = "Occupancy Prob.") +
+        scale_fill_viridis_c(option = "B", limits = c(0.0, 1.0), name = "Occupancy Probability") +
         theme_void() + 
         coord_fixed(ratio = 1.0, xlim = c(bbox_full$xmin, bbox_full$xmax), ylim = c(bbox_full$ymin, bbox_full$ymax), expand = FALSE) +
         labs(title = plot_title) +
         theme(
           legend.position = "none", # Hide legend for individual subplots
-          plot.title = element_text(hjust = 0.5, size = 11, face = "bold")
+          plot.title = element_text(hjust = 0.5, size = 14, face = "bold")
         )
       
       plot_idx <- plot_idx + 1
@@ -827,7 +827,7 @@ for (sp in species_list) {
   final_scales <- (obs_plot + grid_scales + plot_layout(nrow = 1, widths = c(1, 4)))
   
   # Save the scales plot (Swapped width and height to accommodate the taller layout)
-  ggsave(file.path(map_output_dir, paste0(sp, "_scales.png")), plot = final_scales, width = 18, height = 24, dpi = 300)
+  ggsave(file.path(map_output_dir, paste0(sp, "_scales.png")), plot = final_scales, width = 16, height = 26, dpi = 300)
   
 }
 
