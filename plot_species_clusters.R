@@ -762,7 +762,7 @@ for (sp in species_list) {
 
 
   # Define the target resolutions (in meters)
-  target_res <- c(100, 200, 500, 1000, 2500)
+  target_res <- c(100, 500, 1000, 2500, 5000)
   
   all_psi_data <- list()
   plot_idx <- 1
