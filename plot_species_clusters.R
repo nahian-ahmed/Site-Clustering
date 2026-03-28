@@ -796,9 +796,13 @@ for (sp in species_list) {
       psi_rast_wgs84 <- terra::mask(psi_rast_wgs84, valid_boundary_wgs84)
       psi_rast_wgs84 <- terra::crop(psi_rast_wgs84, valid_boundary_wgs84)
       
+      
       # --- VISUAL DOWNSAMPLING ---
-      # Hardcoded factor of 3 to shrink dataframe size and prevent memory crash
-      psi_rast_wgs84 <- terra::aggregate(psi_rast_wgs84, fact = 3, fun = "mean", na.rm = TRUE)
+      # Dynamically calculates the perfect factor to keep pixels under 300k
+      if (terra::ncell(psi_rast_wgs84) > 300000) {
+        plot_agg_factor <- ceiling(sqrt(terra::ncell(psi_rast_wgs84) / 300000))
+        psi_rast_wgs84 <- terra::aggregate(psi_rast_wgs84, fact = plot_agg_factor, fun = "mean", na.rm = TRUE)
+      }
       
       psi_df <- as.data.frame(psi_rast_wgs84, xy = TRUE, na.rm = TRUE)
       names(psi_df)[3] <- "psi"
