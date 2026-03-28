@@ -795,6 +795,11 @@ for (sp in species_list) {
       psi_rast_wgs84 <- terra::project(psi_agg, wgs84_crs_str)
       psi_rast_wgs84 <- terra::mask(psi_rast_wgs84, valid_boundary_wgs84)
       psi_rast_wgs84 <- terra::crop(psi_rast_wgs84, valid_boundary_wgs84)
+      
+      # --- VISUAL DOWNSAMPLING ---
+      # Hardcoded factor of 3 to shrink dataframe size and prevent memory crash
+      psi_rast_wgs84 <- terra::aggregate(psi_rast_wgs84, fact = 3, fun = "mean", na.rm = TRUE)
+      
       psi_df <- as.data.frame(psi_rast_wgs84, xy = TRUE, na.rm = TRUE)
       names(psi_df)[3] <- "psi"
       
@@ -804,12 +809,20 @@ for (sp in species_list) {
       
       all_psi_data[[plot_idx]] <- psi_df
       plot_idx <- plot_idx + 1
+      
+      # Clear temporary objects to keep memory lean inside the loop
+      rm(lambda_100, lambda_agg, psi_agg, psi_rast_wgs84, psi_df)
+
     }
   }
   
   # Bind all raster data together into one master dataframe
   final_psi_df <- do.call(rbind, all_psi_data)
   
+  # Clear the list to free up active RAM
+  rm(all_psi_data)
+  gc()
+
   # Enforce factor levels so the grid is ordered exactly how you want it
   final_psi_df$method <- factor(final_psi_df$method, levels = methods_for_maps)
   final_psi_df$resolution <- factor(final_psi_df$resolution, levels = paste0(target_res, "m"))
