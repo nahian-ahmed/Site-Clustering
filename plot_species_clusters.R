@@ -798,9 +798,9 @@ for (sp in species_list) {
       
       
       # --- VISUAL DOWNSAMPLING ---
-      # Dynamically calculates the perfect factor to keep pixels under 300k
-      if (terra::ncell(psi_rast_wgs84) > 300000) {
-        plot_agg_factor <- ceiling(sqrt(terra::ncell(psi_rast_wgs84) / 300000))
+      # Dynamically calculates the perfect factor to keep pixels under 1M
+      if (terra::ncell(psi_rast_wgs84) > 1000000) {
+        plot_agg_factor <- ceiling(sqrt(terra::ncell(psi_rast_wgs84) / 1000000))
         psi_rast_wgs84 <- terra::aggregate(psi_rast_wgs84, fact = plot_agg_factor, fun = "mean", na.rm = TRUE)
       }
       
