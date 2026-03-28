@@ -872,7 +872,7 @@ for (sp in species_list) {
 
   # --- MEMORY CLEANUP ---
   # Explicitly remove massive plotting dataframes and ggplot objects
-  rm(final_psi_df, all_psi_data, final_scales, grid_p, final, obs_plot, psi_plots, bg_df, pts_df)
+  rm(final_psi_df, final_scales, grid_p, final, obs_plot, psi_plots, bg_df, pts_df)
   
   # Force R's Garbage Collector to release the RAM back to the Mac OS immediately
   gc()
