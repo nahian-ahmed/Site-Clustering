@@ -762,7 +762,8 @@ for (sp in species_list) {
 
 
   # Define the target resolutions (in meters)
-  target_res <- c(100, 200, 500, 1000, 2500)
+  # target_res <- c(100, 200, 500, 1000, 2500)
+  target_res <- c(100, 200, 500, 1000, 2500, 5000, 10000)
   
   all_psi_data <- list()
   plot_idx <- 1
@@ -798,9 +799,9 @@ for (sp in species_list) {
       
       
       # --- VISUAL DOWNSAMPLING ---
-      # Dynamically calculates the perfect factor to keep pixels under 1M
-      if (terra::ncell(psi_rast_wgs84) > 1000000) {
-        plot_agg_factor <- ceiling(sqrt(terra::ncell(psi_rast_wgs84) / 1000000))
+      # Dynamically calculates the perfect factor to keep pixels under 2M
+      if (terra::ncell(psi_rast_wgs84) > 2000000) {
+        plot_agg_factor <- ceiling(sqrt(terra::ncell(psi_rast_wgs84) / 2000000))
         psi_rast_wgs84 <- terra::aggregate(psi_rast_wgs84, fact = plot_agg_factor, fun = "mean", na.rm = TRUE)
       }
       
@@ -868,7 +869,7 @@ for (sp in species_list) {
   
   # Save the single plot
   ggsave(file.path(map_output_dir, paste0(sp, "_scales.png")), 
-         plot = final_scales, width = 11, height = 30, dpi = 240)
+         plot = final_scales, width = 15, height = 30, dpi = 240)
 
   # --- MEMORY CLEANUP ---
   # Explicitly remove massive plotting dataframes and ggplot objects
