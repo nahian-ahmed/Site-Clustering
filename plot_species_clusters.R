@@ -762,8 +762,7 @@ for (sp in species_list) {
 
 
   # Define the target resolutions (in meters)
-  # target_res <- c(100, 200, 500, 1000, 2500)
-  target_res <- c(100, 200, 500, 1000, 2500, 5000, 10000)
+  target_res <- c(100, 200, 500, 1000, 2500)
   
   all_psi_data <- list()
   plot_idx <- 1
@@ -869,7 +868,7 @@ for (sp in species_list) {
   
   # Save the single plot
   ggsave(file.path(map_output_dir, paste0(sp, "_scales.png")), 
-         plot = final_scales, width = 15, height = 30, dpi = 240)
+         plot = final_scales, width = 11, height = 30, dpi = 240)
 
   # --- MEMORY CLEANUP ---
   # Explicitly remove massive plotting dataframes and ggplot objects
