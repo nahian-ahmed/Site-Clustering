@@ -50,8 +50,7 @@ n_unique_locations <- 5000
 
 # --- True parameter values ---
 true_alphas <- c(alpha_int = 0.5, alpha_cov = -1.0)
-# true_betas <- c(beta_int = 1.0, beta_cov = 1.0)
-true_betas <- c(beta_int = 4.0, beta_cov = 1.0)
+true_betas <- c(beta_int = 4.0, beta_cov = 1.0) # Abundance fixed to ~50 birds/km2
 
 # --- Methods to Test ---
 methods_to_test <- c(
@@ -108,9 +107,6 @@ simulate_ebird_checklists_updated <- function(total_n, accessibility_raster, sce
   sampled_pts$loc_idx <- cellFromXY(accessibility_raster, sampled_pts[,c("x", "y")])
   
   # --- GEOMETRY FIX: JITTER TO PREVENT VORONOI CRASH ---
-  # GEOS st_voronoi crashes if points are on a perfect mathematical grid.
-  # We apply a slight unique jitter (up to 10m) to each location to break grid degeneracy,
-  # but ensure all checklists at the same 'loc_idx' still get the EXACT same jitter.
   uniq_locs <- unique(sampled_pts$loc_idx)
   jit_x <- runif(length(uniq_locs), -10, 10)
   jit_y <- runif(length(uniq_locs), -10, 10)
@@ -266,8 +262,6 @@ for (scen in scenarios) {
     
     X_cell <- model.matrix(~cell_cov1, data = cellCovs_df)
     lambda_j <- exp(X_cell %*% true_betas) * cell_area_km2 
-    psi_j <- 1 - exp(-lambda_j)
-    Z_j <- rbinom(full_n_cells, 1, psi_j) 
     
     # --- B. SIMULATE OBSERVER DATA ---
     cat("Simulating observation process...\n")
@@ -275,19 +269,33 @@ for (scen in scenarios) {
     checklists_df <- simulate_ebird_checklists_updated(5000, access_rast, scenario = scen)
     checklists_df$obs_cov1 <- rnorm(nrow(checklists_df))
     
-    # IMPORTANT: Extract true biology based on TRUE location, not reported pin
+    # IMPORTANT: Extract true biology based on a 200m survey radius around the TRUE location
     pts_true_vect <- terra::vect(as.matrix(checklists_df[, c("true_x", "true_y")]), type="points", crs=sf_crs)
-    cell_ids_true <- terra::cellFromXY(r_cov, terra::crds(pts_true_vect))
-    checklists_df$cell_id <- cell_ids_true
-    checklists_df <- checklists_df[!is.na(checklists_df$cell_id), ]
     
-    checklists_df$true_Z <- Z_j[checklists_df$cell_id]
+    # Buffer the true points by 200m to represent the actual area the birder looked at
+    true_survey_buffers <- terra::buffer(pts_true_vect, width = buffer_m)
+    
+    # Create a lambda raster to extract expected abundance
+    r_lambda <- r_cov 
+    terra::values(r_lambda) <- lambda_j 
+    
+    # Extract total expected abundance in the true survey path
+    extracted_lambda <- terra::extract(r_lambda, true_survey_buffers, fun = sum, exact = TRUE, ID = FALSE, na.rm = TRUE)
+    checklists_df$true_site_lambda <- extracted_lambda[, 1]
+    
+    # Remove any buffers that fell completely off the edge of the raster
+    checklists_df <- checklists_df[!is.na(checklists_df$true_site_lambda), ]
+    
+    # Probability the birder's 200m survey area contains AT LEAST one bird
+    checklists_df$true_Z <- rbinom(nrow(checklists_df), 1, prob = 1 - exp(-checklists_df$true_site_lambda))
+    
+    # Observation process (imperfect detection given presence)
     logit_p <- true_alphas["alpha_int"] + true_alphas["alpha_cov"] * checklists_df$obs_cov1
     checklists_df$p <- plogis(logit_p)
     checklists_df$species_observed <- rbinom(nrow(checklists_df), 1, checklists_df$p * checklists_df$true_Z)
     
-    # Store true covariate for later comparison
-    checklists_df$cell_cov1 <- cellCovs_df$cell_cov1[checklists_df$cell_id]
+    # Store true covariate (average of their survey area) for later comparison
+    checklists_df$cell_cov1 <- terra::extract(r_cov, true_survey_buffers, fun = mean, exact = TRUE, ID = FALSE, na.rm = TRUE)[, 1]
     
     # --- Generate Landscape Plot for Sim 1 ---
     if (sim == 1) {
