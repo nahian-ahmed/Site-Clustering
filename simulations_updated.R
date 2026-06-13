@@ -34,6 +34,7 @@ set.seed(123)
 ##########
 
 # --- Simulation repetitions ---
+scenarios <- c("Random", "Roads")
 n_sims <- 10 # SET TO 100 FOR FULL RUN
 n_reps <- 30 # Number of random-start repetitions for model fitting
 
@@ -44,8 +45,8 @@ res_m <- 100 # Each cell is 100m x 100m
 cell_area_km2 <- (res_m / 1000)^2
 
 # --- Checklist Simulation Parameters ---
-total_checklists <- 5000
-n_unique_locations <- 2500 
+total_checklists <- 10000
+n_unique_locations <- 5000 
 
 # --- True parameter values ---
 true_alphas <- c(alpha_int = 0.5, alpha_cov = -1.0)
@@ -73,46 +74,67 @@ if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 # 3. HELPER FUNCTIONS
 ##########
 
-simulate_ebird_checklists <- function(total_n, n_unique, max_coord) {
+# NEW: Generates a road network and distance-decay surface
+generate_accessibility_surface <- function(r_template, n_roads = 3) {
+  ext <- ext(r_template)
+  lines_list <- list()
+  for(i in 1:n_roads) {
+    # Generate random paths
+    p1 <- c(runif(1, ext$xmin, ext$xmax), runif(1, ext$ymin, ext$ymax))
+    p2 <- c(runif(1, ext$xmin, ext$xmax), runif(1, ext$ymin, ext$ymax))
+    lines_list[[i]] <- st_linestring(matrix(c(p1, p2), ncol=2, byrow=TRUE))
+  }
+  roads_sf <- st_sfc(lines_list, crs = "EPSG:5070")
+  roads_vect <- vect(roads_sf)
   
-  # 1. Generate unique random coordinates (pulled slightly inward)
-  locs_x <- runif(n_unique, 200, max_coord - 200)
-  locs_y <- runif(n_unique, 200, max_coord - 200)
+  # Calculate distance to roads
+  dist_rast <- distance(r_template, roads_vect)
   
-  # 2. RESTORE THE EBIRD SPATIAL BIAS (The Hotspot Lottery)
-  # This creates severe spatial clustering, which grid/lat-long methods handle poorly!
-  weights <- (1:n_unique)^(-1.5) 
-  weights <- weights / sum(weights)
+  # Create Probability: Higher near roads (e.g., e^-dist)
+  # Scale distance by 1/5th of the landscape width to make the gradient smooth
+  scale_factor <- (ext$xmax - ext$xmin) / 5
+  prob_rast <- exp(-dist_rast / scale_factor)
+  return(prob_rast)
+}
+
+simulate_ebird_checklists_updated <- function(total_n, accessibility_raster, scenario = "Random") {
   
-  # Oversample initially because we are about to trim the excess
-#   sampled_loc_indices <- sample(1:n_unique, size = total_n * 3, replace = TRUE, prob = weights)
-  sampled_loc_indices <- sample(1:n_unique, size = total_n * 10, replace = TRUE, prob = weights)
   
-  # 3. THE MAGIC SHIELD: Cap maximum visits to 15 per location.
-  # This keeps the spatial clustering bias, but prevents likelihood underflow (NaNs) in occuPPM.
-  df_temp <- data.frame(loc_idx = sampled_loc_indices)
-  df_temp <- df_temp %>%
-    dplyr::group_by(loc_idx) %>%
-    dplyr::mutate(visit_num = dplyr::row_number()) %>%
-    dplyr::filter(visit_num <= 15) %>%  # <--- Cap applied here
-    dplyr::ungroup() %>%
-    dplyr::slice_head(n = total_n) # Trim back exactly to total_n
+
+  if (scenario == "Roads") {
+    probs <- accessibility_raster
+  } else {
+    # FIX: Replace app() with setValues()
+    probs <- accessibility_raster
+    terra::values(probs) <- 1 
+  }
   
-  final_indices <- df_temp$loc_idx
+  # Sample points based on the probability surface
+  sampled_pts <- spatSample(probs, size = total_n * 5, method = "weights", xy = TRUE)
   
-  # 4. Convert meter coordinates to actual Lat/Longs (EPSG:4326) 
-  sim_coords <- data.frame(x = locs_x[final_indices], y = locs_y[final_indices])
-  sim_sf <- sf::st_as_sf(sim_coords, coords = c("x", "y"), crs = "EPSG:5070")
-  sim_sf_ll <- sf::st_transform(sim_sf, 4326)
-  ll_coords <- sf::st_coordinates(sim_sf_ll)
+  # Apply "Hotspot" logic (Capping)
+  sampled_pts$loc_idx <- cellFromXY(accessibility_raster, sampled_pts[,c("x", "y")])
+  
+  df_temp <- sampled_pts %>%
+    group_by(loc_idx) %>%
+    mutate(visit_num = row_number()) %>%
+    filter(visit_num <= 15) %>% 
+    ungroup() %>%
+    slice_head(n = total_n)
+  
+  # Convert to Lat/Long
+  pts_sf <- st_as_sf(df_temp, coords = c("x", "y"), crs = "EPSG:5070")
+  pts_sf_ll <- st_transform(pts_sf, 4326)
+  ll_coords <- st_coordinates(pts_sf_ll)
   
   df <- data.frame(
     checklist_id = 1:nrow(df_temp),
     longitude = ll_coords[, 1],
     latitude  = ll_coords[, 2],
-    formatted_date = as.Date("2018-06-01") + sample(1:30, nrow(df_temp), replace=TRUE),
-    locality_id = paste0("L", final_indices)
+    locality_id = paste0("L", df_temp$loc_idx),
+    observation_date = as.Date("2026-01-01") + sample(0:30, nrow(df_temp), replace = TRUE)
   )
+  
   return(df)
 }
 
@@ -187,198 +209,228 @@ fit_occuPPM_model_sim <- function(umf, state_formula, obs_formula, n_reps = 30,
 ##########
 
 all_results_df <- data.frame()
-plot_list_sim1 <- list() 
+plot_list_sim1 <- list()
+plot_collection <- list(Random = list(), Roads = list())
 
-for (sim in 1:n_sims) {
-  
-  cat(sprintf("\n===========================================\n"))
-  cat(sprintf("=== STARTING SIMULATION %d of %d ===\n", sim, n_sims))
-  cat(sprintf("===========================================\n"))
-  
-  # --- A. GENERATE LANDSCAPE ---
-  cat("Generating true cellular landscape...\n")
-  
-  r_cov <- terra::rast(nrows=full_grid_dim, ncols=full_grid_dim, 
-                       xmin=0, xmax=full_grid_dim * res_m, 
-                       ymin=0, ymax=full_grid_dim * res_m,
-                       vals=scale(rnorm(full_n_cells)))
-  names(r_cov) <- "cell_cov1"
-  
-  # Assign Raster CRS Early
-  sf_crs <- "EPSG:5070"
-  terra::crs(r_cov) <- sf_crs
-  
-  fw <- terra::focalMat(r_cov, 3 * res_m, type = "Gauss")
-  r_cov <- terra::focal(r_cov, w = fw, fun = sum, na.rm = TRUE)
-  terra::values(r_cov) <- as.vector(scale(terra::values(r_cov)))
-  
-  cellCovs_df <- data.frame(cell_cov1 = terra::values(r_cov, mat=FALSE))
-  cellCovs_df$cell_cov1[is.na(cellCovs_df$cell_cov1)] <- 0
+    
+for (scen in scenarios) {
+  for (sim in 1:n_sims) {
+    
+    cat(sprintf("\n===========================================\n"))
+    cat(sprintf("=== STARTING SIMULATION %d of %d ===\n", sim, n_sims))
+    cat(sprintf("===========================================\n"))
+    
+    # --- A. GENERATE LANDSCAPE ---
+    cat("Generating true cellular landscape...\n")
+    
+    r_cov <- terra::rast(nrows=full_grid_dim, ncols=full_grid_dim, 
+                        xmin=0, xmax=full_grid_dim * res_m, 
+                        ymin=0, ymax=full_grid_dim * res_m,
+                        vals=scale(rnorm(full_n_cells)))
+    names(r_cov) <- "cell_cov1"
 
-  
-  
-  X_cell <- model.matrix(~cell_cov1, data = cellCovs_df)
-  lambda_j <- exp(X_cell %*% true_betas) * cell_area_km2 
-  psi_j <- 1 - exp(-lambda_j)
-  Z_j <- rbinom(full_n_cells, 1, psi_j) 
-  
-  r_abund <- r_cov; terra::values(r_abund) <- lambda_j
-  r_occ <- r_cov; terra::values(r_occ) <- Z_j
-  
-  
-  # --- B. SIMULATE OBSERVER DATA ---
-  cat("Simulating observation process...\n")
-  
-  checklists_df <- simulate_ebird_checklists(total_checklists, n_unique_locations, full_grid_dim * res_m)
-  
-  # Dynamically match the number of rows that survived the cap!
-  checklists_df$obs_cov1 <- rnorm(nrow(checklists_df))
-  
+    # Assign Raster CRS Early
+    sf_crs <- "EPSG:5070"
+    terra::crs(r_cov) <- sf_crs
+    
+    access_rast <- generate_accessibility_surface(r_cov)
 
-  # Project the Lat/Longs back to meters to find the correct Raster Cell
-  pts_vect <- terra::vect(checklists_df, geom=c("longitude", "latitude"), crs="EPSG:4326")
-  pts_vect_proj <- terra::project(pts_vect, r_cov)
-  cell_ids <- terra::cellFromXY(r_cov, terra::crds(pts_vect_proj))
-  checklists_df$cell_id <- cell_ids
-  
-  # Sanitize against edge-case NAs
-  checklists_df <- checklists_df[!is.na(checklists_df$cell_id), ]
-  
-  checklists_df$true_Z <- Z_j[checklists_df$cell_id]
-  logit_p <- true_alphas["alpha_int"] + true_alphas["alpha_cov"] * checklists_df$obs_cov1
-  checklists_df$p <- plogis(logit_p)
-  checklists_df$species_observed <- rbinom(nrow(checklists_df), 1, checklists_df$p * checklists_df$true_Z)
-  
-  checklists_df$cell_cov1 <- cellCovs_df$cell_cov1[checklists_df$cell_id]
+   
+    
+    fw <- terra::focalMat(r_cov, 3 * res_m, type = "Gauss")
+    r_cov <- terra::focal(r_cov, w = fw, fun = sum, na.rm = TRUE)
+    terra::values(r_cov) <- as.vector(scale(terra::values(r_cov)))
+    
+    cellCovs_df <- data.frame(cell_cov1 = terra::values(r_cov, mat=FALSE))
+    cellCovs_df$cell_cov1[is.na(cellCovs_df$cell_cov1)] <- 0
 
-  cat(sprintf("      [Data Check] Total positive detections: %d out of %d checklists\n", sum(checklists_df$species_observed), nrow(checklists_df)))
-
-  # Count visits per unique location
-  checklists_df <- checklists_df %>%
-    dplyr::group_by(locality_id) %>%
-    dplyr::mutate(n_visits = dplyr::n()) %>%
-    dplyr::ungroup()
-  
-  # Pre-filter datasets to match species_clusters.R logic
-  checklists_1to10_df <- checklists_df %>% dplyr::filter(n_visits >= 1 & n_visits <= 10)
-  checklists_2to10_df <- checklists_df %>% dplyr::filter(n_visits >= 2 & n_visits <= 10)
-  
-  cat(sprintf("      [Data Split] lat-long uses: %d checklists\n", nrow(checklists_df)))
-  cat(sprintf("      [Data Split] 1to10 uses: %d checklists\n", nrow(checklists_1to10_df)))
-  cat(sprintf("      [Data Split] 2to10, grids, and ML methods use: %d checklists\n", nrow(checklists_2to10_df)))
-
-  
-  # --- C. CLUSTERING & MODELING LOOP ---
-  for (method in methods_to_test) {
-    cat(sprintf("\n  >>> Applying Method: %s\n", method))
+    
+    
+    X_cell <- model.matrix(~cell_cov1, data = cellCovs_df)
+    lambda_j <- exp(X_cell %*% true_betas) * cell_area_km2 
+    psi_j <- 1 - exp(-lambda_j)
+    Z_j <- rbinom(full_n_cells, 1, psi_j) 
+    
+    r_abund <- r_cov; terra::values(r_abund) <- lambda_j
+    r_occ <- r_cov; terra::values(r_occ) <- Z_j
+    
+    
+    # --- B. SIMULATE OBSERVER DATA ---
+    cat("Simulating observation process...\n")
+    
+    # checklists_df <- simulate_ebird_checklists(total_checklists, n_unique_locations, full_grid_dim * res_m)
+    checklists_df <- simulate_ebird_checklists_updated(5000, access_rast, scenario = scen)
+    
+    # Dynamically match the number of rows that survived the cap!
+    checklists_df$obs_cov1 <- rnorm(nrow(checklists_df))
     
 
-    # ---> ADD THIS CONDITIONAL CHECK <---
-    # Select the correct filtered dataset based on the method
-    if (method == "lat-long") {
-        current_df <- checklists_df
-    } else if (method == "1to10") {
-        current_df <- checklists_1to10_df
-    } else {
-        # Every other method (2to10, 5-cellSq, ClustGeo, DBSC) uses 2to10
-        current_df <- checklists_2to10_df
-    }
+    # Project the Lat/Longs back to meters to find the correct Raster Cell
+    pts_vect <- terra::vect(checklists_df, geom=c("longitude", "latitude"), crs="EPSG:4326")
+    pts_vect_proj <- terra::project(pts_vect, r_cov)
+    cell_ids <- terra::cellFromXY(r_cov, terra::crds(pts_vect_proj))
+    checklists_df$cell_id <- cell_ids
     
-    # Change checklists_df to current_df here:
-    clust_res <- run_clustering_method(method, current_df, state_covs = c("cell_cov1"))
+    # Sanitize against edge-case NAs
+    checklists_df <- checklists_df[!is.na(checklists_df$cell_id), ]
+    
+    checklists_df$true_Z <- Z_j[checklists_df$cell_id]
+    logit_p <- true_alphas["alpha_int"] + true_alphas["alpha_cov"] * checklists_df$obs_cov1
+    checklists_df$p <- plogis(logit_p)
+    checklists_df$species_observed <- rbinom(nrow(checklists_df), 1, checklists_df$p * checklists_df$true_Z)
+    
+    checklists_df$cell_cov1 <- cellCovs_df$cell_cov1[checklists_df$cell_id]
 
-    if (is.null(clust_res) || is.null(clust_res$data) || nrow(clust_res$data) == 0) {
-        cat("      Method failed to cluster or filtered out all data. Skipping.\n")
-        next
-    }
-    
-    clust_df <- clust_res$data
-    
-    cat("      Generating geometries & W matrix...\n")
-    site_geoms <- create_site_geometries(clust_df, r_cov, buffer_m, method)
-    
-    # FIX: Ensure disjoint function knows the input df points are lat/long
-    split_res <- disjoint_site_geometries(site_geoms, clust_df, crs_points = 4326)
-    
-    final_geoms <- split_res$geoms
-    final_clust_df <- split_res$data
-    
-    w_matrix <- generate_overlap_matrix(final_geoms, r_cov)
-    
-    cat("      Fitting occuPPM...\n")
-    umf <- prepare_occuPPM_data(current_df, final_clust_df, w_matrix, c("obs_cov1"), cellCovs_df)
-    
+    cat(sprintf("      [Data Check] Total positive detections: %d out of %d checklists\n", sum(checklists_df$species_observed), nrow(checklists_df)))
 
-    fm <- fit_occuPPM_model_sim(
-        umf, 
-        state_formula = ~cell_cov1, 
-        obs_formula = ~obs_cov1,
-        n_reps = n_reps, stable_reps = 5,
-        optimizer = selected_optimizer,
-        lower = PARAM_LOWER, upper = PARAM_UPPER,
-        init_lower = INIT_LOWER, init_upper = INIT_UPPER
-    )
+    # Count visits per unique location
+    checklists_df <- checklists_df %>%
+      dplyr::group_by(locality_id) %>%
+      dplyr::mutate(n_visits = dplyr::n()) %>%
+      dplyr::ungroup()
     
-    if (is.null(fm)) {
-        cat("      Model failed to converge.\n")
-        est_val <- c(NA, NA, NA, NA)
-    } else {
-        est_val <- c(coef(fm, 'det'), coef(fm, 'state'))
-    }
+    # Pre-filter datasets to match species_clusters.R logic
+    checklists_1to10_df <- checklists_df %>% dplyr::filter(n_visits >= 1 & n_visits <= 10)
+    checklists_2to10_df <- checklists_df %>% dplyr::filter(n_visits >= 2 & n_visits <= 10)
     
-    loop_results <- data.frame(
-      Parameter = c("alpha (det_int)", "alpha (det_cov1)", "beta (state_int)", "beta (state_cov1)"),
-      True_Value = c(true_alphas, true_betas),
-      Estimated_Value = est_val,
-      Method = method,
-      sim_id = sim,
-      M_sites = nrow(final_geoms)
-    )
-    all_results_df <- rbind(all_results_df, loop_results)
+    cat(sprintf("      [Data Split] lat-long uses: %d checklists\n", nrow(checklists_df)))
+    cat(sprintf("      [Data Split] 1to10 uses: %d checklists\n", nrow(checklists_1to10_df)))
+    cat(sprintf("      [Data Split] 2to10, grids, and ML methods use: %d checklists\n", nrow(checklists_2to10_df)))
+
     
-    
-    # --- D. PLOTTING FOR SIM 1 ---
-    if (sim == 1) {
-      cat("      Generating plots for 8x3 grid...\n")
+    # --- C. CLUSTERING & MODELING LOOP ---
+    for (method in methods_to_test) {
+      cat(sprintf("\n  >>> Applying Method: %s\n", method))
       
-      bg_df_cov <- as.data.frame(r_cov, xy=TRUE); names(bg_df_cov)[3] <- "val"
-      bg_df_abund <- as.data.frame(r_abund, xy=TRUE); names(bg_df_abund)[3] <- "val"
-      bg_df_occ <- as.data.frame(r_occ, xy=TRUE); names(bg_df_occ)[3] <- "val"
-      
-      geom_sf <- sf::st_as_sf(final_geoms)
-      
-      # FIX: Plotting points must be projected from Lat/Long to Albers for overlay
-      pts_sf <- sf::st_as_sf(final_clust_df, coords=c("longitude", "latitude"), crs=4326)
-      pts_sf <- sf::st_transform(pts_sf, sf_crs)
-      
-      base_theme <- theme_void() + theme(
-        plot.title = element_text(size=10, hjust=0.5, face="bold"),
-        legend.position = "none"
-      )
-      
-      build_panel <- function(bg_data, fill_scale, title_suffix) {
-        ggplot() +
-          geom_raster(data = bg_data, aes(x=x, y=y, fill=val)) +
-          fill_scale +
-          geom_sf(data = geom_sf, fill=NA, color="red", linewidth=0.3) +
-          geom_sf(data = pts_sf, color="black", size=0.2, alpha=0.5) +
-          coord_sf(expand=FALSE) +
-          labs(title = paste(method, "-", title_suffix)) +
-          base_theme
+
+      # ---> ADD THIS CONDITIONAL CHECK <---
+      # Select the correct filtered dataset based on the method
+      if (method == "lat-long") {
+          current_df <- checklists_df
+      } else if (method == "1to10") {
+          current_df <- checklists_1to10_df
+      } else {
+          # Every other method (2to10, 5-cellSq, ClustGeo, DBSC) uses 2to10
+          current_df <- checklists_2to10_df
       }
       
-      p_cov <- build_panel(bg_df_cov, scale_fill_viridis_c(), "Covariate")
-      p_abund <- build_panel(bg_df_abund, scale_fill_viridis_c(option="magma"), "Abundance")
-      p_occ <- build_panel(bg_df_occ, scale_fill_gradient(low="navyblue", high="yellow"), "Occupancy")
+      # Change checklists_df to current_df here:
+      clust_res <- run_clustering_method(method, current_df, state_covs = c("cell_cov1"))
+
+      if (is.null(clust_res) || is.null(clust_res$data) || nrow(clust_res$data) == 0) {
+          cat("      Method failed to cluster or filtered out all data. Skipping.\n")
+          next
+      }
       
-      plot_list_sim1[[paste0(method, "_cov")]] <- p_cov
-      plot_list_sim1[[paste0(method, "_abund")]] <- p_abund
-      plot_list_sim1[[paste0(method, "_occ")]] <- p_occ
-    }
-    
-  } 
+      clust_df <- clust_res$data
+      
+      cat("      Generating geometries & W matrix...\n")
+      site_geoms <- create_site_geometries(clust_df, r_cov, buffer_m, method)
+      
+      # FIX: Ensure disjoint function knows the input df points are lat/long
+      split_res <- disjoint_site_geometries(site_geoms, clust_df, crs_points = 4326)
+      
+      final_geoms <- split_res$geoms
+      final_clust_df <- split_res$data
+      
+      w_matrix <- generate_overlap_matrix(final_geoms, r_cov)
+      
+      cat("      Fitting occuPPM...\n")
+      umf <- prepare_occuPPM_data(current_df, final_clust_df, w_matrix, c("obs_cov1"), cellCovs_df)
+      
+
+      fm <- fit_occuPPM_model_sim(
+          umf, 
+          state_formula = ~cell_cov1, 
+          obs_formula = ~obs_cov1,
+          n_reps = n_reps, stable_reps = 5,
+          optimizer = selected_optimizer,
+          lower = PARAM_LOWER, upper = PARAM_UPPER,
+          init_lower = INIT_LOWER, init_upper = INIT_UPPER
+      )
+      
+      if (is.null(fm)) {
+          cat("      Model failed to converge.\n")
+          est_val <- c(NA, NA, NA, NA)
+      } else {
+          est_val <- c(coef(fm, 'det'), coef(fm, 'state'))
+      }
+      
+      loop_results <- data.frame(
+        Parameter = c("alpha (det_int)", "alpha (det_cov1)", "beta (state_int)", "beta (state_cov1)"),
+        True_Value = c(true_alphas, true_betas),
+        Estimated_Value = est_val,
+        Method = method,
+        Scenario = scen,
+        sim_id = sim,
+        M_sites = nrow(final_geoms)
+      )
+      all_results_df <- rbind(all_results_df, loop_results)
+      
+      # --- D. PLOTTING FOR SIM 1 ---
+      if (sim == 1) {
+        cat("      Generating plot for this method...\n")
+        
+        # Plot just the Method Geometry (The Red Outlines)
+        geom_sf <- sf::st_as_sf(final_geoms)
+        pts_sf <- sf::st_as_sf(final_clust_df, coords=c("longitude", "latitude"), crs=4326)
+        pts_sf <- sf::st_transform(pts_sf, sf_crs)
+        
+        # Build just the overlay plot
+        p_method <- ggplot() +
+            geom_raster(data = as.data.frame(r_cov, xy=TRUE), aes(x=x, y=y, fill=cell_cov1), alpha=0.3) +
+            geom_sf(data = geom_sf, fill=NA, color="red", linewidth=0.3) +
+            geom_sf(data = pts_sf, color="black", size=0.1, alpha=0.3) +
+            coord_sf(expand=FALSE) +
+            labs(title = method) +
+            theme_void() + theme(legend.position="none", plot.title=element_text(size=8))
+            
+        # Store in the structured list
+        plot_collection[[scen]][[method]] <- p_method
+      }
+      # if (sim == 1) {
+      #   cat("      Generating plots for 8x3 grid...\n")
+        
+      #   bg_df_cov <- as.data.frame(r_cov, xy=TRUE); names(bg_df_cov)[3] <- "val"
+      #   bg_df_abund <- as.data.frame(r_abund, xy=TRUE); names(bg_df_abund)[3] <- "val"
+      #   bg_df_occ <- as.data.frame(r_occ, xy=TRUE); names(bg_df_occ)[3] <- "val"
+        
+      #   geom_sf <- sf::st_as_sf(final_geoms)
+        
+      #   # FIX: Plotting points must be projected from Lat/Long to Albers for overlay
+      #   pts_sf <- sf::st_as_sf(final_clust_df, coords=c("longitude", "latitude"), crs=4326)
+      #   pts_sf <- sf::st_transform(pts_sf, sf_crs)
+        
+      #   base_theme <- theme_void() + theme(
+      #     plot.title = element_text(size=10, hjust=0.5, face="bold"),
+      #     legend.position = "none"
+      #   )
+        
+      #   build_panel <- function(bg_data, fill_scale, title_suffix) {
+      #     ggplot() +
+      #       geom_raster(data = bg_data, aes(x=x, y=y, fill=val)) +
+      #       fill_scale +
+      #       geom_sf(data = geom_sf, fill=NA, color="red", linewidth=0.3) +
+      #       geom_sf(data = pts_sf, color="black", size=0.2, alpha=0.5) +
+      #       coord_sf(expand=FALSE) +
+      #       labs(title = paste(method, "-", title_suffix)) +
+      #       base_theme
+      #   }
+        
+      #   p_cov <- build_panel(bg_df_cov, scale_fill_viridis_c(), "Covariate")
+      #   p_abund <- build_panel(bg_df_abund, scale_fill_viridis_c(option="magma"), "Abundance")
+      #   p_occ <- build_panel(bg_df_occ, scale_fill_gradient(low="navyblue", high="yellow"), "Occupancy")
+        
+      #   plot_list_sim1[[paste0(method, "_cov")]] <- p_cov
+      #   plot_list_sim1[[paste0(method, "_abund")]] <- p_abund
+      #   plot_list_sim1[[paste0(method, "_occ")]] <- p_occ
+      # }
+      
+    } 
+  }
 } 
 
+##########
 ##########
 # 5. SAVE RESULTS & GENERATE FINAL PLOTS
 ##########
@@ -387,32 +439,49 @@ cat("\n--- Generating Final Outputs ---\n")
 
 write.csv(all_results_df, file.path(output_dir, "clustering_sim_results.csv"), row.names=FALSE)
 
-if (length(plot_list_sim1) > 0) {
-  spatial_grid <- patchwork::wrap_plots(plot_list_sim1, ncol = 3, nrow = length(methods_to_test))
-  ggsave(file.path(output_dir, "spatial_method_comparison.png"), 
-         plot = spatial_grid, width = 12, height = 24, dpi = 300)
+# --- A. Spatial Comparison Plots (Two separate files) ---
+for (scen in names(plot_collection)) {
+  # Wrap the list of plots for this scenario
+  spatial_grid <- patchwork::wrap_plots(plot_collection[[scen]], ncol = 4) + 
+                  plot_annotation(title = paste("Spatial Method Comparison -", scen))
+  
+  ggsave(file.path(output_dir, paste0("spatial_method_comparison_", scen, ".png")), 
+         plot = spatial_grid, width = 14, height = 12, dpi = 300)
 }
 
+# --- B. Parameter Error Boxplots (Facetted by Scenario) ---
 all_results_df$Error <- all_results_df$Estimated_Value - all_results_df$True_Value
 all_results_df$Method <- factor(all_results_df$Method, levels = methods_to_test)
 
 create_err_plot <- function(param_name, title) {
   df_sub <- all_results_df[all_results_df$Parameter == param_name, ]
+  
   ggplot(df_sub, aes(x = Method, y = Error, fill = Method)) +
     geom_boxplot(outlier.size = 0.5) +
     geom_hline(yintercept = 0, color="red", linetype="dashed", linewidth=1) +
+    facet_grid(~ Scenario) + # THIS ADDS THE SPLIT
     theme_bw() +
     labs(title = title, x = NULL, y = "Error (Est - True)") +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none")
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1), 
+      legend.position = "bottom",
+      strip.background = element_rect(fill="lightgrey")
+    )
 }
 
+# Generate the 4 plots
 p_err1 <- create_err_plot("beta (state_int)", "State Intercept")
 p_err2 <- create_err_plot("beta (state_cov1)", "State Slope")
 p_err3 <- create_err_plot("alpha (det_int)", "Observation Intercept")
 p_err4 <- create_err_plot("alpha (det_cov1)", "Observation Slope")
 
-combined_error_plot <- (p_err1 | p_err2) / (p_err3 | p_err4)
+# Combine using patchwork
+# We add & theme(legend.position="none") if we only want one legend at the bottom
+combined_error_plot <- (p_err1 | p_err2) / (p_err3 | p_err4) + 
+                       plot_layout(guides = "collect") & theme(legend.position = "bottom")
+
 ggsave(file.path(output_dir, "parameter_error_boxplots.png"), 
-       plot = combined_error_plot, width = 12, height = 10, dpi = 300)
+       plot = combined_error_plot, width = 14, height = 12, dpi = 300)
 
 cat("--- Simulation Completed Successfully! ---\n")
+
