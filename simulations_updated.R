@@ -69,44 +69,53 @@ selected_optimizer <- "nlminb"
 output_dir <- file.path("output", "simulation_experiments", "clustering_comparison")
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
+##########
+# 3. HELPER FUNCTIONS
+##########
 
-##########
-# 3. HELPER: SIMULATE OBSERVER LOCATIONS
-##########
 simulate_ebird_checklists <- function(total_n, n_unique, max_coord) {
   
-  # 1. Generate unique random coordinates in meters
-  locs_x <- runif(n_unique, 5, max_coord - 5)
-  locs_y <- runif(n_unique, 5, max_coord - 5)
+  # 1. Generate unique random coordinates (pulled slightly inward)
+  locs_x <- runif(n_unique, 200, max_coord - 200)
+  locs_y <- runif(n_unique, 200, max_coord - 200)
   
-  # 2. Generate skewed visitation frequency
+  # 2. RESTORE THE EBIRD SPATIAL BIAS (The Hotspot Lottery)
+  # This creates severe spatial clustering, which grid/lat-long methods handle poorly!
   weights <- (1:n_unique)^(-1.5) 
   weights <- weights / sum(weights)
-  sampled_loc_indices <- sample(1:n_unique, size = total_n, replace = TRUE, prob = weights)
   
-  # 3. FIX: Convert meter coordinates to actual Lat/Longs (EPSG:4326) 
-  # This ensures they pass safely through your model_helpers.R pipeline
-  sim_coords <- data.frame(
-    x = locs_x[sampled_loc_indices],
-    y = locs_y[sampled_loc_indices]
-  )
+  # Oversample initially because we are about to trim the excess
+  sampled_loc_indices <- sample(1:n_unique, size = total_n * 3, replace = TRUE, prob = weights)
+  
+  # 3. THE MAGIC SHIELD: Cap maximum visits to 15 per location.
+  # This keeps the spatial clustering bias, but prevents likelihood underflow (NaNs) in occuPPM.
+  df_temp <- data.frame(loc_idx = sampled_loc_indices)
+  df_temp <- df_temp %>%
+    dplyr::group_by(loc_idx) %>%
+    dplyr::mutate(visit_num = dplyr::row_number()) %>%
+    dplyr::filter(visit_num <= 15) %>%  # <--- Cap applied here
+    dplyr::ungroup() %>%
+    dplyr::slice_head(n = total_n) # Trim back exactly to total_n
+  
+  final_indices <- df_temp$loc_idx
+  
+  # 4. Convert meter coordinates to actual Lat/Longs (EPSG:4326) 
+  sim_coords <- data.frame(x = locs_x[final_indices], y = locs_y[final_indices])
   sim_sf <- sf::st_as_sf(sim_coords, coords = c("x", "y"), crs = "EPSG:5070")
   sim_sf_ll <- sf::st_transform(sim_sf, 4326)
   ll_coords <- sf::st_coordinates(sim_sf_ll)
   
   df <- data.frame(
-    checklist_id = 1:total_n,
+    checklist_id = 1:nrow(df_temp),
     longitude = ll_coords[, 1],
     latitude  = ll_coords[, 2],
-    formatted_date = as.Date("2018-06-01") + sample(1:30, total_n, replace=TRUE),
-    locality_id = paste0("L", sampled_loc_indices)
+    formatted_date = as.Date("2018-06-01") + sample(1:30, nrow(df_temp), replace=TRUE),
+    locality_id = paste0("L", final_indices)
   )
   return(df)
 }
 
-##########
-# 3. HELPER FUNCTIONS
-##########
+
 
 #' Custom Fit Function for Simulations (Prevents modifying shared model_helpers.R)
 fit_occuPPM_model_sim <- function(umf, state_formula, obs_formula, n_reps = 30, 
