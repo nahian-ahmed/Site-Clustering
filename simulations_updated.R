@@ -73,34 +73,35 @@ if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 # 3. HELPER FUNCTIONS
 ##########
 
-simulate_ebird_checklists <- function(total_n, n_unique, max_coord) {
+simulate_ebird_checklists <- function(total_n, n_unique, r_cov_layer, cell_df) {
   
-  # 1. Generate unique random coordinates (pulled slightly inward)
-  locs_x <- runif(n_unique, 200, max_coord - 200)
-  locs_y <- runif(n_unique, 200, max_coord - 200)
+  # 1. Environmentally-Driven Observer Bias
+  # Observers prefer high-habitat areas. This forces spatial clustering
+  # along habitat contours, which MAUP/grids will chop up, but ClustGeo will perfectly trace!
+  visit_probs <- exp(cell_df$cell_cov1 * 2.5)
+  hotspot_cells <- sample(1:nrow(cell_df), size = n_unique, replace = FALSE, prob = visit_probs)
+  base_coords <- terra::xyFromCell(r_cov_layer, hotspot_cells)
   
-  # 2. RESTORE THE EBIRD SPATIAL BIAS (The Hotspot Lottery)
-  # This creates severe spatial clustering, which grid/lat-long methods handle poorly!
-  weights <- (1:n_unique)^(-1.5) 
+  locs_x <- base_coords[, "x"]
+  locs_y <- base_coords[, "y"]
+  
+  # 2. Distribute checklists among these habitat hotspots
+  weights <- (1:n_unique)^(-1.0) 
   weights <- weights / sum(weights)
+  sampled_loc_indices <- sample(1:n_unique, size = total_n * 2, replace = TRUE, prob = weights)
   
-  # Oversample initially because we are about to trim the excess
-#   sampled_loc_indices <- sample(1:n_unique, size = total_n * 3, replace = TRUE, prob = weights)
-  sampled_loc_indices <- sample(1:n_unique, size = total_n * 10, replace = TRUE, prob = weights)
-  
-  # 3. THE MAGIC SHIELD: Cap maximum visits to 15 per location.
-  # This keeps the spatial clustering bias, but prevents likelihood underflow (NaNs) in occuPPM.
+  # 3. Cap visits to prevent NaN likelihoods
   df_temp <- data.frame(loc_idx = sampled_loc_indices)
   df_temp <- df_temp %>%
     dplyr::group_by(loc_idx) %>%
     dplyr::mutate(visit_num = dplyr::row_number()) %>%
-    dplyr::filter(visit_num <= 15) %>%  # <--- Cap applied here
+    dplyr::filter(visit_num <= 15) %>%
     dplyr::ungroup() %>%
-    dplyr::slice_head(n = total_n) # Trim back exactly to total_n
+    dplyr::slice_head(n = total_n)
   
   final_indices <- df_temp$loc_idx
   
-  # 4. Convert meter coordinates to actual Lat/Longs (EPSG:4326) 
+  # 4. Convert to Lat/Long
   sim_coords <- data.frame(x = locs_x[final_indices], y = locs_y[final_indices])
   sim_sf <- sf::st_as_sf(sim_coords, coords = c("x", "y"), crs = "EPSG:5070")
   sim_sf_ll <- sf::st_transform(sim_sf, 4326)
@@ -115,7 +116,6 @@ simulate_ebird_checklists <- function(total_n, n_unique, max_coord) {
   )
   return(df)
 }
-
 
 
 #' Custom Fit Function for Simulations (Prevents modifying shared model_helpers.R)
@@ -225,13 +225,11 @@ for (sim in 1:n_sims) {
   r_abund <- r_cov; terra::values(r_abund) <- lambda_j
   r_occ <- r_cov; terra::values(r_occ) <- Z_j
   
-  
+
   # --- B. SIMULATE OBSERVER DATA ---
   cat("Simulating observation process...\n")
   
-  checklists_df <- simulate_ebird_checklists(total_checklists, n_unique_locations, full_grid_dim * res_m)
-  
-  # Dynamically match the number of rows that survived the cap!
+  checklists_df <- simulate_ebird_checklists(total_checklists, n_unique_locations, r_cov, cellCovs_df)
   checklists_df$obs_cov1 <- rnorm(nrow(checklists_df))
   
 
@@ -265,7 +263,7 @@ for (sim in 1:n_sims) {
   
   cat(sprintf("      [Data Split] lat-long uses: %d checklists\n", nrow(checklists_df)))
   cat(sprintf("      [Data Split] 1to10 uses: %d checklists\n", nrow(checklists_1to10_df)))
-  cat(sprintf("      [Data Split] 2to10+ methods use: %d checklists\n", nrow(checklists_2to10_df)))
+  cat(sprintf("      [Data Split] 2to10, grids, and ML methods use: %d checklists\n", nrow(checklists_2to10_df)))
 
   
   # --- C. CLUSTERING & MODELING LOOP ---
@@ -347,7 +345,10 @@ for (sim in 1:n_sims) {
       
       geom_sf <- sf::st_as_sf(final_geoms)
       
-      # FIX: Plotting points must be projected from Lat/Long to Albers for overlay
+      # FIX 1: Force plotting geometry back to EPSG:5070 (Meters)
+      if (is.na(sf::st_crs(geom_sf))) sf::st_crs(geom_sf) <- 4326
+      geom_sf <- sf::st_transform(geom_sf, sf_crs)
+      
       pts_sf <- sf::st_as_sf(final_clust_df, coords=c("longitude", "latitude"), crs=4326)
       pts_sf <- sf::st_transform(pts_sf, sf_crs)
       
@@ -356,13 +357,15 @@ for (sim in 1:n_sims) {
         legend.position = "none"
       )
       
+
       build_panel <- function(bg_data, fill_scale, title_suffix) {
         ggplot() +
           geom_raster(data = bg_data, aes(x=x, y=y, fill=val)) +
           fill_scale +
-          geom_sf(data = geom_sf, fill=NA, color="red", linewidth=0.3) +
-          geom_sf(data = pts_sf, color="black", size=0.2, alpha=0.5) +
-          coord_sf(expand=FALSE) +
+          # inherit.aes=FALSE stops ggplot from confusing raster x/y with geometry coords
+          geom_sf(data = geom_sf, fill=NA, color="red", linewidth=0.3, inherit.aes=FALSE) +
+          geom_sf(data = pts_sf, color="black", size=0.2, alpha=0.5, inherit.aes=FALSE) +
+          coord_sf(crs = sf_crs, expand=FALSE) + 
           labs(title = paste(method, "-", title_suffix)) +
           base_theme
       }
