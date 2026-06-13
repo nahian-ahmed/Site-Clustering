@@ -54,7 +54,7 @@ true_betas <- c(beta_int = -5.0, beta_cov = 1.0)
 # --- Methods to Test ---
 methods_to_test <- c(
   "lat-long", "1to10", "2to10", 
-  "5-kmSq", "10-kmSq", "20-kmSq", 
+  "0.25-kmSq", "1-kmSq", "4-kmSq",  # <--- EXACT MATCH FOR 5, 10, 20 CELLS
   "clustGeo-50-50", "DBSC" 
 )
 
