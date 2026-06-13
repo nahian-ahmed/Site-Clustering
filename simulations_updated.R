@@ -49,7 +49,7 @@ n_unique_locations <- 1500
 
 # --- True parameter values ---
 true_alphas <- c(alpha_int = 0.5, alpha_cov = -1.0)
-true_betas <- c(beta_int = 1.0, beta_cov = 1.0)
+true_betas <- c(beta_int = 3.0, beta_cov = 1.0)
 
 # --- Methods to Test ---
 methods_to_test <- c(
@@ -169,7 +169,7 @@ for (sim in 1:n_sims) {
   checklists_df$species_observed <- rbinom(nrow(checklists_df), 1, checklists_df$p * checklists_df$true_Z)
   
   checklists_df$cell_cov1 <- cellCovs_df$cell_cov1[checklists_df$cell_id]
-  
+
   cat(sprintf("      [Data Check] Total positive detections: %d out of %d checklists\n", sum(checklists_df$species_observed), nrow(checklists_df)))
   
   # --- C. CLUSTERING & MODELING LOOP ---
