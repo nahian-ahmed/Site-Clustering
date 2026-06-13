@@ -255,12 +255,9 @@ cat("\nGenerating 4x3 Spatial Plot (sampling_extents.png)...\n")
 cov_limits <- range(c(plot_data$Cell$covariate, plot_data$Small$covariate, plot_data$Medium$covariate, plot_data$Large$covariate), na.rm=TRUE)
 abund_limits <- range(c(plot_data$Cell$abundance, plot_data$Small$abundance, plot_data$Medium$abundance, plot_data$Large$abundance), na.rm=TRUE)
 
-# FIX: Moved all legend formatting directly into the base_theme
-base_theme <- ggplot2::theme_minimal() + ggplot2::theme(
-  axis.text = ggplot2::element_blank(), axis.ticks = ggplot2::element_blank(),
-  panel.grid = ggplot2::element_blank(), plot.margin = ggplot2::margin(2, 2, 2, 2, "pt"),
-  plot.title = ggplot2::element_text(hjust = 0.5, size = 15, face = "bold"),
-  axis.title.y = ggplot2::element_text(size = 14, face = "bold", angle = 90, vjust = 0.5),
+# FIX: Set the global ggplot2 theme BEFORE building plots. 
+# Patchwork automatically reads this global theme to position collected guides.
+ggplot2::theme_set(ggplot2::theme_minimal() + ggplot2::theme(
   legend.position = "bottom",
   legend.justification = "center",
   legend.box = "horizontal",
@@ -269,6 +266,14 @@ base_theme <- ggplot2::theme_minimal() + ggplot2::theme(
   legend.margin = ggplot2::margin(t = 20),
   legend.title = ggplot2::element_text(size=14, face="bold", hjust=0.5),
   legend.text = ggplot2::element_text(size=12)
+))
+
+# Subplot specific formatting
+base_theme <- ggplot2::theme(
+  axis.text = ggplot2::element_blank(), axis.ticks = ggplot2::element_blank(),
+  panel.grid = ggplot2::element_blank(), plot.margin = ggplot2::margin(2, 2, 2, 2, "pt"),
+  plot.title = ggplot2::element_text(hjust = 0.5, size = 15, face = "bold"),
+  axis.title.y = ggplot2::element_text(size = 14, face = "bold", angle = 90, vjust = 0.5)
 )
 
 guide_cont <- ggplot2::guide_colorbar(
@@ -331,8 +336,7 @@ row2 <- build_row("Small", "Sampling Extent 1\n(Small)")
 row3 <- build_row("Medium", "Sampling Extent 2\n(Medium)")
 row4 <- build_row("Large", "Sampling Extent 3\n(Large)")
 
-# FIX: Removed plot_annotation entirely to eliminate the warning. 
-# patchwork will automatically pull the updated legend styling from base_theme.
+# Assemble using patchwork. It will now automatically pull the global legend positioning!
 comb_plot <- patchwork::wrap_plots(c(row1, row2, row3, row4), ncol=3) + 
   patchwork::plot_layout(guides="collect")
 
