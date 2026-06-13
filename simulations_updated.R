@@ -61,6 +61,7 @@ output_dir <- file.path("output", "simulation_experiments", "updated")
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 cat("--- Simulation Starting ---\n")
+cat(sprintf("Output Directory: %s\n", output_dir))
 cat(sprintf("Running %d simulations for 3 Sampling Extents.\n", n_sims))
 cat(sprintf("TOTAL MODEL FITS: %d\n\n", n_sims * length(extents) * n_reps))
 
@@ -282,21 +283,18 @@ build_row <- function(data_name, row_title, show_titles=FALSE, sf_data=NULL) {
   p1 <- ggplot(df, aes(x=x, y=y, fill=covariate)) + geom_raster() +
     scale_fill_viridis_c(name="Covariate") + base_theme +
     labs(y = row_title, x = NULL)
-  
   if(show_titles) p1 <- p1 + ggtitle("Covariate")
   
   # P2: Abundance
   p2 <- ggplot(df, aes(x=x, y=y, fill=abundance)) + geom_raster() +
     scale_fill_viridis_c(option="magma", name="Abundance") + base_theme +
     labs(y = NULL, x = NULL)
-  
   if(show_titles) p2 <- p2 + ggtitle("Abundance")
   
   # P3: Occupancy
   p3 <- ggplot(df, aes(x=x, y=y, fill=occupancy)) + geom_raster() +
     scale_fill_viridis_c(option="plasma", name="Occupancy") + base_theme +
     labs(y = NULL, x = NULL)
-  
   if(show_titles) p3 <- p3 + ggtitle("Occupancy")
   
   # Conditionally apply SF boundaries and proper coordinate limits 
@@ -319,8 +317,42 @@ row2 <- build_row("Small", "Sampling Extent 1\n(Small)", sf_data=site_definition
 row3 <- build_row("Medium", "Sampling Extent 2\n(Medium)", sf_data=site_definitions[["Medium"]]$site_sf)
 row4 <- build_row("Large", "Sampling Extent 3\n(Large)", sf_data=site_definitions[["Large"]]$site_sf)
 
-# Assemble using patchwork (no '&' operator needed)
+# Assemble using patchwork
 comb_plot <- patchwork::wrap_plots(c(row1, row2, row3, row4), ncol=3) + 
   patchwork::plot_layout(guides="collect")
 
 ggsave(file.path(output_dir, "sampling_extents.png"), plot=comb_plot, width=10, height=13, dpi=300)
+
+##########
+# 6. Process Results & Generate Error Boxplots
+##########
+cat("Saving Results & Generating Error Boxplots...\n")
+
+res_df <- do.call(rbind, all_results)
+res_df <- res_df[!is.na(res_df$Estimated_Value), ]
+
+# Calculate Error (True - Estimated)
+res_df$Error <- res_df$True_Value - res_df$Estimated_Value
+res_df$Extent <- factor(res_df$Extent, levels = c("Small", "Medium", "Large"))
+
+write.csv(res_df, file.path(output_dir, "params_updated.csv"), row.names = FALSE)
+
+create_error_plot <- function(param_name, title) {
+  ggplot(res_df[res_df$Parameter == param_name, ], 
+         aes(x = Extent, y = Error, fill = Extent)) +
+    geom_boxplot(outlier.size = 0.5) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+    scale_fill_manual(values = c("Small" = "lightblue", "Medium" = "steelblue", "Large" = "navy")) +
+    labs(title = title, x = "Sampling Extent", y = "Error (True - Estimate)") +
+    theme_bw() + theme(legend.position = "none")
+}
+
+p_beta0 <- create_error_plot("beta (state_int)", "State Intercept")
+p_beta1 <- create_error_plot("beta (state_cov1)", "State Slope")
+p_alpha0 <- create_error_plot("alpha (det_int)", "Observation Intercept")
+p_alpha1 <- create_error_plot("alpha (det_cov1)", "Observation Slope")
+
+combined_error_plot <- (p_beta0 | p_beta1) / (p_alpha0 | p_alpha1)
+ggsave(file.path(output_dir, "error_boxplots.png"), plot = combined_error_plot, dpi = 300, width = 9, height = 9)
+
+cat("--- Script Finished Successfully ---\n")
