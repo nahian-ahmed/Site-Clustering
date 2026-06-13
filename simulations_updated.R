@@ -171,13 +171,41 @@ for (sim in 1:n_sims) {
   checklists_df$cell_cov1 <- cellCovs_df$cell_cov1[checklists_df$cell_id]
 
   cat(sprintf("      [Data Check] Total positive detections: %d out of %d checklists\n", sum(checklists_df$species_observed), nrow(checklists_df)))
+
+  # Count visits per unique location
+  checklists_df <- checklists_df %>%
+    dplyr::group_by(locality_id) %>%
+    dplyr::mutate(n_visits = dplyr::n()) %>%
+    dplyr::ungroup()
+  
+  # Pre-filter datasets to match species_clusters.R logic
+  checklists_1to10_df <- checklists_df %>% dplyr::filter(n_visits >= 1 & n_visits <= 10)
+  checklists_2to10_df <- checklists_df %>% dplyr::filter(n_visits >= 2 & n_visits <= 10)
+  
+  cat(sprintf("      [Data Split] lat-long uses: %d checklists\n", nrow(checklists_df)))
+  cat(sprintf("      [Data Split] 1to10 uses: %d checklists\n", nrow(checklists_1to10_df)))
+  cat(sprintf("      [Data Split] 2to10+ methods use: %d checklists\n", nrow(checklists_2to10_df)))
+
   
   # --- C. CLUSTERING & MODELING LOOP ---
   for (method in methods_to_test) {
     cat(sprintf("\n  >>> Applying Method: %s\n", method))
     
-    clust_res <- run_clustering_method(method, checklists_df, state_covs = c("cell_cov1"))
+
+    # ---> ADD THIS CONDITIONAL CHECK <---
+    # Select the correct filtered dataset based on the method
+    if (method == "lat-long") {
+        current_df <- checklists_df
+    } else if (method == "1to10") {
+        current_df <- checklists_1to10_df
+    } else {
+        # Every other method (2to10, 5-cellSq, ClustGeo, DBSC) uses 2to10
+        current_df <- checklists_2to10_df
+    }
     
+    # Change checklists_df to current_df here:
+    clust_res <- run_clustering_method(method, current_df, state_covs = c("cell_cov1"))
+
     if (is.null(clust_res) || is.null(clust_res$data) || nrow(clust_res$data) == 0) {
         cat("      Method failed to cluster or filtered out all data. Skipping.\n")
         next
@@ -197,7 +225,7 @@ for (sim in 1:n_sims) {
     w_matrix <- generate_overlap_matrix(final_geoms, r_cov)
     
     cat("      Fitting occuPPM...\n")
-    umf <- prepare_occuPPM_data(checklists_df, final_clust_df, w_matrix, c("obs_cov1"), cellCovs_df)
+    umf <- prepare_occuPPM_data(current_df, final_clust_df, w_matrix, c("obs_cov1"), cellCovs_df)
     
     fm <- fit_occuPPM_model(
         umf, ~obs_cov1, ~cell_cov1,
