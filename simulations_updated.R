@@ -49,7 +49,7 @@ n_unique_locations <- 1500
 
 # --- True parameter values ---
 true_alphas <- c(alpha_int = 0.5, alpha_cov = -1.0)
-true_betas <- c(beta_int = -5.0, beta_cov = 1.0)
+true_betas <- c(beta_int = 1.0, beta_cov = 1.0)
 
 # --- Methods to Test ---
 methods_to_test <- c(
@@ -136,6 +136,8 @@ for (sim in 1:n_sims) {
   
   cellCovs_df <- data.frame(cell_cov1 = terra::values(r_cov, mat=FALSE))
   cellCovs_df$cell_cov1[is.na(cellCovs_df$cell_cov1)] <- 0
+
+  
   
   X_cell <- model.matrix(~cell_cov1, data = cellCovs_df)
   lambda_j <- exp(X_cell %*% true_betas) * cell_area_km2 
@@ -168,6 +170,7 @@ for (sim in 1:n_sims) {
   
   checklists_df$cell_cov1 <- cellCovs_df$cell_cov1[checklists_df$cell_id]
   
+  cat(sprintf("      [Data Check] Total positive detections: %d out of %d checklists\n", sum(checklists_df$species_observed), nrow(checklists_df)))
   
   # --- C. CLUSTERING & MODELING LOOP ---
   for (method in methods_to_test) {
