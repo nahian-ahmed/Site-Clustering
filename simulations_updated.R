@@ -105,6 +105,74 @@ simulate_ebird_checklists <- function(total_n, n_unique, max_coord) {
 }
 
 ##########
+# 3. HELPER FUNCTIONS
+##########
+
+#' Custom Fit Function for Simulations (Prevents modifying shared model_helpers.R)
+fit_occuPPM_model_sim <- function(umf, state_formula, obs_formula, n_reps = 30, 
+                            stable_reps = 10, optimizer = "nlminb", 
+                            lower = -Inf, upper = Inf,
+                            init_lower = -Inf, init_upper = Inf) {
+  
+  occuPPM_formula <- as.formula(paste(
+    paste(deparse(obs_formula), collapse = ""), 
+    paste(deparse(state_formula), collapse = "")
+  ))
+  
+  n_obs_pars <- length(all.vars(obs_formula)) + 1 
+  n_state_pars <- length(all.vars(state_formula)) + 1
+  n_params <- n_obs_pars + n_state_pars
+  
+  best_fm <- NULL
+  min_nll <- Inf
+  fit_successful <- FALSE
+  stable_count <- 0
+  tolerance <- 0.01 
+  
+  for (rep in 1:n_reps) {
+    rand_starts <- runif(n_params, min = init_lower, max = init_upper)
+    
+    fm_rep <- try(unmarked::occuPPM(
+      formula = occuPPM_formula,
+      data = umf,
+      starts = rand_starts,
+      se = FALSE, 
+      method = optimizer,
+      lower = lower,
+      upper = upper
+    ), silent = TRUE)
+    
+    if (!inherits(fm_rep, "try-error")) {
+      current_nll <- fm_rep@negLogLike
+      
+      # THE CRITICAL FIX: Ensure the log-likelihood is a finite number before doing math
+      if (is.finite(current_nll)) {
+        if (current_nll < min_nll) {
+          if (abs(min_nll - current_nll) < tolerance) {
+             stable_count <- stable_count + 1
+          } else {
+             stable_count <- 0
+          }
+          min_nll <- current_nll
+          best_fm <- fm_rep
+          fit_successful <- TRUE
+        } 
+        else if (abs(current_nll - min_nll) < tolerance) {
+          stable_count <- stable_count + 1
+        }
+        
+        if (stable_count >= stable_reps) {
+          break 
+        }
+      }
+    }
+  }
+  
+  if (!fit_successful) return(NULL)
+  return(best_fm)
+}
+
+##########
 # 4. MAIN SIMULATION LOOP
 ##########
 
@@ -228,7 +296,7 @@ for (sim in 1:n_sims) {
     umf <- prepare_occuPPM_data(current_df, final_clust_df, w_matrix, c("obs_cov1"), cellCovs_df)
     
 
-    fm <- fit_occuPPM_model(
+    fm <- fit_occuPPM_model_sim(
         umf, 
         state_formula = ~cell_cov1, 
         obs_formula = ~obs_cov1,
