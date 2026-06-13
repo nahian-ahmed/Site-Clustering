@@ -54,14 +54,14 @@ centers_scale <- 5
 decay_scale <- 30^2
 
 # --- 3 Scenarios: Sampling Extents ---
-# Defined by the number of sites the landscape is divided into
 extents <- c("Small" = 1600, "Medium" = 400, "Large" = 100)
 
-output_dir <- file.path("output", "simulation_experiments", "updated")
+# FORCE absolute path
+output_dir <- file.path(getwd(), "output", "simulation_experiments", "updated")
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 cat("--- Simulation Starting ---\n")
-cat(sprintf("Output Directory: %s\n", output_dir))
+cat(sprintf("Saving all outputs to exactly:\n -> %s\n\n", normalizePath(output_dir)))
 cat(sprintf("Running %d simulations for 3 Sampling Extents.\n", n_sims))
 cat(sprintf("TOTAL MODEL FITS: %d\n\n", n_sims * length(extents) * n_reps))
 
@@ -81,13 +81,10 @@ site_definitions <- list()
 for (ext_name in names(extents)) {
   K <- extents[[ext_name]]
   
-  # K-means naturally partitions the coordinates into contiguous Voronoi regions
-  # This creates non-overlapping, contiguous sites of varying sizes and irregular shapes
   set.seed(42 + K) 
   km <- kmeans(cell_coords, centers = K, iter.max = 100)
   site_ids <- km$cluster
   
-  # Build sparse W matrix (Rows = Sites, Cols = Cells)
   w <- Matrix::sparseMatrix(
     i = site_ids,
     j = 1:full_n_cells,
@@ -95,13 +92,14 @@ for (ext_name in names(extents)) {
     dims = c(K, full_n_cells)
   )
   
-  # Polygonize sites for plotting boundaries
+  # Map exactly to geom_raster pixel centers (0.5 to 200.5)
   r_sites <- terra::rast(nrows = full_grid_dim, ncols = full_grid_dim, 
                          xmin = 0.5, xmax = full_grid_dim + 0.5, 
                          ymin = 0.5, ymax = full_grid_dim + 0.5)
   terra::values(r_sites) <- site_ids
   site_polys <- terra::as.polygons(r_sites, dissolve = TRUE)
   site_sf <- sf::st_as_sf(site_polys)
+  colnames(site_sf)[1] <- "site"
   
   site_definitions[[ext_name]] <- list(
     K = K,
@@ -111,7 +109,6 @@ for (ext_name in names(extents)) {
   )
 }
 
-# Pre-generate Skew Center Seeds
 set.seed(123)
 cov_center_seeds <- vector("list", n_sims)
 for(i in 1:n_sims){
@@ -126,12 +123,12 @@ for(i in 1:n_sims){
 ##########
 
 all_results <- list()
-plot_data <- list() # Store data for plotting the 1st simulation
+plot_data <- list()
 
 for (sim in 1:n_sims) {
   cat(sprintf("\n=== Sim %d of %d ===\n", sim, n_sims))
   
-  # --- 4a. Generate Base Spatial Covariate (SAC = Medium) ---
+  # --- 4a. Base Covariate ---
   r_noise <- terra::rast(nrows=full_grid_dim, ncols=full_grid_dim, 
                          xmin=0, xmax=full_grid_dim, ymin=0, ymax=full_grid_dim,
                          vals=rnorm(full_n_cells))
@@ -140,7 +137,6 @@ for (sim in 1:n_sims) {
   r_smooth <- terra::focal(r_noise, w = fw, fun = sum, na.rm = TRUE)
   terra::values(r_smooth) <- as.vector(scale(terra::values(r_smooth)))
   
-  # Apply Skew / Trend
   seeds <- cov_center_seeds[[sim]]
   r_centers <- terra::rast(r_smooth)
   terra::values(r_centers) <- 0
@@ -158,22 +154,23 @@ for (sim in 1:n_sims) {
   full_cellCovs <- data.frame(cell_cov1 = terra::values(r_trend, mat=FALSE))
   if(any(is.na(full_cellCovs$cell_cov1))) full_cellCovs$cell_cov1[is.na(full_cellCovs$cell_cov1)] <- 0
   
-  # True Cell States (for baseline/plotting)
+  # --- 4b. True Cell States (Realized N and 0/1) ---
   full_X_cell <- model.matrix(~cell_cov1, data = full_cellCovs)
   full_lambda_j <- exp(full_X_cell %*% true_betas)
-  full_psi_j <- 1 - exp(-full_lambda_j)
   
-  # Store 1st row data for Sim 1 Plotting
+  full_N_j <- rpois(full_n_cells, full_lambda_j)
+  full_Z_j <- ifelse(full_N_j > 0, 1, 0)
+  
   if (sim == 1) {
     plot_data[["Cell"]] <- data.frame(
       x = full_cell_col, y = full_cell_row,
       covariate = full_cellCovs$cell_cov1,
-      abundance = full_lambda_j,
-      occupancy = full_psi_j
+      abundance = full_N_j,
+      occupancy = as.factor(full_Z_j)
     )
   }
   
-  # --- 4b. Iterate Over Extents ---
+  # --- 4c. Iterate Over Extents ---
   for (ext_name in names(extents)) {
     cat(sprintf("  - Extent: %s\n", ext_name))
     
@@ -182,10 +179,10 @@ for (sim in 1:n_sims) {
     w <- def$w
     site_ids <- def$site_ids
     
-    # Calculate Site-level True States
+    # Calculate Site-level True States (Realized N and 0/1)
     lambda_tilde_i <- as.numeric(w %*% full_lambda_j)
-    psi_i <- 1 - exp(-lambda_tilde_i)
-    Z_i <- rbinom(M, 1, psi_i)
+    N_i <- rpois(M, lambda_tilde_i)
+    Z_i <- ifelse(N_i > 0, 1, 0)
     
     # Generate Observations (y)
     obs_cov1 <- matrix(rnorm(M * J_obs), M, J_obs)
@@ -203,25 +200,22 @@ for (sim in 1:n_sims) {
       }
     }
     
-    # Store aggregated data mapped to cells for Sim 1 Plotting
+    # Store aggregated data directly to polygons for Sim 1
     if (sim == 1) {
-      # Mean covariate per site mapped back to the raster
       agg_cov <- as.numeric((w %*% full_cellCovs$cell_cov1) / rowSums(w))
       
-      plot_data[[ext_name]] <- data.frame(
-        x = full_cell_col, y = full_cell_row,
-        covariate = agg_cov[site_ids],
-        abundance = lambda_tilde_i[site_ids],
-        occupancy = psi_i[site_ids]
-      )
+      sf_data <- def$site_sf
+      sf_data <- sf_data[order(sf_data$site), ] # Ensure IDs align
+      sf_data$covariate <- agg_cov
+      sf_data$abundance <- N_i
+      sf_data$occupancy <- as.factor(Z_i)
+      
+      plot_data[[ext_name]] <- sf_data
     }
     
     # Fit occuPPM Model
     umf <- unmarkedFrameOccuPPM(
-      y = y,
-      obsCovs = obsCovs,
-      cellCovs = full_cellCovs, 
-      w = w 
+      y = y, obsCovs = obsCovs, cellCovs = full_cellCovs, w = w 
     )
     
     best_fm <- NULL
@@ -232,12 +226,8 @@ for (sim in 1:n_sims) {
       rand_starts <- runif(n_params, -2, 2) 
       fm_rep <- try(occuPPM(
         formula = ~obs_cov1 ~ cell_cov1,
-        data = umf,
-        starts = rand_starts,
-        se = TRUE,
-        method = selected_optimizer,
-        lower = PARAM_LOWER, 
-        upper = PARAM_UPPER 
+        data = umf, starts = rand_starts, se = TRUE,
+        method = selected_optimizer, lower = PARAM_LOWER, upper = PARAM_UPPER 
       ), silent = TRUE)
       
       if (inherits(fm_rep, "try-error")) next
@@ -265,63 +255,75 @@ for (sim in 1:n_sims) {
 ##########
 cat("\nGenerating 4x3 Spatial Plot (sampling_extents.png)...\n")
 
-# Moved the legend theme settings directly into base_theme to avoid the '&' error
+# Compute global limits to ensure standard unified scales across all extents
+cov_limits <- range(c(plot_data$Cell$covariate, plot_data$Small$covariate, plot_data$Medium$covariate, plot_data$Large$covariate), na.rm=TRUE)
+abund_limits <- range(c(plot_data$Cell$abundance, plot_data$Small$abundance, plot_data$Medium$abundance, plot_data$Large$abundance), na.rm=TRUE)
+
 base_theme <- theme_minimal() + theme(
   axis.text = element_blank(), axis.ticks = element_blank(),
   panel.grid = element_blank(), plot.margin = margin(2, 2, 2, 2, "pt"),
-  plot.title = element_text(hjust = 0.5, size = 13, face = "bold"),
-  axis.title.y = element_text(size = 12, face = "bold", angle = 90, vjust = 0.5),
+  plot.title = element_text(hjust = 0.5, size = 15, face = "bold"),
+  axis.title.y = element_text(size = 14, face = "bold", angle = 90, vjust = 0.5),
   legend.position = "bottom", 
   legend.direction = "horizontal", 
-  legend.key.width = unit(1.5, "cm")
+  legend.box = "horizontal",
+  legend.key.width = unit(2.5, "cm"),
+  legend.title = element_text(vjust=1, size=13, face="bold"),
+  legend.text = element_text(size=11)
 )
 
-build_row <- function(data_name, row_title, show_titles=FALSE, sf_data=NULL) {
+build_row <- function(data_name, row_title, show_titles=FALSE) {
   df <- plot_data[[data_name]]
   
-  # P1: Covariate
-  p1 <- ggplot(df, aes(x=x, y=y, fill=covariate)) + geom_raster() +
-    scale_fill_viridis_c(name="Covariate") + base_theme +
-    labs(y = row_title, x = NULL)
-  if(show_titles) p1 <- p1 + ggtitle("Covariate")
-  
-  # P2: Abundance
-  p2 <- ggplot(df, aes(x=x, y=y, fill=abundance)) + geom_raster() +
-    scale_fill_viridis_c(option="magma", name="Abundance") + base_theme +
-    labs(y = NULL, x = NULL)
-  if(show_titles) p2 <- p2 + ggtitle("Abundance")
-  
-  # P3: Occupancy
-  p3 <- ggplot(df, aes(x=x, y=y, fill=occupancy)) + geom_raster() +
-    scale_fill_viridis_c(option="plasma", name="Occupancy") + base_theme +
-    labs(y = NULL, x = NULL)
-  if(show_titles) p3 <- p3 + ggtitle("Occupancy")
-  
-  # Conditionally apply SF boundaries and proper coordinate limits 
-  # to avoid the "Coordinate system already present" warnings
-  if (!is.null(sf_data)) {
-    p1 <- p1 + geom_sf(data=sf_data, fill=NA, color="black", linewidth=0.1, inherit.aes=FALSE) + coord_sf(expand=FALSE)
-    p2 <- p2 + geom_sf(data=sf_data, fill=NA, color="black", linewidth=0.1, inherit.aes=FALSE) + coord_sf(expand=FALSE)
-    p3 <- p3 + geom_sf(data=sf_data, fill=NA, color="black", linewidth=0.1, inherit.aes=FALSE) + coord_sf(expand=FALSE)
+  if (data_name == "Cell") {
+    # Plot Raster for Cell Resolution
+    p1 <- ggplot(df, aes(x=x, y=y, fill=covariate)) + geom_raster() +
+      scale_fill_viridis_c(name="Covariate", limits=cov_limits) + base_theme +
+      labs(y = row_title, x = NULL) + coord_fixed(expand=FALSE)
+      
+    p2 <- ggplot(df, aes(x=x, y=y, fill=abundance)) + geom_raster() +
+      scale_fill_viridis_c(option="magma", name="Abundance (N)", limits=abund_limits) + base_theme +
+      labs(y = NULL, x = NULL) + coord_fixed(expand=FALSE)
+      
+    p3 <- ggplot(df, aes(x=x, y=y, fill=occupancy)) + geom_raster() +
+      scale_fill_manual(values=c("0"="#440154FF", "1"="#FDE725FF"), name="Occupancy (0/1)", drop=FALSE) + base_theme +
+      labs(y = NULL, x = NULL) + coord_fixed(expand=FALSE)
+      
   } else {
-    p1 <- p1 + coord_fixed(expand=FALSE)
-    p2 <- p2 + coord_fixed(expand=FALSE)
-    p3 <- p3 + coord_fixed(expand=FALSE)
+    # Plot SF Polygons for Extents
+    p1 <- ggplot(df) + geom_sf(aes(fill=covariate), color="black", linewidth=0.1) +
+      scale_fill_viridis_c(name="Covariate", limits=cov_limits) + base_theme +
+      labs(y = row_title, x = NULL) + coord_sf(expand=FALSE)
+      
+    p2 <- ggplot(df) + geom_sf(aes(fill=abundance), color="black", linewidth=0.1) +
+      scale_fill_viridis_c(option="magma", name="Abundance (N)", limits=abund_limits) + base_theme +
+      labs(y = NULL, x = NULL) + coord_sf(expand=FALSE)
+      
+    p3 <- ggplot(df) + geom_sf(aes(fill=occupancy), color="black", linewidth=0.1) +
+      scale_fill_manual(values=c("0"="#440154FF", "1"="#FDE725FF"), name="Occupancy (0/1)", drop=FALSE) + base_theme +
+      labs(y = NULL, x = NULL) + coord_sf(expand=FALSE)
+  }
+  
+  if(show_titles) {
+    p1 <- p1 + ggtitle("Covariate")
+    p2 <- p2 + ggtitle("Abundance (N)")
+    p3 <- p3 + ggtitle("Occupancy (0/1)")
   }
   
   return(list(p1, p2, p3))
 }
 
 row1 <- build_row("Cell", "Simulated Species", show_titles=TRUE)
-row2 <- build_row("Small", "Sampling Extent 1\n(Small)", sf_data=site_definitions[["Small"]]$site_sf)
-row3 <- build_row("Medium", "Sampling Extent 2\n(Medium)", sf_data=site_definitions[["Medium"]]$site_sf)
-row4 <- build_row("Large", "Sampling Extent 3\n(Large)", sf_data=site_definitions[["Large"]]$site_sf)
+row2 <- build_row("Small", "Sampling Extent 1\n(Small)")
+row3 <- build_row("Medium", "Sampling Extent 2\n(Medium)")
+row4 <- build_row("Large", "Sampling Extent 3\n(Large)")
 
-# Assemble using patchwork
+# Assemble using patchwork.
+# Due to the shared global limits, patchwork neatly collects exactly 3 flat legends at the bottom.
 comb_plot <- patchwork::wrap_plots(c(row1, row2, row3, row4), ncol=3) + 
   patchwork::plot_layout(guides="collect")
 
-ggsave(file.path(output_dir, "sampling_extents.png"), plot=comb_plot, width=10, height=13, dpi=300)
+ggsave(file.path(output_dir, "sampling_extents.png"), plot=comb_plot, width=11, height=13, dpi=300)
 
 ##########
 # 6. Process Results & Generate Error Boxplots
@@ -331,7 +333,6 @@ cat("Saving Results & Generating Error Boxplots...\n")
 res_df <- do.call(rbind, all_results)
 res_df <- res_df[!is.na(res_df$Estimated_Value), ]
 
-# Calculate Error (True - Estimated)
 res_df$Error <- res_df$True_Value - res_df$Estimated_Value
 res_df$Extent <- factor(res_df$Extent, levels = c("Small", "Medium", "Large"))
 
