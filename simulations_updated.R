@@ -7,7 +7,7 @@
 # 1. SETUP & LIBRARIES
 ###
 
-install_now = TRUE
+install_now = FALSE
 if (install_now){
   options(repos = c(CRAN = "https://cloud.r-project.org/"))
   if (!requireNamespace("devtools", quietly = FALSE)) install.packages("devtools")
@@ -59,8 +59,11 @@ methods_to_test <- c(
 )
 
 buffer_m <- 200
-PARAM_LOWER <- -20
-PARAM_UPPER <- 20
+PARAM_LOWER <- -10
+PARAM_UPPER <- 10
+INIT_LOWER <- -2
+INIT_UPPER <- 2
+
 selected_optimizer <- "nlminb"
 
 output_dir <- file.path("output", "simulation_experiments", "clustering_comparison")
@@ -195,7 +198,8 @@ for (sim in 1:n_sims) {
         umf, ~obs_cov1, ~cell_cov1,
         n_reps = n_reps, stable_reps = 5,
         optimizer = selected_optimizer,
-        lower = PARAM_LOWER, upper = PARAM_UPPER
+        lower = PARAM_LOWER, upper = PARAM_UPPER,
+        init_lower = INIT_LOWER, init_upper = INIT_UPPER
     )
     
     if (is.null(fm)) {
