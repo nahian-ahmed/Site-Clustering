@@ -35,7 +35,7 @@ set.seed(123)
 
 # --- The 4 Scenarios ---
 scenarios <- c("Idealized", "Ecotone", "Accessibility", "Opportunistic")
-n_sims <- 10 # SET TO 100 FOR FULL RUN
+n_sims <- 3 # SET TO 100 FOR FULL RUN
 n_reps <- 30 # Number of random-start repetitions for model fitting
 
 # --- Landscape Parameters ---
@@ -50,7 +50,8 @@ n_unique_locations <- 5000
 
 # --- True parameter values ---
 true_alphas <- c(alpha_int = 0.5, alpha_cov = -1.0)
-true_betas <- c(beta_int = 1.0, beta_cov = 1.0)
+# true_betas <- c(beta_int = 1.0, beta_cov = 1.0)
+true_betas <- c(beta_int = 4.0, beta_cov = 1.0)
 
 # --- Methods to Test ---
 methods_to_test <- c(
@@ -101,9 +102,23 @@ simulate_ebird_checklists_updated <- function(total_n, accessibility_raster, sce
     probs <- accessibility_raster # Road-biased
   }
   
-  sampled_pts <- spatSample(probs, size = total_n * 5, method = "weights", xy = TRUE)
+  # Explicitly add replace = TRUE to avoid sample size limits
+  sampled_pts <- spatSample(probs, size = total_n * 5, method = "weights", xy = TRUE, replace = TRUE)
   
   sampled_pts$loc_idx <- cellFromXY(accessibility_raster, sampled_pts[,c("x", "y")])
+  
+  # --- GEOMETRY FIX: JITTER TO PREVENT VORONOI CRASH ---
+  # GEOS st_voronoi crashes if points are on a perfect mathematical grid.
+  # We apply a slight unique jitter (up to 10m) to each location to break grid degeneracy,
+  # but ensure all checklists at the same 'loc_idx' still get the EXACT same jitter.
+  uniq_locs <- unique(sampled_pts$loc_idx)
+  jit_x <- runif(length(uniq_locs), -10, 10)
+  jit_y <- runif(length(uniq_locs), -10, 10)
+  match_idx <- match(sampled_pts$loc_idx, uniq_locs)
+  
+  sampled_pts$x <- sampled_pts$x + jit_x[match_idx]
+  sampled_pts$y <- sampled_pts$y + jit_y[match_idx]
+  # -----------------------------------------------------
   
   df_temp <- sampled_pts %>%
     group_by(loc_idx) %>%
@@ -139,6 +154,9 @@ simulate_ebird_checklists_updated <- function(total_n, accessibility_raster, sce
     locality_id = paste0("L", df_temp$loc_idx),
     observation_date = as.Date("2026-01-01") + sample(0:30, nrow(df_temp), replace = TRUE)
   )
+  
+  # Keep the formatted_date fix for auk::filter_repeat_visits
+  df$formatted_date <- df$observation_date 
   
   return(df)
 }
@@ -387,8 +405,9 @@ p_err2 <- create_err_plot("beta (state_cov1)", "State Slope")
 p_err3 <- create_err_plot("alpha (det_int)", "Observation Intercept")
 p_err4 <- create_err_plot("alpha (det_cov1)", "Observation Slope")
 
+
 combined_error_plot <- (p_err1 | p_err2) / (p_err3 | p_err4) + 
-  plot_layout(guides = "collect") & theme(legend.position = "bottom")
+  plot_layout(guides = "collect")
 
 ggsave(file.path(output_dir, "parameter_error_boxplots.png"), plot = combined_error_plot, width = 18, height = 14, dpi = 300)
 
