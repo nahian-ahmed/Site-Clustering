@@ -227,8 +227,11 @@ for (sim in 1:n_sims) {
     cat("      Fitting occuPPM...\n")
     umf <- prepare_occuPPM_data(current_df, final_clust_df, w_matrix, c("obs_cov1"), cellCovs_df)
     
+
     fm <- fit_occuPPM_model(
-        umf, ~obs_cov1, ~cell_cov1,
+        umf, 
+        state_formula = ~cell_cov1, 
+        obs_formula = ~obs_cov1,
         n_reps = n_reps, stable_reps = 5,
         optimizer = selected_optimizer,
         lower = PARAM_LOWER, upper = PARAM_UPPER,
