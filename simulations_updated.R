@@ -166,6 +166,8 @@ for (sim in 1:n_sims) {
   checklists_df$p <- plogis(logit_p)
   checklists_df$species_observed <- rbinom(nrow(checklists_df), 1, checklists_df$p * checklists_df$true_Z)
   
+  checklists_df$cell_cov1 <- cellCovs_df$cell_cov1[checklists_df$cell_id]
+  
   
   # --- C. CLUSTERING & MODELING LOOP ---
   for (method in methods_to_test) {
