@@ -92,7 +92,6 @@ for (ext_name in names(extents)) {
     dims = c(K, full_n_cells)
   )
   
-  # FIX: Use xyz dataframe to build raster so coordinates perfectly match geom_raster
   xyz_df <- data.frame(x = full_cell_col, y = full_cell_row, z = site_ids)
   r_sites <- terra::rast(xyz_df, type = "xyz")
   
@@ -158,7 +157,6 @@ for (sim in 1:n_sims) {
   full_lambda_j <- exp(full_X_cell %*% true_betas)
   
   full_N_j <- rpois(full_n_cells, full_lambda_j)
-  # FIX: Explicit factor levels so legends match perfectly
   full_Z_j <- factor(ifelse(full_N_j > 0, 1, 0), levels = c("0", "1"))
   
   if (sim == 1) {
@@ -179,10 +177,9 @@ for (sim in 1:n_sims) {
     w <- def$w
     site_ids <- def$site_ids
     
-    # Calculate Site-level True States (Realized N and 0/1)
+    # Calculate Site-level True States
     lambda_tilde_i <- as.numeric(w %*% full_lambda_j)
     N_i <- rpois(M, lambda_tilde_i)
-    # FIX: Explicit factor levels
     Z_i <- factor(ifelse(N_i > 0, 1, 0), levels = c("0", "1"))
     
     # Generate Observations (y)
@@ -201,12 +198,11 @@ for (sim in 1:n_sims) {
       }
     }
     
-    # Store aggregated data directly to polygons for Sim 1
     if (sim == 1) {
       agg_cov <- as.numeric((w %*% full_cellCovs$cell_cov1) / rowSums(w))
       
       sf_data <- def$site_sf
-      sf_data <- sf_data[order(sf_data$site), ] # Ensure IDs align
+      sf_data <- sf_data[order(sf_data$site), ] 
       sf_data$covariate <- agg_cov
       sf_data$abundance <- N_i
       sf_data$occupancy <- Z_i
@@ -259,11 +255,28 @@ cat("\nGenerating 4x3 Spatial Plot (sampling_extents.png)...\n")
 cov_limits <- range(c(plot_data$Cell$covariate, plot_data$Small$covariate, plot_data$Medium$covariate, plot_data$Large$covariate), na.rm=TRUE)
 abund_limits <- range(c(plot_data$Cell$abundance, plot_data$Small$abundance, plot_data$Medium$abundance, plot_data$Large$abundance), na.rm=TRUE)
 
-base_theme <- theme_minimal() + theme(
-  axis.text = element_blank(), axis.ticks = element_blank(),
-  panel.grid = element_blank(), plot.margin = margin(2, 2, 2, 2, "pt"),
-  plot.title = element_text(hjust = 0.5, size = 15, face = "bold"),
-  axis.title.y = element_text(size = 14, face = "bold", angle = 90, vjust = 0.5)
+base_theme <- ggplot2::theme_minimal() + ggplot2::theme(
+  axis.text = ggplot2::element_blank(), axis.ticks = ggplot2::element_blank(),
+  panel.grid = ggplot2::element_blank(), plot.margin = ggplot2::margin(2, 2, 2, 2, "pt"),
+  plot.title = ggplot2::element_text(hjust = 0.5, size = 15, face = "bold"),
+  axis.title.y = ggplot2::element_text(size = 14, face = "bold", angle = 90, vjust = 0.5)
+)
+
+# FIX: Explicitly force the direction and layout of the individual scales!
+guide_cont <- ggplot2::guide_colorbar(
+  direction = "horizontal",
+  title.position = "top",
+  title.hjust = 0.5,
+  barwidth = ggplot2::unit(5.5, "cm"),
+  barheight = ggplot2::unit(0.6, "cm")
+)
+
+guide_disc <- ggplot2::guide_legend(
+  direction = "horizontal",
+  title.position = "top",
+  title.hjust = 0.5,
+  keywidth = ggplot2::unit(1.5, "cm"),
+  keyheight = ggplot2::unit(0.6, "cm")
 )
 
 build_row <- function(data_name, row_title, show_titles=FALSE) {
@@ -271,28 +284,29 @@ build_row <- function(data_name, row_title, show_titles=FALSE) {
   
   if (data_name == "Cell") {
     p1 <- ggplot(df, aes(x=x, y=y, fill=covariate)) + geom_raster() +
-      scale_fill_viridis_c(name="Covariate", limits=cov_limits) + base_theme +
+      scale_fill_viridis_c(name="Covariate", limits=cov_limits, guide=guide_cont) + base_theme +
       labs(y = row_title, x = NULL) + coord_fixed(expand=FALSE)
       
     p2 <- ggplot(df, aes(x=x, y=y, fill=abundance)) + geom_raster() +
-      scale_fill_viridis_c(option="magma", name="Abundance (N)", limits=abund_limits) + base_theme +
+      scale_fill_viridis_c(option="magma", name="Abundance (N)", limits=abund_limits, guide=guide_cont) + base_theme +
       labs(y = NULL, x = NULL) + coord_fixed(expand=FALSE)
       
     p3 <- ggplot(df, aes(x=x, y=y, fill=occupancy)) + geom_raster() +
-      scale_fill_manual(values=c("0"="#440154FF", "1"="#FDE725FF"), name="Occupancy (0/1)", drop=FALSE) + base_theme +
+      scale_fill_manual(values=c("0"="#440154FF", "1"="#FDE725FF"), name="Occupancy (0/1)", drop=FALSE, guide=guide_disc) + base_theme +
       labs(y = NULL, x = NULL) + coord_fixed(expand=FALSE)
       
   } else {
     p1 <- ggplot(df) + geom_sf(aes(fill=covariate), color="black", linewidth=0.1) +
-      scale_fill_viridis_c(name="Covariate", limits=cov_limits) + base_theme +
+      scale_fill_viridis_c(name="Covariate", limits=cov_limits, guide=guide_cont) + base_theme +
       labs(y = row_title, x = NULL) + coord_sf(expand=FALSE)
       
     p2 <- ggplot(df) + geom_sf(aes(fill=abundance), color="black", linewidth=0.1) +
-      scale_fill_viridis_c(option="magma", name="Abundance (N)", limits=abund_limits) + base_theme +
+      scale_fill_viridis_c(option="magma", name="Abundance (N)", limits=abund_limits, guide=guide_cont) + base_theme +
       labs(y = NULL, x = NULL) + coord_sf(expand=FALSE)
       
-    p3 <- ggplot(df) + geom_sf(aes(fill=occupancy), color="black", linewidth=0.1) +
-      scale_fill_manual(values=c("0"="#440154FF", "1"="#FDE725FF"), name="Occupancy (0/1)", drop=FALSE) + base_theme +
+    # FIX: "show.legend = FALSE" suppresses the duplicate occupancy legend entirely
+    p3 <- ggplot(df) + geom_sf(aes(fill=occupancy), color="black", linewidth=0.1, show.legend=FALSE) +
+      scale_fill_manual(values=c("0"="#440154FF", "1"="#FDE725FF"), name="Occupancy (0/1)", drop=FALSE, guide=guide_disc) + base_theme +
       labs(y = NULL, x = NULL) + coord_sf(expand=FALSE)
   }
   
@@ -310,22 +324,21 @@ row2 <- build_row("Small", "Sampling Extent 1\n(Small)")
 row3 <- build_row("Medium", "Sampling Extent 2\n(Medium)")
 row4 <- build_row("Large", "Sampling Extent 3\n(Large)")
 
-# FIX: Force the global patchwork theme to collect guides at the absolute bottom
+# FIX: Force explicit ggplot2::theme usage to bypass the warning. 
 comb_plot <- patchwork::wrap_plots(c(row1, row2, row3, row4), ncol=3) + 
   patchwork::plot_layout(guides="collect") +
   patchwork::plot_annotation(
-    theme = theme(
+    theme = ggplot2::theme(
       legend.position = "bottom",
       legend.box = "horizontal",
       legend.direction = "horizontal",
-      legend.key.width = unit(2.5, "cm"),
-      legend.title = element_text(vjust=1, size=13, face="bold"),
-      legend.text = element_text(size=11),
-      legend.margin = margin(t = 15)
+      legend.margin = ggplot2::margin(t = 15),
+      legend.title = ggplot2::element_text(size=14, face="bold"),
+      legend.text = ggplot2::element_text(size=12)
     )
   )
 
-ggsave(file.path(output_dir, "sampling_extents.png"), plot=comb_plot, width=11, height=13, dpi=300)
+ggsave(file.path(output_dir, "sampling_extents.png"), plot=comb_plot, width=12, height=14, dpi=300)
 
 ##########
 # 6. Process Results & Generate Error Boxplots
