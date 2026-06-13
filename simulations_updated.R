@@ -85,7 +85,8 @@ simulate_ebird_checklists <- function(total_n, n_unique, max_coord) {
   weights <- weights / sum(weights)
   
   # Oversample initially because we are about to trim the excess
-  sampled_loc_indices <- sample(1:n_unique, size = total_n * 3, replace = TRUE, prob = weights)
+#   sampled_loc_indices <- sample(1:n_unique, size = total_n * 3, replace = TRUE, prob = weights)
+  sampled_loc_indices <- sample(1:n_unique, size = total_n * 10, replace = TRUE, prob = weights)
   
   # 3. THE MAGIC SHIELD: Cap maximum visits to 15 per location.
   # This keeps the spatial clustering bias, but prevents likelihood underflow (NaNs) in occuPPM.
@@ -229,9 +230,12 @@ for (sim in 1:n_sims) {
   cat("Simulating observation process...\n")
   
   checklists_df <- simulate_ebird_checklists(total_checklists, n_unique_locations, full_grid_dim * res_m)
-  checklists_df$obs_cov1 <- rnorm(total_checklists)
   
-  # FIX: Project the Lat/Longs back to meters to find the correct Raster Cell
+  # Dynamically match the number of rows that survived the cap!
+  checklists_df$obs_cov1 <- rnorm(nrow(checklists_df))
+  
+
+  # Project the Lat/Longs back to meters to find the correct Raster Cell
   pts_vect <- terra::vect(checklists_df, geom=c("longitude", "latitude"), crs="EPSG:4326")
   pts_vect_proj <- terra::project(pts_vect, r_cov)
   cell_ids <- terra::cellFromXY(r_cov, terra::crds(pts_vect_proj))
