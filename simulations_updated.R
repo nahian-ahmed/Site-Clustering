@@ -38,7 +38,7 @@ source("R/clustering/dbsc.R")
 set.seed(123) 
 
 # --- Simulation repetitions ---
-n_sims <- 3
+n_sims <- 10
 n_reps <- 30 
 
 # --- Full Landscape parameters (200x200) ---
