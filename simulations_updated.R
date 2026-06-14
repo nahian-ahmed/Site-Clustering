@@ -600,7 +600,7 @@ res_df$Error <- res_df$True_Value - res_df$Estimated_Value
 res_df$Extent <- factor(res_df$Extent, levels = c("Small", "Medium", "Large"))
 
 # Assign proper levels to match generation
-res_df$Method <- factor(res_df$Method, levels = c("gt-lat-long", "gt-1to10", "gt-2to10", "lat-long", "1to10", "2to10"))
+res_df$Method <- factor(res_df$Method, levels = c("gt-lat-long", "gt-1to10", "gt-2to10", "lat-long", "1to10", "2to10", "10-cellSq", "DBSC"))
 
 write.csv(res_df, file.path(output_dir, "params_updated.csv"), row.names = FALSE)
 
@@ -625,7 +625,7 @@ create_error_plot_gt <- function(param_name, title) {
     geom_boxplot(outlier.size = 0.5) +
     geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
     # Updated to the new colors and added a legend title:
-    scale_fill_manual(name = "Ground-Truth Variant", values = gt_method_colors) +
+    scale_fill_manual(name = "Data Points", values = gt_method_colors) +
     # Updated the x-axis label:
     labs(title = title, x = "Sampling Extent", y = "Error (True - Estimate)") +
     theme_bw() + theme(legend.position = "bottom")
@@ -642,24 +642,24 @@ combined_error_plot_gt <- (p_beta0_gt | p_beta1_gt) / (p_alpha0_gt | p_alpha1_gt
 ggsave(file.path(output_dir, "error_boxplots.png"), plot = combined_error_plot_gt, dpi = 300, width = 10, height = 10)
 
 # ----------------------------------------------------------------------
-# PLOT 2: error_boxplots_all.png (reference-sites-2to10 vs clustered)
+# PLOT 2: error_boxplots_all.png (reference-2to10 vs clustered)
 # ----------------------------------------------------------------------
 # Filter only to the methods required for this plot
 res_df_all <- res_df[res_df$Method %in% c("gt-2to10", "lat-long", "1to10", "2to10", "10-cellSq", "DBSC"), ]
 
 # Map gt-2to10 to the requested display name
 res_df_all$Method_Label <- as.character(res_df_all$Method)
-res_df_all$Method_Label[res_df_all$Method_Label == "gt-2to10"] <- "reference-sites-2to10"
+res_df_all$Method_Label[res_df_all$Method_Label == "gt-2to10"] <- "reference-2to10"
 
 # Enforce factor levels for ordering in the plot/legend
 res_df_all$Method_Label <- factor(
   res_df_all$Method_Label, 
-  levels = c("reference-sites-2to10", "lat-long", "1to10", "2to10", "10-cellSq", "DBSC")
+  levels = c("reference-2to10", "lat-long", "1to10", "2to10", "10-cellSq", "DBSC")
 )
 
 # Apply requested color scheme 
 method_colors <- c(
-  "reference-sites-2to10" = "red", 
+  "reference-2to10" = "red", 
   "lat-long" = "navy", 
   "1to10" = "cyan", 
   "2to10" = "pink",
