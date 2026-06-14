@@ -22,6 +22,14 @@ library(Matrix)
 library(scales)
 library(sf)
 library(dplyr)
+library(sqldf)
+library(RTriangle)
+library(igraph)
+library(data.table)
+
+
+# Make sure this path correctly points to your dbsc.R helper file
+source("R/clustering/dbsc.R")
 
 ##########
 # 2. Set Simulation Parameters
@@ -411,8 +419,8 @@ for (sim in 1:n_sims) {
       plot_data[[ext_name]] <- list(sf_data = sf_data, obs_sf = obs_sf)
     }
 
-    # 2. RUN ALL METHODS FOR THIS EXTENT
-    methods_to_run <- c("gt-lat-long", "gt-1to10", "gt-2to10", "lat-long", "1to10", "2to10")
+    # 2. RUN ALL METHODS FOR THIS EXTENT (UPDATED)
+    methods_to_run <- c("gt-lat-long", "gt-1to10", "gt-2to10", "lat-long", "1to10", "2to10", "10-cellSq", "DBSC")
     
     for (m_name in methods_to_run) {
       cat(sprintf("    * Method: %s\n", m_name))
@@ -422,7 +430,8 @@ for (sim in 1:n_sims) {
         obs_m <- all_obs
       } else if (grepl("1to10", m_name)) {
         obs_m <- all_obs %>% dplyr::group_by(reported_x, reported_y) %>% dplyr::slice_sample(n = 10) %>% dplyr::ungroup() %>% as.data.frame()
-      } else if (grepl("2to10", m_name)) {
+      } else if (grepl("2to10", m_name) || m_name == "10-cellSq" || m_name == "DBSC") {
+        # 2to10, 10-cellSq, and DBSC all start with the 2-to-10 filtering baseline
         obs_m <- all_obs %>% dplyr::group_by(reported_x, reported_y) %>% dplyr::filter(n() >= 2) %>% dplyr::slice_sample(n = 10) %>% dplyr::ungroup() %>% as.data.frame()
       }
 
@@ -430,23 +439,65 @@ for (sim in 1:n_sims) {
       
       # Step B: Assign geometry and compute parameters
       if (startsWith(m_name, "gt-")) {
-        # Ground-truth methods rely on the true underlying polygon site identifiers
+        # Ground-truth methods
         obs_m$site <- as.character(obs_m$reported_site)
         fm_m <- fit_clustered_model(obs_m, w, full_cellCovs)
         
+      } else if (m_name == "10-cellSq") {
+        # 10x10 Cell Grid Method (Analogous to 1-kmSq)
+        obs_m$grid_x <- (obs_m$reported_x - 1) %/% 10
+        obs_m$grid_y <- (obs_m$reported_y - 1) %/% 10
+        obs_m$site <- paste0("grid_", obs_m$grid_x, "_", obs_m$grid_y)
+        
+        # Build exact square geometries for occupied sites
+        active_sites <- unique(obs_m$site)
+        grid_polys <- list()
+        for (s in active_sites) {
+          parts <- strsplit(gsub("grid_", "", s), "_")[[1]]
+          gx <- as.numeric(parts[1])
+          gy <- as.numeric(parts[2])
+          # Grid bounds aligned with cell centers (e.g. 0.5 to 10.5)
+          xmin <- gx * 10 + 0.5; xmax <- xmin + 10
+          ymin <- gy * 10 + 0.5; ymax <- ymin + 10
+          poly <- sf::st_polygon(list(matrix(c(xmin,ymin, xmax,ymin, xmax,ymax, xmin,ymax, xmin,ymin), ncol=2, byrow=TRUE)))
+          grid_polys[[s]] <- sf::st_sf(site = s, geometry = sf::st_sfc(poly))
+        }
+        geoms <- do.call(rbind, grid_polys)
+        
+        # Standard processing 
+        split_res <- sim_disjoint(geoms, obs_m)
+        w_m <- sim_overlap(split_res$geoms, r_trend)
+        fm_m <- fit_clustered_model(split_res$data, w_m, full_cellCovs)
+        
+      } else if (m_name == "DBSC") {
+        # DBSC Method 
+        # Spoof names so runDBSC() works seamlessly
+        obs_m$latitude <- obs_m$reported_y
+        obs_m$longitude <- obs_m$reported_x
+        obs_m$cell_cov1 <- full_cellCovs$cell_cov1[obs_m$reported_cell]
+        
+        # Run clustering
+        obs_m <- runDBSC(obs_m, "cell_cov1")
+        obs_m$site <- as.character(obs_m$site)
+        
+        # Apply standard Polygonization (Voronoi + Convex Hull + 2 Cell Buffer)
+        geoms <- sim_create_geometries(obs_m, r_trend, buffer_cells = 2)
+        if (nrow(geoms) == 0) next
+        
+        split_res <- sim_disjoint(geoms, obs_m)
+        w_m <- sim_overlap(split_res$geoms, r_trend)
+        fm_m <- fit_clustered_model(split_res$data, w_m, full_cellCovs)
+        
       } else {
-        # Clustering methods generate new polygon geometries from the active observation points
+        # Standard clustering methods (lat-long, 1to10, 2to10)
         obs_m$site <- paste0(obs_m$reported_x, "_", obs_m$reported_y)
         
         geoms <- sim_create_geometries(obs_m, r_trend, buffer_cells = 2)
         if (nrow(geoms) == 0) next
         
         split_res <- sim_disjoint(geoms, obs_m)
-        geoms <- split_res$geoms
-        obs_m <- split_res$data
-        
-        w_m <- sim_overlap(geoms, r_trend)
-        fm_m <- fit_clustered_model(obs_m, w_m, full_cellCovs)
+        w_m <- sim_overlap(split_res$geoms, r_trend)
+        fm_m <- fit_clustered_model(split_res$data, w_m, full_cellCovs)
       }
       
       est_val <- if(is.null(fm_m)) c(NA,NA,NA,NA) else c(coef(fm_m, 'det'), coef(fm_m, 'state'))
@@ -594,7 +645,7 @@ ggsave(file.path(output_dir, "error_boxplots.png"), plot = combined_error_plot_g
 # PLOT 2: error_boxplots_all.png (reference-sites-2to10 vs clustered)
 # ----------------------------------------------------------------------
 # Filter only to the methods required for this plot
-res_df_all <- res_df[res_df$Method %in% c("gt-2to10", "lat-long", "1to10", "2to10"), ]
+res_df_all <- res_df[res_df$Method %in% c("gt-2to10", "lat-long", "1to10", "2to10", "10-cellSq", "DBSC"), ]
 
 # Map gt-2to10 to the requested display name
 res_df_all$Method_Label <- as.character(res_df_all$Method)
@@ -603,11 +654,18 @@ res_df_all$Method_Label[res_df_all$Method_Label == "gt-2to10"] <- "reference-sit
 # Enforce factor levels for ordering in the plot/legend
 res_df_all$Method_Label <- factor(
   res_df_all$Method_Label, 
-  levels = c("reference-sites-2to10", "lat-long", "1to10", "2to10")
+  levels = c("reference-sites-2to10", "lat-long", "1to10", "2to10", "10-cellSq", "DBSC")
 )
 
-method_colors <- c("reference-sites-2to10" = "red", "lat-long" = "navy", "1to10" = "cyan", "2to10" = "pink")
-
+# Apply requested color scheme 
+method_colors <- c(
+  "reference-sites-2to10" = "red", 
+  "lat-long" = "navy", 
+  "1to10" = "cyan", 
+  "2to10" = "pink",
+  "10-cellSq" = "orange",
+  "DBSC" = "darkgrey"
+)
 create_error_plot_all <- function(param_name, title) {
   ggplot(res_df_all[res_df_all$Parameter == param_name, ], 
          aes(x = Extent, y = Error, fill = Method_Label)) +
