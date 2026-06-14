@@ -28,7 +28,7 @@ library(sf)
 set.seed(123) 
 
 # --- Simulation repetitions ---
-n_sims <- 5 
+n_sims <- 3
 n_reps <- 30 
 
 # --- Full Landscape parameters (200x200) ---
@@ -40,6 +40,7 @@ J_obs <- 3
 
 # --- True parameter values ---
 true_alphas <- c(alpha_int = 0.5, alpha_cov = -1.0)
+# true_betas <- c(beta_int = -5.0, beta_cov = 1.0)
 true_betas <- c(beta_int = -5.0, beta_cov = 1.0)
 
 # --- Model settings ---
@@ -67,45 +68,12 @@ cat(sprintf("TOTAL MODEL FITS: %d\n\n", n_sims * length(extents) * n_reps))
 
 
 ##########
-# 3. Pre-generate Landscape Geometries (Irregular Sites)
+# 3. Pre-generate Coordinates & Seeds
 ##########
-
-cat("Pre-generating irregular, contiguous site geometries using K-means...\n")
 
 full_cell_row <- (0:(full_n_cells - 1) %/% full_grid_dim) + 1
 full_cell_col <- (0:(full_n_cells - 1) %% full_grid_dim) + 1
 cell_coords <- data.frame(x = full_cell_col, y = full_cell_row)
-
-site_definitions <- list()
-
-for (ext_name in names(extents)) {
-  K <- extents[[ext_name]]
-  
-  set.seed(42 + K) 
-  km <- kmeans(cell_coords, centers = K, iter.max = 100)
-  site_ids <- km$cluster
-  
-  w <- Matrix::sparseMatrix(
-    i = site_ids,
-    j = 1:full_n_cells,
-    x = 1,
-    dims = c(K, full_n_cells)
-  )
-  
-  xyz_df <- data.frame(x = full_cell_col, y = full_cell_row, z = site_ids)
-  r_sites <- terra::rast(xyz_df, type = "xyz")
-  
-  site_polys <- terra::as.polygons(r_sites, dissolve = TRUE)
-  site_sf <- sf::st_as_sf(site_polys)
-  colnames(site_sf)[1] <- "site"
-  
-  site_definitions[[ext_name]] <- list(
-    K = K,
-    site_ids = site_ids,
-    w = w,
-    site_sf = site_sf
-  )
-}
 
 set.seed(123)
 cov_center_seeds <- vector("list", n_sims)
@@ -168,7 +136,58 @@ for (sim in 1:n_sims) {
     )
   }
   
-  # --- 4c. Iterate Over Extents ---
+  # --- 4c. Generate Covariate-Biased Site Geometries ---
+  if (sim == 1) cat("Generating Density-Weighted Voronoi Site Geometries...\n")
+  site_definitions <- list()
+  
+  # Create a highly peaked probability weight based on the covariate
+  # Scale by 2.5 to create strong hotspots
+  # prob_weights <- exp(full_cellCovs$cell_cov1 * 2.5) 
+  prob_weights <- exp(full_cellCovs$cell_cov1 * 0.5)
+  
+  for (ext_name in names(extents)) {
+    K <- extents[[ext_name]]
+    
+    # 1. Sample K seed cells strongly biased towards high covariate values
+    seed_idx <- sample(1:full_n_cells, K, prob = prob_weights)
+    seed_pts <- cell_coords[seed_idx, ]
+    
+    # 2. Fast Base-R Voronoi Assignment (Assigns all 40,000 cells to nearest seed)
+    site_ids <- rep(1, full_n_cells)
+    min_dists <- rep(Inf, full_n_cells)
+    for (k in 1:K) {
+      dists_sq <- (cell_coords$x - seed_pts$x[k])^2 + (cell_coords$y - seed_pts$y[k])^2
+      update_idx <- dists_sq < min_dists
+      site_ids[update_idx] <- k
+      min_dists[update_idx] <- dists_sq[update_idx]
+    }
+    
+    w <- Matrix::sparseMatrix(
+      i = site_ids,
+      j = 1:full_n_cells,
+      x = 1,
+      dims = c(K, full_n_cells)
+    )
+    
+    # Extract Polygons ONLY on sim 1 to save massive compute time on sims 2+
+    site_sf <- NULL
+    if (sim == 1) {
+      xyz_df <- data.frame(x = full_cell_col, y = full_cell_row, z = site_ids)
+      r_sites <- terra::rast(xyz_df, type = "xyz")
+      site_polys <- terra::as.polygons(r_sites, dissolve = TRUE)
+      site_sf <- sf::st_as_sf(site_polys)
+      colnames(site_sf)[1] <- "site"
+    }
+    
+    site_definitions[[ext_name]] <- list(
+      K = K,
+      site_ids = site_ids,
+      w = w,
+      site_sf = site_sf
+    )
+  }
+  
+  # --- 4d. Iterate Over Extents ---
   for (ext_name in names(extents)) {
     cat(sprintf("  - Extent: %s\n", ext_name))
     
@@ -255,20 +274,18 @@ cat("\nGenerating 4x3 Spatial Plot (sampling_extents.png)...\n")
 cov_limits <- range(c(plot_data$Cell$covariate, plot_data$Small$covariate, plot_data$Medium$covariate, plot_data$Large$covariate), na.rm=TRUE)
 abund_limits <- range(c(plot_data$Cell$abundance, plot_data$Small$abundance, plot_data$Medium$abundance, plot_data$Large$abundance), na.rm=TRUE)
 
-# FIX: Set the global ggplot2 theme BEFORE building plots. 
-# Patchwork automatically reads this global theme to position collected guides.
 ggplot2::theme_set(ggplot2::theme_minimal() + ggplot2::theme(
   legend.position = "bottom",
   legend.justification = "center",
   legend.box = "horizontal",
   legend.box.just = "center",
-  legend.spacing.x = ggplot2::unit(1.5, "cm"), 
-  legend.margin = ggplot2::margin(t = 20),
-  legend.title = ggplot2::element_text(size=14, face="bold", hjust=0.5),
+  legend.spacing.x = ggplot2::unit(2.5, "cm"), 
+  legend.box.margin = ggplot2::margin(t = 5, l = 15), 
+  legend.title.align = 0.5, 
+  legend.title = ggplot2::element_text(size=14),
   legend.text = ggplot2::element_text(size=12)
 ))
 
-# Subplot specific formatting
 base_theme <- ggplot2::theme(
   axis.text = ggplot2::element_blank(), axis.ticks = ggplot2::element_blank(),
   panel.grid = ggplot2::element_blank(), plot.margin = ggplot2::margin(2, 2, 2, 2, "pt"),
@@ -280,7 +297,7 @@ guide_cont <- ggplot2::guide_colorbar(
   direction = "horizontal",
   title.position = "top",
   title.hjust = 0.5,
-  barwidth = ggplot2::unit(7.5, "cm"), 
+  barwidth = ggplot2::unit(5.0, "cm"),
   barheight = ggplot2::unit(0.6, "cm")
 )
 
@@ -288,7 +305,7 @@ guide_disc <- ggplot2::guide_legend(
   direction = "horizontal",
   title.position = "top",
   title.hjust = 0.5,
-  keywidth = ggplot2::unit(2.0, "cm"), 
+  keywidth = ggplot2::unit(1.0, "cm"), 
   keyheight = ggplot2::unit(0.6, "cm")
 )
 
@@ -301,11 +318,11 @@ build_row <- function(data_name, row_title, show_titles=FALSE) {
       labs(y = row_title, x = NULL) + coord_fixed(expand=FALSE)
       
     p2 <- ggplot(df, aes(x=x, y=y, fill=abundance)) + geom_raster() +
-      scale_fill_viridis_c(option="magma", name="Abundance (N)", limits=abund_limits, guide=guide_cont) + base_theme +
+      scale_fill_viridis_c(option="magma", name="Abundance", limits=abund_limits, guide=guide_cont) + base_theme +
       labs(y = NULL, x = NULL) + coord_fixed(expand=FALSE)
       
     p3 <- ggplot(df, aes(x=x, y=y, fill=occupancy)) + geom_raster() +
-      scale_fill_manual(values=c("0"="#440154FF", "1"="#FDE725FF"), name="Occupancy (0/1)", drop=FALSE, guide=guide_disc) + base_theme +
+      scale_fill_manual(values=c("0"="#440154FF", "1"="#FDE725FF"), name="           Occupancy           ", drop=FALSE, guide=guide_disc) + base_theme +
       labs(y = NULL, x = NULL) + coord_fixed(expand=FALSE)
       
   } else {
@@ -314,33 +331,32 @@ build_row <- function(data_name, row_title, show_titles=FALSE) {
       labs(y = row_title, x = NULL) + coord_sf(expand=FALSE)
       
     p2 <- ggplot(df) + geom_sf(aes(fill=abundance), color="black", linewidth=0.1) +
-      scale_fill_viridis_c(option="magma", name="Abundance (N)", limits=abund_limits, guide=guide_cont) + base_theme +
+      scale_fill_viridis_c(option="magma", name="Abundance", limits=abund_limits, guide=guide_cont) + base_theme +
       labs(y = NULL, x = NULL) + coord_sf(expand=FALSE)
       
     p3 <- ggplot(df) + geom_sf(aes(fill=occupancy), color="black", linewidth=0.1, show.legend=FALSE) +
-      scale_fill_manual(values=c("0"="#440154FF", "1"="#FDE725FF"), name="Occupancy (0/1)", drop=FALSE, guide=guide_disc) + base_theme +
+      scale_fill_manual(values=c("0"="#440154FF", "1"="#FDE725FF"), name="           Occupancy           ", drop=FALSE, guide=guide_disc) + base_theme +
       labs(y = NULL, x = NULL) + coord_sf(expand=FALSE)
   }
   
   if(show_titles) {
     p1 <- p1 + ggtitle("Covariate")
-    p2 <- p2 + ggtitle("Abundance (N)")
-    p3 <- p3 + ggtitle("Occupancy (0/1)")
+    p2 <- p2 + ggtitle("Abundance")
+    p3 <- p3 + ggtitle("Occupancy")
   }
   
   return(list(p1, p2, p3))
 }
 
 row1 <- build_row("Cell", "Simulated Species", show_titles=TRUE)
-row2 <- build_row("Small", "Sampling Extent 1\n(Small)")
-row3 <- build_row("Medium", "Sampling Extent 2\n(Medium)")
-row4 <- build_row("Large", "Sampling Extent 3\n(Large)")
+row2 <- build_row("Small", "Small Sampling Extents\n(M = 1600)")
+row3 <- build_row("Medium", "Medium Sampling Extents\n(M = 400)")
+row4 <- build_row("Large", "Large Sampling Extents\n(M = 100)")
 
-# Assemble using patchwork. It will now automatically pull the global legend positioning!
 comb_plot <- patchwork::wrap_plots(c(row1, row2, row3, row4), ncol=3) + 
   patchwork::plot_layout(guides="collect")
 
-ggsave(file.path(output_dir, "sampling_extents.png"), plot=comb_plot, width=12, height=14, dpi=300)
+ggsave(file.path(output_dir, "sampling_extents.png"), plot=comb_plot, width=10, height=14, dpi=300)
 
 ##########
 # 6. Process Results & Generate Error Boxplots
