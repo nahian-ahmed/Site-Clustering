@@ -1,5 +1,5 @@
 ################################################################
-# Updated Simulation Experiments: Sampling Extents (eBird Biased)
+# Updated Simulation Experiments: Sampling Extents
 ################################################################
 
 ###
@@ -35,29 +35,18 @@ n_reps <- 30
 full_grid_dim <- 200 
 full_n_cells <- full_grid_dim * full_grid_dim # 40000
 
-# --- Fixed Data Point Parameters ---
-n_total_points <- 5000
-n_single_locs <- 1000
-n_double_locs <- 1000
-n_hotspot_locs <- 40
-hotspot_visits <- 50
-hotspot_noise_radius <- 10 # cells
+# --- Observation parameters ---
+J_obs <- 3 
 
 # --- True parameter values ---
 true_alphas <- c(alpha_int = 0.5, alpha_cov = -1.0)
+# true_betas <- c(beta_int = -5.0, beta_cov = 1.0)
 true_betas <- c(beta_int = -5.0, beta_cov = 1.0)
 
 # --- Model settings ---
 selected_optimizer <- "nlminb"
-# PARAM_LOWER <- -20
-# PARAM_UPPER <- 20
-
-
-PARAM_LOWER <- -10
-PARAM_UPPER <- 10
-INIT_LOWER <- -2
-INIT_UPPER <- 2
-
+PARAM_LOWER <- -20
+PARAM_UPPER <- 20
 
 # --- Fixed SAC and Skew ---
 sac_sigma <- 3 # Medium SAC
@@ -76,6 +65,7 @@ cat("--- Simulation Starting ---\n")
 cat(sprintf("Saving all outputs to exactly:\n -> %s\n\n", normalizePath(output_dir)))
 cat(sprintf("Running %d simulations for 3 Sampling Extents.\n", n_sims))
 cat(sprintf("TOTAL MODEL FITS: %d\n\n", n_sims * length(extents) * n_reps))
+
 
 ##########
 # 3. Pre-generate Coordinates & Seeds
@@ -104,7 +94,7 @@ plot_data <- list()
 for (sim in 1:n_sims) {
   cat(sprintf("\n=== Sim %d of %d ===\n", sim, n_sims))
   
-  # --- 4a. Base Covariate (Ecology) ---
+  # --- 4a. Base Covariate ---
   r_noise <- terra::rast(nrows=full_grid_dim, ncols=full_grid_dim, 
                          xmin=0, xmax=full_grid_dim, ymin=0, ymax=full_grid_dim,
                          vals=rnorm(full_n_cells))
@@ -137,63 +127,6 @@ for (sim in 1:n_sims) {
   full_N_j <- rpois(full_n_cells, full_lambda_j)
   full_Z_j <- factor(ifelse(full_N_j > 0, 1, 0), levels = c("0", "1"))
   
-  # --- 4c. Generate Accessibility & eBird Points ---
-  # Create a spatial field entirely independent from the ecological covariate
-  r_acc_noise <- terra::rast(nrows=full_grid_dim, ncols=full_grid_dim, 
-                             xmin=0, xmax=full_grid_dim, ymin=0, ymax=full_grid_dim,
-                             vals=rnorm(full_n_cells))
-  r_acc <- terra::focal(r_acc_noise, w = fw, fun = sum, na.rm = TRUE)
-  acc_vals <- as.vector(scale(terra::values(r_acc)))
-  acc_weights <- exp(acc_vals * 2) # Heavily skew to create accessibility hotspots
-  
-  # Sample the 2040 unique geographic locations
-  set.seed(100 + sim) # keep points consistent but varying slightly per sim
-  sampled_loc_ids <- sample(1:full_n_cells, n_hotspot_locs + n_double_locs + n_single_locs, prob = acc_weights)
-  
-  hotspot_idx <- sampled_loc_ids[1:n_hotspot_locs]
-  double_idx <- sampled_loc_ids[(n_hotspot_locs+1):(n_hotspot_locs+n_double_locs)]
-  single_idx <- sampled_loc_ids[(n_hotspot_locs+n_double_locs+1):length(sampled_loc_ids)]
-  
-  obs_list <- list()
-  
-  # 1. Single visits
-  obs_list[[1]] <- data.frame(reported_cell = single_idx, true_cell = single_idx)
-  
-  # 2. Double visits
-  obs_list[[2]] <- data.frame(reported_cell = rep(double_idx, each=2), true_cell = rep(double_idx, each=2))
-  
-  # 3. Hotspots (Spatial Misclassification)
-  hotspot_reported <- rep(hotspot_idx, each = hotspot_visits)
-  hotspot_true <- numeric(length(hotspot_reported))
-  
-  for(i in seq_along(hotspot_idx)) {
-    base_idx <- hotspot_idx[i]
-    base_x <- full_cell_col[base_idx]
-    base_y <- full_cell_row[base_idx]
-    
-    t_cells <- numeric(hotspot_visits)
-    t_cells[1:3] <- base_idx # 5% correct (rounded to 3)
-    
-    # Generate 47 noise points within 10 cell radius
-    for(j in 4:hotspot_visits) {
-      angle <- runif(1, 0, 2*pi)
-      r <- sqrt(runif(1, 0, hotspot_noise_radius^2))
-      nx <- round(base_x + r * cos(angle))
-      ny <- round(base_y + r * sin(angle))
-      nx <- max(1, min(full_grid_dim, nx))
-      ny <- max(1, min(full_grid_dim, ny))
-      t_cells[j] <- (ny - 1) * full_grid_dim + nx
-    }
-    hotspot_true[((i-1)*hotspot_visits + 1):(i*hotspot_visits)] <- t_cells
-  }
-  obs_list[[3]] <- data.frame(reported_cell = hotspot_reported, true_cell = hotspot_true)
-  
-  # Combine to final 5000 fixed points
-  all_obs <- do.call(rbind, obs_list)
-  all_obs$reported_x <- full_cell_col[all_obs$reported_cell]
-  all_obs$reported_y <- full_cell_row[all_obs$reported_cell]
-  obs_sf <- sf::st_as_sf(all_obs, coords = c("reported_x", "reported_y"))
-  
   if (sim == 1) {
     plot_data[["Cell"]] <- data.frame(
       x = full_cell_col, y = full_cell_row,
@@ -203,16 +136,23 @@ for (sim in 1:n_sims) {
     )
   }
   
-  # --- 4d. Generate Covariate-Biased Site Geometries ---
+  # --- 4c. Generate Covariate-Biased Site Geometries ---
   if (sim == 1) cat("Generating Density-Weighted Voronoi Site Geometries...\n")
   site_definitions <- list()
+  
+  # Create a highly peaked probability weight based on the covariate
+  # Scale by 2.5 to create strong hotspots
+  # prob_weights <- exp(full_cellCovs$cell_cov1 * 2.5) 
   prob_weights <- exp(full_cellCovs$cell_cov1 * 0.5)
   
   for (ext_name in names(extents)) {
     K <- extents[[ext_name]]
+    
+    # 1. Sample K seed cells strongly biased towards high covariate values
     seed_idx <- sample(1:full_n_cells, K, prob = prob_weights)
     seed_pts <- cell_coords[seed_idx, ]
     
+    # 2. Fast Base-R Voronoi Assignment (Assigns all 40,000 cells to nearest seed)
     site_ids <- rep(1, full_n_cells)
     min_dists <- rep(Inf, full_n_cells)
     for (k in 1:K) {
@@ -223,9 +163,13 @@ for (sim in 1:n_sims) {
     }
     
     w <- Matrix::sparseMatrix(
-      i = site_ids, j = 1:full_n_cells, x = 1, dims = c(K, full_n_cells)
+      i = site_ids,
+      j = 1:full_n_cells,
+      x = 1,
+      dims = c(K, full_n_cells)
     )
     
+    # Extract Polygons ONLY on sim 1 to save massive compute time on sims 2+
     site_sf <- NULL
     if (sim == 1) {
       xyz_df <- data.frame(x = full_cell_col, y = full_cell_row, z = site_ids)
@@ -235,82 +179,59 @@ for (sim in 1:n_sims) {
       colnames(site_sf)[1] <- "site"
     }
     
-    site_definitions[[ext_name]] <- list(K = K, site_ids = site_ids, w = w, site_sf = site_sf)
+    site_definitions[[ext_name]] <- list(
+      K = K,
+      site_ids = site_ids,
+      w = w,
+      site_sf = site_sf
+    )
   }
   
-  # --- 4e. Iterate Over Extents ---
+  # --- 4d. Iterate Over Extents ---
   for (ext_name in names(extents)) {
     cat(sprintf("  - Extent: %s\n", ext_name))
     
     def <- site_definitions[[ext_name]]
     M <- def$K
     w <- def$w
+    site_ids <- def$site_ids
     
-    # Base true states for ALL polygons
+    # Calculate Site-level True States
     lambda_tilde_i <- as.numeric(w %*% full_lambda_j)
     N_i <- rpois(M, lambda_tilde_i)
     Z_i <- factor(ifelse(N_i > 0, 1, 0), levels = c("0", "1"))
     
-    # 1. Intersect points with polygons (Reported Site)
-    all_obs$reported_site <- def$site_ids[all_obs$reported_cell]
-    # Intersect points with polygons (True Site for Observation generation)
-    all_obs$true_site <- def$site_ids[all_obs$true_cell]
+    # Generate Observations (y)
+    obs_cov1 <- matrix(rnorm(M * J_obs), M, J_obs)
+    obsCovs <- list(obs_cov1 = obs_cov1)
+    y <- matrix(NA, M, J_obs)
     
-    # 2. Filter Active Sites
-    site_counts <- table(all_obs$reported_site)
-    active_sites <- as.numeric(names(site_counts))
-    M_active <- length(active_sites)
-    J_max <- max(site_counts)
-    
-    if (M_active == 0) next
-    
-    # 3. Build padded matrices for active sites
-    y <- matrix(NA, M_active, J_max)
-    obs_cov1 <- matrix(NA, M_active, J_max)
-    
-    for(i in 1:M_active) {
-      s_idx <- active_sites[i]
-      s_obs <- all_obs[all_obs$reported_site == s_idx, ]
-      J_i <- nrow(s_obs)
-      
-      for(j in 1:J_i) {
-        o_cov <- rnorm(1)
-        obs_cov1[i, j] <- o_cov
-        
-        # Sim observation based on the TRUE cell's polygon state
-        Z_t <- Z_i[s_obs$true_site[j]]
-        
-        if (Z_t == "0") {
-          y[i, j] <- 0
-        } else {
-          logit_p <- true_alphas[1] + true_alphas[2] * o_cov
-          y[i, j] <- rbinom(1, 1, plogis(logit_p))
-        }
+    for (i in 1:M) {
+      if (Z_i[i] == "0") {
+        y[i, ] <- 0
+        next
+      }
+      for (k in 1:J_obs) {
+        logit_p_ik <- true_alphas[1] * 1 + true_alphas[2] * obsCovs$obs_cov1[i, k]
+        y[i, k] <- rbinom(1, 1, plogis(logit_p_ik))
       }
     }
-    
-    w_active <- w[active_sites, , drop = FALSE]
     
     if (sim == 1) {
       agg_cov <- as.numeric((w %*% full_cellCovs$cell_cov1) / rowSums(w))
       
       sf_data <- def$site_sf
       sf_data <- sf_data[order(sf_data$site), ] 
-      
-      # Set empty polygons to NA for Covariate mapping
-      sf_data$is_active <- (1:M %in% active_sites)
       sf_data$covariate <- agg_cov
-      sf_data$covariate[!sf_data$is_active] <- NA
-      
       sf_data$abundance <- N_i
       sf_data$occupancy <- Z_i
       
-      plot_data[[ext_name]] <- list(sf_data = sf_data, obs_sf = obs_sf)
+      plot_data[[ext_name]] <- sf_data
     }
     
     # Fit occuPPM Model
     umf <- unmarkedFrameOccuPPM(
-      y = y, obsCovs = list(obs_cov1 = obs_cov1), cellCovs = full_cellCovs, w = w_active 
+      y = y, obsCovs = obsCovs, cellCovs = full_cellCovs, w = w 
     )
     
     best_fm <- NULL
@@ -318,11 +239,11 @@ for (sim in 1:n_sims) {
     n_params <- length(true_alphas) + length(true_betas)
     
     for (rep in 1:n_reps) {
-      rand_starts <- runif(n_params, min = INIT_LOWER, max = INIT_UPPER)
+      rand_starts <- runif(n_params, -2, 2) 
       fm_rep <- try(occuPPM(
         formula = ~obs_cov1 ~ cell_cov1,
         data = umf, starts = rand_starts, se = TRUE,
-        method = selected_optimizer, lower = PARAM_LOWER, upper = PARAM_UPPER
+        method = selected_optimizer, lower = PARAM_LOWER, upper = PARAM_UPPER 
       ), silent = TRUE)
       
       if (inherits(fm_rep, "try-error")) next
@@ -350,15 +271,8 @@ for (sim in 1:n_sims) {
 ##########
 cat("\nGenerating 4x3 Spatial Plot (sampling_extents.png)...\n")
 
-cov_limits <- range(c(plot_data$Cell$covariate, 
-                      plot_data$Small$sf_data$covariate, 
-                      plot_data$Medium$sf_data$covariate, 
-                      plot_data$Large$sf_data$covariate), na.rm=TRUE)
-
-abund_limits <- range(c(plot_data$Cell$abundance, 
-                        plot_data$Small$sf_data$abundance, 
-                        plot_data$Medium$sf_data$abundance, 
-                        plot_data$Large$sf_data$abundance), na.rm=TRUE)
+cov_limits <- range(c(plot_data$Cell$covariate, plot_data$Small$covariate, plot_data$Medium$covariate, plot_data$Large$covariate), na.rm=TRUE)
+abund_limits <- range(c(plot_data$Cell$abundance, plot_data$Small$abundance, plot_data$Medium$abundance, plot_data$Large$abundance), na.rm=TRUE)
 
 ggplot2::theme_set(ggplot2::theme_minimal() + ggplot2::theme(
   legend.position = "bottom",
@@ -396,9 +310,9 @@ guide_disc <- ggplot2::guide_legend(
 )
 
 build_row <- function(data_name, row_title, show_titles=FALSE) {
+  df <- plot_data[[data_name]]
+  
   if (data_name == "Cell") {
-    df <- plot_data[[data_name]]
-    
     p1 <- ggplot(df, aes(x=x, y=y, fill=covariate)) + geom_raster() +
       scale_fill_viridis_c(name="Covariate", limits=cov_limits, guide=guide_cont) + base_theme +
       labs(y = row_title, x = NULL) + coord_fixed(expand=FALSE)
@@ -412,14 +326,8 @@ build_row <- function(data_name, row_title, show_titles=FALSE) {
       labs(y = NULL, x = NULL) + coord_fixed(expand=FALSE)
       
   } else {
-    df <- plot_data[[data_name]]$sf_data
-    obs_pts <- plot_data[[data_name]]$obs_sf
-    
-    # Empty polygons are automatically white due to na.value="white" and covariate being NA
-    p1 <- ggplot(df) + 
-      geom_sf(aes(fill=covariate), color="black", linewidth=0.1) +
-      geom_sf(data=obs_pts, color="red", size=0.2, alpha=0.5) +
-      scale_fill_viridis_c(name="Covariate", limits=cov_limits, guide=guide_cont, na.value="white") + base_theme +
+    p1 <- ggplot(df) + geom_sf(aes(fill=covariate), color="black", linewidth=0.1) +
+      scale_fill_viridis_c(name="Covariate", limits=cov_limits, guide=guide_cont) + base_theme +
       labs(y = row_title, x = NULL) + coord_sf(expand=FALSE)
       
     p2 <- ggplot(df) + geom_sf(aes(fill=abundance), color="black", linewidth=0.1) +
