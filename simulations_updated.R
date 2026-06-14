@@ -423,14 +423,15 @@ for (sim in 1:n_sims) {
         fm_m <- fit_clustered_model(obs_m, w, full_cellCovs)
         
       } else {
+        
         if (m_name == "lat-long") {
           obs_m <- all_obs
         } else if (m_name == "1to10") {
-          obs_m <- all_obs %>% dplyr::group_by(reported_cell) %>% dplyr::slice_sample(n = 10) %>% dplyr::ungroup() %>% as.data.frame()
+          obs_m <- all_obs %>% dplyr::group_by(reported_x, reported_y) %>% dplyr::slice_sample(n = 10) %>% dplyr::ungroup() %>% as.data.frame()
         } else if (m_name == "2to10") {
-          obs_m <- all_obs %>% dplyr::group_by(reported_cell) %>% dplyr::filter(n() >= 2) %>% dplyr::slice_sample(n = 10) %>% dplyr::ungroup() %>% as.data.frame()
+          obs_m <- all_obs %>% dplyr::group_by(reported_x, reported_y) %>% dplyr::filter(n() >= 2) %>% dplyr::slice_sample(n = 10) %>% dplyr::ungroup() %>% as.data.frame()
         }
-        
+
         if (nrow(obs_m) == 0) next
         obs_m$site <- paste0(obs_m$reported_x, "_", obs_m$reported_y)
         
