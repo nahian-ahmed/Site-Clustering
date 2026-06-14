@@ -73,7 +73,7 @@ decay_scale <- 30^2
 
 
 # --- Dynamic Grid Method Settings ---
-grid_size <- 10
+grid_size <- 5
 grid_method_name <- paste0(grid_size, "-cellSq") 
 
 # --- Methods to Run ---
@@ -81,9 +81,12 @@ grid_method_name <- paste0(grid_size, "-cellSq")
 methods_to_run <- c("gt-lat-long", "gt-1to10", "gt-2to10", "lat-long", "1to10", "2to10", grid_method_name, "DBSC", "clustGeo")
 
 
-
 # --- 3 Scenarios: Sampling Extents ---
 extents <- c("Small" = 1600, "Medium" = 400, "Large" = 100)
+
+# --- ClustGeo Method Settings ---
+# Set the kappa percentage (0-100) used for each extent size
+kappa_values <- c("Small" = 95, "Medium" = 50, "Large" = 5)
 
 # FORCE absolute path
 output_dir <- file.path(getwd(), "output", "simulation_experiments", "updated")
@@ -502,14 +505,7 @@ for (sim in 1:n_sims) {
         # clustGeo Method 
         
         # Set kappa dynamically based on the current extent
-        if (ext_name == "Small") {
-          kappa <- 95
-        } else if (ext_name == "Medium") {
-          kappa <- 50
-        } else if (ext_name == "Large") {
-          kappa <- 5
-        }
-        
+        kappa <- kappa_values[[ext_name]]
         # Prepare distinct locations and covariates
         obs_m$cell_cov1 <- full_cellCovs$cell_cov1[obs_m$reported_cell]
         obs_locs <- obs_m %>% dplyr::distinct(reported_x, reported_y, .keep_all = TRUE)
