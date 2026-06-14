@@ -73,7 +73,6 @@ output_dir <- file.path(getwd(), "output", "simulation_experiments", "updated")
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 cat("--- Simulation Starting ---\n")
-cat(sprintf("Saving all outputs to exactly:\n -> %s\n\n", normalizePath(output_dir)))
 cat(sprintf("Running %d simulations for 3 Sampling Extents.\n", n_sims))
 cat(sprintf("TOTAL MODEL FITS: %d\n\n", n_sims * length(extents) * n_reps))
 
@@ -297,13 +296,16 @@ for (sim in 1:n_sims) {
       sf_data <- def$site_sf
       sf_data <- sf_data[order(sf_data$site), ] 
       
-      # Set empty polygons to NA for Covariate mapping
+      # Set empty polygons to NA for all mapped variables
       sf_data$is_active <- (1:M %in% active_sites)
       sf_data$covariate <- agg_cov
       sf_data$covariate[!sf_data$is_active] <- NA
       
       sf_data$abundance <- N_i
+      sf_data$abundance[!sf_data$is_active] <- NA
+      
       sf_data$occupancy <- Z_i
+      sf_data$occupancy[!sf_data$is_active] <- NA
       
       plot_data[[ext_name]] <- list(sf_data = sf_data, obs_sf = obs_sf)
     }
@@ -366,7 +368,7 @@ ggplot2::theme_set(ggplot2::theme_minimal() + ggplot2::theme(
   legend.box = "horizontal",
   legend.box.just = "center",
   legend.spacing.x = ggplot2::unit(2.5, "cm"), 
-  legend.box.margin = ggplot2::margin(t = 5, l = 15), 
+  legend.margin = ggplot2::margin(t = 5, l = 15),
   legend.title.align = 0.5, 
   legend.title = ggplot2::element_text(size=14),
   legend.text = ggplot2::element_text(size=12)
@@ -415,7 +417,7 @@ build_row <- function(data_name, row_title, show_titles=FALSE) {
     df <- plot_data[[data_name]]$sf_data
     obs_pts <- plot_data[[data_name]]$obs_sf
     
-    # Empty polygons are automatically white due to na.value="white" and covariate being NA
+    # Empty polygons are automatically white due to na.value="white"
     p1 <- ggplot(df) + 
       geom_sf(aes(fill=covariate), color="black", linewidth=0.1) +
       geom_sf(data=obs_pts, color="red", size=0.2, alpha=0.5) +
@@ -423,12 +425,13 @@ build_row <- function(data_name, row_title, show_titles=FALSE) {
       labs(y = row_title, x = NULL) + coord_sf(expand=FALSE)
       
     p2 <- ggplot(df) + geom_sf(aes(fill=abundance), color="black", linewidth=0.1) +
-      scale_fill_viridis_c(option="magma", name="Abundance", limits=abund_limits, guide=guide_cont) + base_theme +
+      scale_fill_viridis_c(option="magma", name="Abundance", limits=abund_limits, guide=guide_cont, na.value="white") + base_theme +
       labs(y = NULL, x = NULL) + coord_sf(expand=FALSE)
       
     p3 <- ggplot(df) + geom_sf(aes(fill=occupancy), color="black", linewidth=0.1, show.legend=FALSE) +
-      scale_fill_manual(values=c("0"="#440154FF", "1"="#FDE725FF"), name="           Occupancy           ", drop=FALSE, guide=guide_disc) + base_theme +
+      scale_fill_manual(values=c("0"="#440154FF", "1"="#FDE725FF"), name="           Occupancy           ", drop=FALSE, guide=guide_disc, na.value="white") + base_theme +
       labs(y = NULL, x = NULL) + coord_sf(expand=FALSE)
+  
   }
   
   if(show_titles) {
@@ -441,9 +444,9 @@ build_row <- function(data_name, row_title, show_titles=FALSE) {
 }
 
 row1 <- build_row("Cell", "Simulated Species", show_titles=TRUE)
-row2 <- build_row("Small", "Small Sampling Extents\n(M = 1600)")
-row3 <- build_row("Medium", "Medium Sampling Extents\n(M = 400)")
-row4 <- build_row("Large", "Large Sampling Extents\n(M = 100)")
+row2 <- build_row("Small", "Small Sampling Extents")
+row3 <- build_row("Medium", "Medium Sampling Extents")
+row4 <- build_row("Large", "Large Sampling Extents")
 
 comb_plot <- patchwork::wrap_plots(c(row1, row2, row3, row4), ncol=3) + 
   patchwork::plot_layout(guides="collect")
