@@ -1,6 +1,6 @@
 ################################################################
 # Updated Simulation Experiments: Sampling Extents (eBird Biased)
-# Incorporating lat-long, 1to10, and 2to10 methods
+# Incorporating lat-long, 1to10, and 2to10 methods and GT variants
 ################################################################
 
 ###
@@ -72,7 +72,7 @@ if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 cat("--- Simulation Starting ---\n")
 cat(sprintf("Running %d simulations for 3 Sampling Extents.\n", n_sims))
-cat(sprintf("TOTAL MODEL FITS: %d\n\n", n_sims * length(extents) * 4 * n_reps)) # 4 methods now
+cat(sprintf("TOTAL MODEL FITS: %d\n\n", n_sims * length(extents) * 6 * n_reps)) # 6 methods now
 
 ##########
 # 3. Helpers for Simulation Geometry (2 cell buffer)
@@ -411,28 +411,31 @@ for (sim in 1:n_sims) {
       plot_data[[ext_name]] <- list(sf_data = sf_data, obs_sf = obs_sf)
     }
 
-    # 2. RUN ALL CLUSTERING METHODS FOR THIS EXTENT
-    methods_to_run <- c("ground-truth", "lat-long", "1to10", "2to10")
+    # 2. RUN ALL METHODS FOR THIS EXTENT
+    methods_to_run <- c("gt-lat-long", "gt-1to10", "gt-2to10", "lat-long", "1to10", "2to10")
     
     for (m_name in methods_to_run) {
       cat(sprintf("    * Method: %s\n", m_name))
       
-      if (m_name == "ground-truth") {
+      # Step A: Filter observations based on method logic
+      if (grepl("lat-long", m_name)) {
         obs_m <- all_obs
+      } else if (grepl("1to10", m_name)) {
+        obs_m <- all_obs %>% dplyr::group_by(reported_x, reported_y) %>% dplyr::slice_sample(n = 10) %>% dplyr::ungroup() %>% as.data.frame()
+      } else if (grepl("2to10", m_name)) {
+        obs_m <- all_obs %>% dplyr::group_by(reported_x, reported_y) %>% dplyr::filter(n() >= 2) %>% dplyr::slice_sample(n = 10) %>% dplyr::ungroup() %>% as.data.frame()
+      }
+
+      if (nrow(obs_m) == 0) next
+      
+      # Step B: Assign geometry and compute parameters
+      if (startsWith(m_name, "gt-")) {
+        # Ground-truth methods rely on the true underlying polygon site identifiers
         obs_m$site <- as.character(obs_m$reported_site)
         fm_m <- fit_clustered_model(obs_m, w, full_cellCovs)
         
       } else {
-        
-        if (m_name == "lat-long") {
-          obs_m <- all_obs
-        } else if (m_name == "1to10") {
-          obs_m <- all_obs %>% dplyr::group_by(reported_x, reported_y) %>% dplyr::slice_sample(n = 10) %>% dplyr::ungroup() %>% as.data.frame()
-        } else if (m_name == "2to10") {
-          obs_m <- all_obs %>% dplyr::group_by(reported_x, reported_y) %>% dplyr::filter(n() >= 2) %>% dplyr::slice_sample(n = 10) %>% dplyr::ungroup() %>% as.data.frame()
-        }
-
-        if (nrow(obs_m) == 0) next
+        # Clustering methods generate new polygon geometries from the active observation points
         obs_m$site <- paste0(obs_m$reported_x, "_", obs_m$reported_y)
         
         geoms <- sim_create_geometries(obs_m, r_trend, buffer_cells = 2)
@@ -544,40 +547,73 @@ res_df <- res_df[!is.na(res_df$Estimated_Value), ]
 
 res_df$Error <- res_df$True_Value - res_df$Estimated_Value
 res_df$Extent <- factor(res_df$Extent, levels = c("Small", "Medium", "Large"))
-res_df$Method <- factor(res_df$Method, levels = c("ground-truth", "lat-long", "1to10", "2to10"))
+
+# Assign proper levels to match generation
+res_df$Method <- factor(res_df$Method, levels = c("gt-lat-long", "gt-1to10", "gt-2to10", "lat-long", "1to10", "2to10"))
 
 write.csv(res_df, file.path(output_dir, "params_updated.csv"), row.names = FALSE)
 
-# Original Plot (Ground-truth only, to maintain backwards compatibility exactly as requested)
-res_df_gt <- res_df[res_df$Method == "ground-truth", ]
-create_error_plot <- function(param_name, title) {
+
+# ----------------------------------------------------------------------
+# PLOT 1: error_boxplots.png (Ground-truth variants isolated)
+# ----------------------------------------------------------------------
+res_df_gt <- res_df[startsWith(as.character(res_df$Method), "gt-"), ]
+
+# Remove the "gt-" prefix to create clean labels for the legend
+res_df_gt$Method_Label <- factor(
+  gsub("gt-", "", as.character(res_df_gt$Method)),
+  levels = c("lat-long", "1to10", "2to10")
+)
+
+gt_method_colors <- c("lat-long" = "navy", "1to10" = "cyan", "2to10" = "pink")
+
+create_error_plot_gt <- function(param_name, title) {
   ggplot(res_df_gt[res_df_gt$Parameter == param_name, ], 
-         aes(x = Extent, y = Error, fill = Extent)) +
+         # Swapped x and fill here:
+         aes(x = Extent, y = Error, fill = Method_Label)) +
     geom_boxplot(outlier.size = 0.5) +
     geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
-    scale_fill_manual(values = c("Small" = "lightblue", "Medium" = "steelblue", "Large" = "navy")) +
+    # Updated to the new colors and added a legend title:
+    scale_fill_manual(name = "Ground-Truth Variant", values = gt_method_colors) +
+    # Updated the x-axis label:
     labs(title = title, x = "Sampling Extent", y = "Error (True - Estimate)") +
-    theme_bw() + theme(legend.position = "none")
+    theme_bw() + theme(legend.position = "bottom")
 }
 
-p_beta0 <- create_error_plot("beta (state_int)", "State Intercept")
-p_beta1 <- create_error_plot("beta (state_cov1)", "State Slope")
-p_alpha0 <- create_error_plot("alpha (det_int)", "Observation Intercept")
-p_alpha1 <- create_error_plot("alpha (det_cov1)", "Observation Slope")
+p_beta0_gt <- create_error_plot_gt("beta (state_int)", "State Intercept")
+p_beta1_gt <- create_error_plot_gt("beta (state_cov1)", "State Slope")
+p_alpha0_gt <- create_error_plot_gt("alpha (det_int)", "Observation Intercept")
+p_alpha1_gt <- create_error_plot_gt("alpha (det_cov1)", "Observation Slope")
 
-combined_error_plot <- (p_beta0 | p_beta1) / (p_alpha0 | p_alpha1)
-ggsave(file.path(output_dir, "error_boxplots.png"), plot = combined_error_plot, dpi = 300, width = 9, height = 9)
+combined_error_plot_gt <- (p_beta0_gt | p_beta1_gt) / (p_alpha0_gt | p_alpha1_gt) + 
+  patchwork::plot_layout(guides = "collect")
 
+ggsave(file.path(output_dir, "error_boxplots.png"), plot = combined_error_plot_gt, dpi = 300, width = 10, height = 10)
 
-# New Faceted Plot (All methods)
-method_colors <- c("ground-truth" = "red", "lat-long" = "navy", "1to10" = "cyan", "2to10" = "pink")
+# ----------------------------------------------------------------------
+# PLOT 2: error_boxplots_all.png (reference-sites-2to10 vs clustered)
+# ----------------------------------------------------------------------
+# Filter only to the methods required for this plot
+res_df_all <- res_df[res_df$Method %in% c("gt-2to10", "lat-long", "1to10", "2to10"), ]
+
+# Map gt-2to10 to the requested display name
+res_df_all$Method_Label <- as.character(res_df_all$Method)
+res_df_all$Method_Label[res_df_all$Method_Label == "gt-2to10"] <- "reference-sites-2to10"
+
+# Enforce factor levels for ordering in the plot/legend
+res_df_all$Method_Label <- factor(
+  res_df_all$Method_Label, 
+  levels = c("reference-sites-2to10", "lat-long", "1to10", "2to10")
+)
+
+method_colors <- c("reference-sites-2to10" = "red", "lat-long" = "navy", "1to10" = "cyan", "2to10" = "pink")
 
 create_error_plot_all <- function(param_name, title) {
-  ggplot(res_df[res_df$Parameter == param_name, ], 
-         aes(x = Extent, y = Error, fill = Method)) +
+  ggplot(res_df_all[res_df_all$Parameter == param_name, ], 
+         aes(x = Extent, y = Error, fill = Method_Label)) +
     geom_boxplot(outlier.size = 0.5) +
     geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
-    scale_fill_manual(values = method_colors) +
+    scale_fill_manual(name = "Method", values = method_colors) +
     labs(title = title, x = "Sampling Extent", y = "Error (True - Estimate)") +
     theme_bw() + theme(legend.position = "bottom")
 }
