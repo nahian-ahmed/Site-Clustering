@@ -71,6 +71,17 @@ n_centers <- 1
 centers_scale <- 5
 decay_scale <- 30^2
 
+
+# --- Dynamic Grid Method Settings ---
+grid_size <- 10
+grid_method_name <- paste0(grid_size, "-cellSq") 
+
+# --- Methods to Run ---
+# Moved to the top so you can control which methods run globally
+methods_to_run <- c("gt-lat-long", "gt-1to10", "gt-2to10", "lat-long", "1to10", "2to10", grid_method_name, "DBSC", "clustGeo")
+
+
+
 # --- 3 Scenarios: Sampling Extents ---
 extents <- c("Small" = 1600, "Medium" = 400, "Large" = 100)
 
@@ -419,8 +430,7 @@ for (sim in 1:n_sims) {
       plot_data[[ext_name]] <- list(sf_data = sf_data, obs_sf = obs_sf)
     }
 
-    # 2. RUN ALL METHODS FOR THIS EXTENT (UPDATED)
-    methods_to_run <- c("gt-lat-long", "gt-1to10", "gt-2to10", "lat-long", "1to10", "2to10", "10-cellSq", "DBSC", "clustGeo")
+    # 2. RUN ALL METHODS FOR THIS EXTENT
     
     for (m_name in methods_to_run) {
       cat(sprintf("    * Method: %s\n", m_name))
@@ -430,11 +440,11 @@ for (sim in 1:n_sims) {
         obs_m <- all_obs
       } else if (grepl("1to10", m_name)) {
         obs_m <- all_obs %>% dplyr::group_by(reported_x, reported_y) %>% dplyr::slice_sample(n = 10) %>% dplyr::ungroup() %>% as.data.frame()
-      } else if (grepl("2to10", m_name) || m_name == "10-cellSq" || m_name == "DBSC" || m_name == "clustGeo") {
-        # 2to10, 10-cellSq, DBSC, and clustGeo all start with the 2-to-10 filtering baseline
+      } else if (grepl("2to10", m_name) || m_name == grid_method_name || m_name == "DBSC" || m_name == "clustGeo") {
+        # 2to10, dynamic grid, DBSC, and clustGeo all start with the 2-to-10 filtering baseline
         obs_m <- all_obs %>% dplyr::group_by(reported_x, reported_y) %>% dplyr::filter(n() >= 2) %>% dplyr::slice_sample(n = 10) %>% dplyr::ungroup() %>% as.data.frame()
       }
-
+      
       if (nrow(obs_m) == 0) next
       
       # Step B: Assign geometry and compute parameters
@@ -443,10 +453,10 @@ for (sim in 1:n_sims) {
         obs_m$site <- as.character(obs_m$reported_site)
         fm_m <- fit_clustered_model(obs_m, w, full_cellCovs)
         
-      } else if (m_name == "10-cellSq") {
-        # 10x10 Cell Grid Method (Analogous to 1-kmSq)
-        obs_m$grid_x <- (obs_m$reported_x - 1) %/% 10
-        obs_m$grid_y <- (obs_m$reported_y - 1) %/% 10
+      } else if (m_name == grid_method_name) {
+        # Dynamic Cell Grid Method 
+        obs_m$grid_x <- (obs_m$reported_x - 1) %/% grid_size
+        obs_m$grid_y <- (obs_m$reported_y - 1) %/% grid_size
         obs_m$site <- paste0("grid_", obs_m$grid_x, "_", obs_m$grid_y)
         
         # Build exact square geometries for occupied sites
@@ -456,9 +466,9 @@ for (sim in 1:n_sims) {
           parts <- strsplit(gsub("grid_", "", s), "_")[[1]]
           gx <- as.numeric(parts[1])
           gy <- as.numeric(parts[2])
-          # Grid bounds aligned with cell centers (e.g. 0.5 to 10.5)
-          xmin <- gx * 10 + 0.5; xmax <- xmin + 10
-          ymin <- gy * 10 + 0.5; ymax <- ymin + 10
+          # Grid bounds aligned with cell centers
+          xmin <- gx * grid_size + 0.5; xmax <- xmin + grid_size
+          ymin <- gy * grid_size + 0.5; ymax <- ymin + grid_size
           poly <- sf::st_polygon(list(matrix(c(xmin,ymin, xmax,ymin, xmax,ymax, xmin,ymax, xmin,ymin), ncol=2, byrow=TRUE)))
           grid_polys[[s]] <- sf::st_sf(site = s, geometry = sf::st_sfc(poly))
         }
@@ -642,7 +652,7 @@ res_df$Error <- res_df$True_Value - res_df$Estimated_Value
 res_df$Extent <- factor(res_df$Extent, levels = c("Small", "Medium", "Large"))
 
 # Assign proper levels to match generation
-res_df$Method <- factor(res_df$Method, levels = c("gt-lat-long", "gt-1to10", "gt-2to10", "lat-long", "1to10", "2to10", "10-cellSq", "DBSC", "clustGeo"))
+res_df$Method <- factor(res_df$Method, levels = c("gt-lat-long", "gt-1to10", "gt-2to10", "lat-long", "1to10", "2to10", grid_method_name, "DBSC", "clustGeo"))
 
 write.csv(res_df, file.path(output_dir, "params_updated.csv"), row.names = FALSE)
 
@@ -687,7 +697,7 @@ ggsave(file.path(output_dir, "error_boxplots.png"), plot = combined_error_plot_g
 # PLOT 2: error_boxplots_all.png (reference-2to10 vs clustered)
 # ----------------------------------------------------------------------
 # Filter only to the methods required for this plot
-res_df_all <- res_df[res_df$Method %in% c("gt-2to10", "lat-long", "1to10", "2to10", "10-cellSq", "DBSC", "clustGeo"), ]
+res_df_all <- res_df[res_df$Method %in% c("gt-2to10", "lat-long", "1to10", "2to10", grid_method_name, "DBSC", "clustGeo"), ]
 
 # Map gt-2to10 to the requested display name
 res_df_all$Method_Label <- as.character(res_df_all$Method)
@@ -696,7 +706,7 @@ res_df_all$Method_Label[res_df_all$Method_Label == "gt-2to10"] <- "reference-2to
 # Enforce factor levels for ordering in the plot/legend
 res_df_all$Method_Label <- factor(
   res_df_all$Method_Label, 
-  levels = c("reference-2to10", "lat-long", "1to10", "2to10", "10-cellSq", "DBSC", "clustGeo")
+  levels = c("reference-2to10", "lat-long", "1to10", "2to10", grid_method_name, "DBSC", "clustGeo")
 )
 
 # Apply requested color scheme 
@@ -705,10 +715,11 @@ method_colors <- c(
   "lat-long" = "navy", 
   "1to10" = "cyan", 
   "2to10" = "pink",
-  "10-cellSq" = "orange",
   "DBSC" = "darkgrey",
   "clustGeo" = "forestgreen"
 )
+# Add the dynamic grid color to the named vector
+method_colors[[grid_method_name]] <- "orange"
 
 create_error_plot_all <- function(param_name, title) {
   ggplot(res_df_all[res_df_all$Parameter == param_name, ], 
