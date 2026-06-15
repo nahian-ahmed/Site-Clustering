@@ -42,7 +42,9 @@ n_sims <- 1
 n_reps <- 30 
 
 # --- Full Landscape parameters (200x200) ---
-full_grid_dim <- 200 
+full_grid_dim <- 200
+# full_grid_dim <- 400
+
 full_n_cells <- full_grid_dim * full_grid_dim # 40000
 
 # --- Fixed Data Point Parameters ---
@@ -56,6 +58,7 @@ hotspot_noise_radius <- 10 # cells
 # --- True parameter values ---
 true_alphas <- c(alpha_int = 0.5, alpha_cov = -1.0)
 true_betas <- c(beta_int = -5.0, beta_cov = 1.0)
+# true_betas <- c(beta_int = -3.0, beta_cov = 1.0)
 
 # --- Model settings ---
 selected_optimizer <- "nlminb"
@@ -89,7 +92,7 @@ extents <- c("Small" = 1600, "Medium" = 400, "Large" = 100)
 
 # --- ClustGeo Method Settings ---
 # Set the kappa percentage (0-100) used for each extent size
-kappa_values <- c("Small" = 95, "Medium" = 50, "Large" = 5)
+kappa_values <- c("Small" = 80, "Medium" = 5, "Large" = 1)
 
 # FORCE absolute path
 output_dir <- file.path(getwd(), "output", "simulation_experiments", "updated")
@@ -686,7 +689,7 @@ plot_geom_panel <- function(geoms_sf, pts_sf, title) {
     base_theme +
     ggtitle(title) +
     theme(plot.title = element_text(size = 13, face = "bold", hjust = 0.5, margin = margin(t = 10, b = 5)),
-          plot.margin = margin(t = 20, r = 5, b = 5, l = 5), # Increases space above the plot
+          plot.margin = margin(t = 10, r = 5, b = 5, l = 5), # Increases space above the plot
           panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.5)) +
     coord_sf(xlim = c(0, full_grid_dim), ylim = c(0, full_grid_dim), expand = FALSE)
   return(p)
@@ -702,10 +705,14 @@ p_r2c1 <- plot_geom_panel(geom_plot_data[["lat-long"]]$geoms, geom_plot_data[["l
 p_r2c2 <- plot_geom_panel(geom_plot_data[["1to10"]]$geoms, geom_plot_data[["1to10"]]$pts, "1to10")
 p_r2c3 <- plot_geom_panel(geom_plot_data[["2to10"]]$geoms, geom_plot_data[["2to10"]]$pts, "2to10")
 
-# Row 3: ClustGeo at different extents/kappas (95, 50, 5)
-p_r3c1 <- plot_geom_panel(geom_plot_data[["clustGeo-0.5-95"]]$geoms, geom_plot_data[["clustGeo-0.5-95"]]$pts, "clustGeo-0.5-95")
-p_r3c2 <- plot_geom_panel(geom_plot_data[["clustGeo-0.5-50"]]$geoms, geom_plot_data[["clustGeo-0.5-50"]]$pts, "clustGeo-0.5-50")
-p_r3c3 <- plot_geom_panel(geom_plot_data[["clustGeo-0.5-5"]]$geoms, geom_plot_data[["clustGeo-0.5-5"]]$pts, "clustGeo-0.5-5")
+# Row 3: ClustGeo at different extents/kappas (Dynamically pulled from kappa_values)
+cg_key_small <- paste0("clustGeo-0.5-", kappa_values[["Small"]])
+cg_key_med   <- paste0("clustGeo-0.5-", kappa_values[["Medium"]])
+cg_key_large <- paste0("clustGeo-0.5-", kappa_values[["Large"]])
+
+p_r3c1 <- plot_geom_panel(geom_plot_data[[cg_key_small]]$geoms, geom_plot_data[[cg_key_small]]$pts, cg_key_small)
+p_r3c2 <- plot_geom_panel(geom_plot_data[[cg_key_med]]$geoms, geom_plot_data[[cg_key_med]]$pts, cg_key_med)
+p_r3c3 <- plot_geom_panel(geom_plot_data[[cg_key_large]]$geoms, geom_plot_data[[cg_key_large]]$pts, cg_key_large)
 
 # Row 4: Sampling Extents (Using ALL points)
 p_r4c1 <- plot_geom_panel(plot_data$Small$sf_data[plot_data$Small$sf_data$is_active, ], plot_data$Small$obs_sf, "Small Sampling Extents")
