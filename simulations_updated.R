@@ -38,7 +38,7 @@ source("R/clustering/dbsc.R")
 set.seed(123) 
 
 # --- Simulation repetitions ---
-n_sims <- 1
+n_sims <- 10
 n_reps <- 30 
 
 # --- Full Landscape parameters (200x200) ---
@@ -733,8 +733,8 @@ plot_geom_panel <- function(geoms_sf, pts_sf, title) {
   p <- p +
     base_theme +
     ggtitle(title) +
-    theme(plot.title = element_text(size = 13, face = "bold", hjust = 0.5, margin = margin(t = 7, b = 5)),
-          plot.margin = margin(t = 7, r = 5, b = 5, l = 5), # Increases space above the plot
+    theme(plot.title = element_text(size = 13, face = "bold", hjust = 0.5, margin = margin(t = 5, b = 5)),
+          plot.margin = margin(t = 5, r = 5, b = 5, l = 5), # Increases space above the plot
           panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.5)) +
     coord_sf(xlim = c(0, full_grid_dim), ylim = c(0, full_grid_dim), expand = FALSE)
   return(p)
@@ -770,7 +770,7 @@ comb_geoms <- (p_r1c1 | p_r1c2 | p_r1c3) /
               (p_r3c1 | p_r3c2 | p_r3c3) /
               (p_r4c1 | p_r4c2 | p_r4c3)
 
-ggsave(file.path(output_dir, "site_geometries.png"), plot = comb_geoms, width = 10, height = 16, dpi = 300)
+ggsave(file.path(output_dir, "site_geometries.png"), plot = comb_geoms, width = 10, height = 14, dpi = 300)
 
 
 ##########
