@@ -38,7 +38,7 @@ source("R/clustering/dbsc.R")
 set.seed(123) 
 
 # --- Simulation repetitions ---
-n_sims <- 1
+n_sims <- 10
 n_reps <- 30 
 
 # --- Full Landscape parameters (200x200) ---
@@ -92,7 +92,7 @@ extents <- c("Small" = 1600, "Medium" = 400, "Large" = 100)
 
 # --- ClustGeo Method Settings ---
 # Set the kappa percentage (0-100) used for each extent size
-kappa_values <- c("Small" = 25, "Medium" = 5, "Large" = 1)
+kappa_values <- c("Small" = 20, "Medium" = 5, "Large" = 1)
 
 # FORCE absolute path
 output_dir <- file.path(getwd(), "output", "simulation_experiments", "updated")
