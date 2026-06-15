@@ -92,7 +92,7 @@ extents <- c("Small" = 1600, "Medium" = 400, "Large" = 100)
 
 # --- ClustGeo Method Settings ---
 # Set the kappa percentage (0-100) used for each extent size
-kappa_values <- c("Small" = 80, "Medium" = 5, "Large" = 1)
+kappa_values <- c("Small" = 25, "Medium" = 5, "Large" = 1)
 
 # FORCE absolute path
 output_dir <- file.path(getwd(), "output", "simulation_experiments", "updated")
@@ -679,12 +679,7 @@ plot_geom_panel <- function(geoms_sf, pts_sf, title) {
   if (!is.null(pts_sf)) {
     p <- p + geom_sf(data = pts_sf, color = "red", size = 0.4, alpha = 0.6)
   }
-  # p <- p +
-  #   base_theme +
-  #   ggtitle(title) +
-  #   theme(plot.title = element_text(size = 13, face = "bold", hjust = 0.5),
-  #         panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.5)) +
-  #   coord_sf(xlim = c(0, full_grid_dim), ylim = c(0, full_grid_dim), expand = FALSE)
+
   p <- p +
     base_theme +
     ggtitle(title) +
@@ -725,7 +720,7 @@ comb_geoms <- (p_r1c1 | p_r1c2 | p_r1c3) /
               (p_r3c1 | p_r3c2 | p_r3c3) /
               (p_r4c1 | p_r4c2 | p_r4c3)
 
-ggsave(file.path(output_dir, "site_geometries.png"), plot = comb_geoms, width = 12, height = 16, dpi = 300)
+ggsave(file.path(output_dir, "site_geometries.png"), plot = comb_geoms, width = 10, height = 16, dpi = 300)
 
 
 ##########
