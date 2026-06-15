@@ -1,6 +1,6 @@
 ################################################################
 # Updated Simulation Experiments: Sampling Extents (eBird Biased)
-# Incorporating lat-long, 1to10, and 2to10 methods
+# Incorporating lat-long, 1to10, and 2to10 methods and GT variants
 ################################################################
 
 ###
@@ -22,6 +22,14 @@ library(Matrix)
 library(scales)
 library(sf)
 library(dplyr)
+library(sqldf)
+library(RTriangle)
+library(igraph)
+library(data.table)
+library(ClustGeo)
+
+# Make sure this path correctly points to your dbsc.R helper file
+source("R/clustering/dbsc.R")
 
 ##########
 # 2. Set Simulation Parameters
@@ -30,7 +38,7 @@ library(dplyr)
 set.seed(123) 
 
 # --- Simulation repetitions ---
-n_sims <- 3
+n_sims <- 10
 n_reps <- 30 
 
 # --- Full Landscape parameters (200x200) ---
@@ -63,8 +71,22 @@ n_centers <- 1
 centers_scale <- 5
 decay_scale <- 30^2
 
+
+# --- Dynamic Grid Method Settings ---
+grid_size <- 5
+grid_method_name <- paste0(grid_size, "-cellSq") 
+
+# --- Methods to Run ---
+# Moved to the top so you can control which methods run globally
+methods_to_run <- c("gt-lat-long", "gt-1to10", "gt-2to10", "lat-long", "1to10", "2to10", grid_method_name, "DBSC", "clustGeo")
+
+
 # --- 3 Scenarios: Sampling Extents ---
 extents <- c("Small" = 1600, "Medium" = 400, "Large" = 100)
+
+# --- ClustGeo Method Settings ---
+# Set the kappa percentage (0-100) used for each extent size
+kappa_values <- c("Small" = 95, "Medium" = 50, "Large" = 5)
 
 # FORCE absolute path
 output_dir <- file.path(getwd(), "output", "simulation_experiments", "updated")
@@ -72,7 +94,7 @@ if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 cat("--- Simulation Starting ---\n")
 cat(sprintf("Running %d simulations for 3 Sampling Extents.\n", n_sims))
-cat(sprintf("TOTAL MODEL FITS: %d\n\n", n_sims * length(extents) * 4 * n_reps)) # 4 methods now
+cat(sprintf("TOTAL MODEL FITS: %d\n\n", n_sims * length(extents) * 6 * n_reps)) # 6 methods now
 
 ##########
 # 3. Helpers for Simulation Geometry (2 cell buffer)
@@ -411,39 +433,119 @@ for (sim in 1:n_sims) {
       plot_data[[ext_name]] <- list(sf_data = sf_data, obs_sf = obs_sf)
     }
 
-    # 2. RUN ALL CLUSTERING METHODS FOR THIS EXTENT
-    methods_to_run <- c("ground-truth", "lat-long", "1to10", "2to10")
+    # 2. RUN ALL METHODS FOR THIS EXTENT
     
     for (m_name in methods_to_run) {
       cat(sprintf("    * Method: %s\n", m_name))
       
-      if (m_name == "ground-truth") {
+      # Step A: Filter observations based on method logic
+      if (grepl("lat-long", m_name)) {
         obs_m <- all_obs
+      } else if (grepl("1to10", m_name)) {
+        obs_m <- all_obs %>% dplyr::group_by(reported_x, reported_y) %>% dplyr::slice_sample(n = 10) %>% dplyr::ungroup() %>% as.data.frame()
+      } else if (grepl("2to10", m_name) || m_name == grid_method_name || m_name == "DBSC" || m_name == "clustGeo") {
+        # 2to10, dynamic grid, DBSC, and clustGeo all start with the 2-to-10 filtering baseline
+        obs_m <- all_obs %>% dplyr::group_by(reported_x, reported_y) %>% dplyr::filter(n() >= 2) %>% dplyr::slice_sample(n = 10) %>% dplyr::ungroup() %>% as.data.frame()
+      }
+      
+      if (nrow(obs_m) == 0) next
+      
+      # Step B: Assign geometry and compute parameters
+      if (startsWith(m_name, "gt-")) {
+        # Ground-truth methods
         obs_m$site <- as.character(obs_m$reported_site)
         fm_m <- fit_clustered_model(obs_m, w, full_cellCovs)
         
-      } else {
+      } else if (m_name == grid_method_name) {
+        # Dynamic Cell Grid Method 
+        obs_m$grid_x <- (obs_m$reported_x - 1) %/% grid_size
+        obs_m$grid_y <- (obs_m$reported_y - 1) %/% grid_size
+        obs_m$site <- paste0("grid_", obs_m$grid_x, "_", obs_m$grid_y)
         
-        if (m_name == "lat-long") {
-          obs_m <- all_obs
-        } else if (m_name == "1to10") {
-          obs_m <- all_obs %>% dplyr::group_by(reported_x, reported_y) %>% dplyr::slice_sample(n = 10) %>% dplyr::ungroup() %>% as.data.frame()
-        } else if (m_name == "2to10") {
-          obs_m <- all_obs %>% dplyr::group_by(reported_x, reported_y) %>% dplyr::filter(n() >= 2) %>% dplyr::slice_sample(n = 10) %>% dplyr::ungroup() %>% as.data.frame()
+        # Build exact square geometries for occupied sites
+        active_sites <- unique(obs_m$site)
+        grid_polys <- list()
+        for (s in active_sites) {
+          parts <- strsplit(gsub("grid_", "", s), "_")[[1]]
+          gx <- as.numeric(parts[1])
+          gy <- as.numeric(parts[2])
+          # Grid bounds aligned with cell centers
+          xmin <- gx * grid_size + 0.5; xmax <- xmin + grid_size
+          ymin <- gy * grid_size + 0.5; ymax <- ymin + grid_size
+          poly <- sf::st_polygon(list(matrix(c(xmin,ymin, xmax,ymin, xmax,ymax, xmin,ymax, xmin,ymin), ncol=2, byrow=TRUE)))
+          grid_polys[[s]] <- sf::st_sf(site = s, geometry = sf::st_sfc(poly))
         }
-
-        if (nrow(obs_m) == 0) next
+        geoms <- do.call(rbind, grid_polys)
+        
+        # Standard processing 
+        split_res <- sim_disjoint(geoms, obs_m)
+        w_m <- sim_overlap(split_res$geoms, r_trend)
+        fm_m <- fit_clustered_model(split_res$data, w_m, full_cellCovs)
+        
+      } else if (m_name == "DBSC") {
+        # DBSC Method 
+        # Spoof names so runDBSC() works seamlessly
+        obs_m$latitude <- obs_m$reported_y
+        obs_m$longitude <- obs_m$reported_x
+        obs_m$cell_cov1 <- full_cellCovs$cell_cov1[obs_m$reported_cell]
+        
+        # Run clustering
+        obs_m <- runDBSC(obs_m, "cell_cov1")
+        obs_m$site <- as.character(obs_m$site)
+        
+        # Apply standard Polygonization (Voronoi + Convex Hull + 2 Cell Buffer)
+        geoms <- sim_create_geometries(obs_m, r_trend, buffer_cells = 2)
+        if (nrow(geoms) == 0) next
+        
+        split_res <- sim_disjoint(geoms, obs_m)
+        w_m <- sim_overlap(split_res$geoms, r_trend)
+        fm_m <- fit_clustered_model(split_res$data, w_m, full_cellCovs)
+        
+      } else if (m_name == "clustGeo") {
+        # clustGeo Method 
+        
+        # Set kappa dynamically based on the current extent
+        kappa <- kappa_values[[ext_name]]
+        # Prepare distinct locations and covariates
+        obs_m$cell_cov1 <- full_cellCovs$cell_cov1[obs_m$reported_cell]
+        obs_locs <- obs_m %>% dplyr::distinct(reported_x, reported_y, .keep_all = TRUE)
+        
+        # Create distance matrices
+        env_dist <- dist(scale(obs_locs$cell_cov1))
+        
+        df_for_dist <- obs_locs
+        df_for_dist$y_scaled <- as.numeric(scale(df_for_dist$reported_y))
+        df_for_dist$x_scaled <- as.numeric(scale(df_for_dist$reported_x))
+        geo_dist <- dist(df_for_dist[, c("y_scaled", "x_scaled")])
+        
+        # Run clustering
+        tree <- ClustGeo::hclustgeo(env_dist, geo_dist, alpha = 0.5)
+        percent <- kappa / 100.0
+        K <- max(2, round(nrow(obs_locs) * percent))
+        obs_locs$site <- cutree(tree, K)
+        
+        # Map sites back to observations
+        obs_m <- obs_m %>% dplyr::left_join(obs_locs[, c("reported_x", "reported_y", "site")], by = c("reported_x", "reported_y"))
+        obs_m$site <- as.character(obs_m$site)
+        
+        # Apply standard Polygonization (Voronoi + Convex Hull + 2 Cell Buffer)
+        geoms <- sim_create_geometries(obs_m, r_trend, buffer_cells = 2)
+        if (nrow(geoms) == 0) next
+        
+        split_res <- sim_disjoint(geoms, obs_m)
+        w_m <- sim_overlap(split_res$geoms, r_trend)
+        fm_m <- fit_clustered_model(split_res$data, w_m, full_cellCovs)
+      }
+      else {
+        # Standard clustering methods (lat-long, 1to10, 2to10)
         obs_m$site <- paste0(obs_m$reported_x, "_", obs_m$reported_y)
         
         geoms <- sim_create_geometries(obs_m, r_trend, buffer_cells = 2)
         if (nrow(geoms) == 0) next
         
         split_res <- sim_disjoint(geoms, obs_m)
-        geoms <- split_res$geoms
-        obs_m <- split_res$data
-        
-        w_m <- sim_overlap(geoms, r_trend)
-        fm_m <- fit_clustered_model(obs_m, w_m, full_cellCovs)
+        w_m <- sim_overlap(split_res$geoms, r_trend)
+        fm_m <- fit_clustered_model(split_res$data, w_m, full_cellCovs)
       }
       
       est_val <- if(is.null(fm_m)) c(NA,NA,NA,NA) else c(coef(fm_m, 'det'), coef(fm_m, 'state'))
@@ -544,40 +646,83 @@ res_df <- res_df[!is.na(res_df$Estimated_Value), ]
 
 res_df$Error <- res_df$True_Value - res_df$Estimated_Value
 res_df$Extent <- factor(res_df$Extent, levels = c("Small", "Medium", "Large"))
-res_df$Method <- factor(res_df$Method, levels = c("ground-truth", "lat-long", "1to10", "2to10"))
+
+# Assign proper levels to match generation
+res_df$Method <- factor(res_df$Method, levels = c("gt-lat-long", "gt-1to10", "gt-2to10", "lat-long", "1to10", "2to10", grid_method_name, "DBSC", "clustGeo"))
 
 write.csv(res_df, file.path(output_dir, "params_updated.csv"), row.names = FALSE)
 
-# Original Plot (Ground-truth only, to maintain backwards compatibility exactly as requested)
-res_df_gt <- res_df[res_df$Method == "ground-truth", ]
-create_error_plot <- function(param_name, title) {
+
+# ----------------------------------------------------------------------
+# PLOT 1: error_boxplots.png (Ground-truth variants isolated)
+# ----------------------------------------------------------------------
+res_df_gt <- res_df[startsWith(as.character(res_df$Method), "gt-"), ]
+
+# Remove the "gt-" prefix to create clean labels for the legend
+res_df_gt$Method_Label <- factor(
+  gsub("gt-", "", as.character(res_df_gt$Method)),
+  levels = c("lat-long", "1to10", "2to10")
+)
+
+gt_method_colors <- c("lat-long" = "navy", "1to10" = "cyan", "2to10" = "pink")
+
+create_error_plot_gt <- function(param_name, title) {
   ggplot(res_df_gt[res_df_gt$Parameter == param_name, ], 
-         aes(x = Extent, y = Error, fill = Extent)) +
+         # Swapped x and fill here:
+         aes(x = Extent, y = Error, fill = Method_Label)) +
     geom_boxplot(outlier.size = 0.5) +
     geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
-    scale_fill_manual(values = c("Small" = "lightblue", "Medium" = "steelblue", "Large" = "navy")) +
+    # Updated to the new colors and added a legend title:
+    scale_fill_manual(name = "Data Points", values = gt_method_colors) +
+    # Updated the x-axis label:
     labs(title = title, x = "Sampling Extent", y = "Error (True - Estimate)") +
-    theme_bw() + theme(legend.position = "none")
+    theme_bw() + theme(legend.position = "bottom")
 }
 
-p_beta0 <- create_error_plot("beta (state_int)", "State Intercept")
-p_beta1 <- create_error_plot("beta (state_cov1)", "State Slope")
-p_alpha0 <- create_error_plot("alpha (det_int)", "Observation Intercept")
-p_alpha1 <- create_error_plot("alpha (det_cov1)", "Observation Slope")
+p_beta0_gt <- create_error_plot_gt("beta (state_int)", "State Intercept")
+p_beta1_gt <- create_error_plot_gt("beta (state_cov1)", "State Slope")
+p_alpha0_gt <- create_error_plot_gt("alpha (det_int)", "Observation Intercept")
+p_alpha1_gt <- create_error_plot_gt("alpha (det_cov1)", "Observation Slope")
 
-combined_error_plot <- (p_beta0 | p_beta1) / (p_alpha0 | p_alpha1)
-ggsave(file.path(output_dir, "error_boxplots.png"), plot = combined_error_plot, dpi = 300, width = 9, height = 9)
+combined_error_plot_gt <- (p_beta0_gt | p_beta1_gt) / (p_alpha0_gt | p_alpha1_gt) + 
+  patchwork::plot_layout(guides = "collect")
 
+ggsave(file.path(output_dir, "error_boxplots.png"), plot = combined_error_plot_gt, dpi = 300, width = 10, height = 10)
 
-# New Faceted Plot (All methods)
-method_colors <- c("ground-truth" = "red", "lat-long" = "navy", "1to10" = "cyan", "2to10" = "pink")
+# ----------------------------------------------------------------------
+# PLOT 2: error_boxplots_all.png (reference-2to10 vs clustered)
+# ----------------------------------------------------------------------
+# Filter only to the methods required for this plot
+res_df_all <- res_df[res_df$Method %in% c("gt-2to10", "lat-long", "1to10", "2to10", grid_method_name, "DBSC", "clustGeo"), ]
+
+# Map gt-2to10 to the requested display name
+res_df_all$Method_Label <- as.character(res_df_all$Method)
+res_df_all$Method_Label[res_df_all$Method_Label == "gt-2to10"] <- "reference-2to10"
+
+# Enforce factor levels for ordering in the plot/legend
+res_df_all$Method_Label <- factor(
+  res_df_all$Method_Label, 
+  levels = c("reference-2to10", "lat-long", "1to10", "2to10", grid_method_name, "DBSC", "clustGeo")
+)
+
+# Apply requested color scheme 
+method_colors <- c(
+  "reference-2to10" = "red", 
+  "lat-long" = "navy", 
+  "1to10" = "cyan", 
+  "2to10" = "pink",
+  "DBSC" = "darkgrey",
+  "clustGeo" = "forestgreen"
+)
+# Add the dynamic grid color to the named vector
+method_colors[[grid_method_name]] <- "orange"
 
 create_error_plot_all <- function(param_name, title) {
-  ggplot(res_df[res_df$Parameter == param_name, ], 
-         aes(x = Extent, y = Error, fill = Method)) +
+  ggplot(res_df_all[res_df_all$Parameter == param_name, ], 
+         aes(x = Extent, y = Error, fill = Method_Label)) +
     geom_boxplot(outlier.size = 0.5) +
     geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
-    scale_fill_manual(values = method_colors) +
+    scale_fill_manual(name = "Method", values = method_colors) +
     labs(title = title, x = "Sampling Extent", y = "Error (True - Estimate)") +
     theme_bw() + theme(legend.position = "bottom")
 }
