@@ -42,7 +42,9 @@ n_sims <- 10
 n_reps <- 30 
 
 # --- Full Landscape parameters (200x200) ---
-full_grid_dim <- 200 
+full_grid_dim <- 200
+# full_grid_dim <- 400
+
 full_n_cells <- full_grid_dim * full_grid_dim # 40000
 
 # --- Fixed Data Point Parameters ---
@@ -56,6 +58,7 @@ hotspot_noise_radius <- 10 # cells
 # --- True parameter values ---
 true_alphas <- c(alpha_int = 0.5, alpha_cov = -1.0)
 true_betas <- c(beta_int = -5.0, beta_cov = 1.0)
+# true_betas <- c(beta_int = -3.0, beta_cov = 1.0)
 
 # --- Model settings ---
 selected_optimizer <- "nlminb"
@@ -76,6 +79,9 @@ decay_scale <- 30^2
 grid_size <- 5
 grid_method_name <- paste0(grid_size, "-cellSq") 
 
+# --- Geometry Buffer Setting ---
+buffer_size_cells <- 2
+
 # --- Methods to Run ---
 # Moved to the top so you can control which methods run globally
 methods_to_run <- c("gt-lat-long", "gt-1to10", "gt-2to10", "lat-long", "1to10", "2to10", grid_method_name, "DBSC", "clustGeo")
@@ -86,7 +92,7 @@ extents <- c("Small" = 1600, "Medium" = 400, "Large" = 100)
 
 # --- ClustGeo Method Settings ---
 # Set the kappa percentage (0-100) used for each extent size
-kappa_values <- c("Small" = 95, "Medium" = 50, "Large" = 5)
+kappa_values <- c("Small" = 20, "Medium" = 5, "Large" = 1)
 
 # FORCE absolute path
 output_dir <- file.path(getwd(), "output", "simulation_experiments", "updated")
@@ -265,6 +271,7 @@ for(i in 1:n_sims){
 
 all_results <- list()
 plot_data <- list()
+geom_plot_data <- list()
 
 for (sim in 1:n_sims) {
   cat(sprintf("\n=== Sim %d of %d ===\n", sim, n_sims))
@@ -493,8 +500,8 @@ for (sim in 1:n_sims) {
         obs_m <- runDBSC(obs_m, "cell_cov1")
         obs_m$site <- as.character(obs_m$site)
         
-        # Apply standard Polygonization (Voronoi + Convex Hull + 2 Cell Buffer)
-        geoms <- sim_create_geometries(obs_m, r_trend, buffer_cells = 2)
+        # Apply standard Polygonization (Voronoi + Convex Hull + Cell Buffer)
+        geoms <- sim_create_geometries(obs_m, r_trend, buffer_cells = buffer_size_cells)
         if (nrow(geoms) == 0) next
         
         split_res <- sim_disjoint(geoms, obs_m)
@@ -528,8 +535,8 @@ for (sim in 1:n_sims) {
         obs_m <- obs_m %>% dplyr::left_join(obs_locs[, c("reported_x", "reported_y", "site")], by = c("reported_x", "reported_y"))
         obs_m$site <- as.character(obs_m$site)
         
-        # Apply standard Polygonization (Voronoi + Convex Hull + 2 Cell Buffer)
-        geoms <- sim_create_geometries(obs_m, r_trend, buffer_cells = 2)
+        # Apply standard Polygonization (Voronoi + Convex Hull + Cell Buffer)
+        geoms <- sim_create_geometries(obs_m, r_trend, buffer_cells = buffer_size_cells)
         if (nrow(geoms) == 0) next
         
         split_res <- sim_disjoint(geoms, obs_m)
@@ -540,7 +547,7 @@ for (sim in 1:n_sims) {
         # Standard clustering methods (lat-long, 1to10, 2to10)
         obs_m$site <- paste0(obs_m$reported_x, "_", obs_m$reported_y)
         
-        geoms <- sim_create_geometries(obs_m, r_trend, buffer_cells = 2)
+        geoms <- sim_create_geometries(obs_m, r_trend, buffer_cells = buffer_size_cells)
         if (nrow(geoms) == 0) next
         
         split_res <- sim_disjoint(geoms, obs_m)
@@ -548,6 +555,28 @@ for (sim in 1:n_sims) {
         fm_m <- fit_clustered_model(split_res$data, w_m, full_cellCovs)
       }
       
+      if (sim == 1) {
+        plot_key <- NULL
+        # Capture fixed methods once during the "Small" extent loop to avoid overwriting
+        if (m_name == grid_method_name && ext_name == "Small") plot_key <- grid_method_name
+        if (m_name == "DBSC" && ext_name == "Small") plot_key <- "DBSC"
+        if (m_name == "lat-long" && ext_name == "Small") plot_key <- "lat-long"
+        if (m_name == "1to10" && ext_name == "Small") plot_key <- "1to10"
+        if (m_name == "2to10" && ext_name == "Small") plot_key <- "2to10"
+        
+        # Capture clustGeo dynamically across extents to get all 3 kappas
+        if (m_name == "clustGeo") {
+          plot_key <- paste0("clustGeo-0.5-", kappa_values[[ext_name]])
+        }
+
+        if (!is.null(plot_key) && exists("split_res")) {
+           geom_plot_data[[plot_key]] <- list(
+               geoms = split_res$geoms,
+               pts = sf::st_as_sf(obs_m, coords = c("reported_x", "reported_y"))
+           )
+        }
+      }
+
       est_val <- if(is.null(fm_m)) c(NA,NA,NA,NA) else c(coef(fm_m, 'det'), coef(fm_m, 'state'))
       
       all_results[[length(all_results) + 1]] <- data.frame(
@@ -635,6 +664,64 @@ row4 <- build_row("Large", "Large Sampling Extents")
 
 comb_plot <- patchwork::wrap_plots(c(row1, row2, row3, row4), ncol=3) + patchwork::plot_layout(guides="collect")
 ggsave(file.path(output_dir, "sampling_extents.png"), plot=comb_plot, width=10, height=14, dpi=300)
+
+##########
+# 6.5 Generate 4x3 Plot (Site Geometries)
+##########
+cat("Generating 4x3 Site Geometries Plot (site_geometries.png)...\n")
+
+# Helper to ensure standard plotting aesthetics across all 12 panels
+plot_geom_panel <- function(geoms_sf, pts_sf, title) {
+  p <- ggplot()
+  if (!is.null(geoms_sf)) {
+    p <- p + geom_sf(data = geoms_sf, fill = "lightblue", alpha = 0.3, color = "black", linewidth = 0.2)
+  }
+  if (!is.null(pts_sf)) {
+    p <- p + geom_sf(data = pts_sf, color = "red", size = 0.4, alpha = 0.6)
+  }
+
+  p <- p +
+    base_theme +
+    ggtitle(title) +
+    theme(plot.title = element_text(size = 13, face = "bold", hjust = 0.5, margin = margin(t = 10, b = 5)),
+          plot.margin = margin(t = 10, r = 5, b = 5, l = 5), # Increases space above the plot
+          panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.5)) +
+    coord_sf(xlim = c(0, full_grid_dim), ylim = c(0, full_grid_dim), expand = FALSE)
+  return(p)
+}
+
+# Row 1: All Points | Grid Method | DBSC
+p_r1c1 <- plot_geom_panel(NULL, plot_data$Small$obs_sf, "Observation Points")
+p_r1c2 <- plot_geom_panel(geom_plot_data[[grid_method_name]]$geoms, geom_plot_data[[grid_method_name]]$pts, paste0(grid_size, "-cellSq"))
+p_r1c3 <- plot_geom_panel(geom_plot_data[["DBSC"]]$geoms, geom_plot_data[["DBSC"]]$pts, "DBSC")
+
+# Row 2: Standard Filtering (lat-long, 1to10, 2to10)
+p_r2c1 <- plot_geom_panel(geom_plot_data[["lat-long"]]$geoms, geom_plot_data[["lat-long"]]$pts, "lat-long")
+p_r2c2 <- plot_geom_panel(geom_plot_data[["1to10"]]$geoms, geom_plot_data[["1to10"]]$pts, "1to10")
+p_r2c3 <- plot_geom_panel(geom_plot_data[["2to10"]]$geoms, geom_plot_data[["2to10"]]$pts, "2to10")
+
+# Row 3: ClustGeo at different extents/kappas (Dynamically pulled from kappa_values)
+cg_key_small <- paste0("clustGeo-0.5-", kappa_values[["Small"]])
+cg_key_med   <- paste0("clustGeo-0.5-", kappa_values[["Medium"]])
+cg_key_large <- paste0("clustGeo-0.5-", kappa_values[["Large"]])
+
+p_r3c1 <- plot_geom_panel(geom_plot_data[[cg_key_small]]$geoms, geom_plot_data[[cg_key_small]]$pts, cg_key_small)
+p_r3c2 <- plot_geom_panel(geom_plot_data[[cg_key_med]]$geoms, geom_plot_data[[cg_key_med]]$pts, cg_key_med)
+p_r3c3 <- plot_geom_panel(geom_plot_data[[cg_key_large]]$geoms, geom_plot_data[[cg_key_large]]$pts, cg_key_large)
+
+# Row 4: Sampling Extents (Using ALL points)
+p_r4c1 <- plot_geom_panel(plot_data$Small$sf_data[plot_data$Small$sf_data$is_active, ], plot_data$Small$obs_sf, "Small Sampling Extents")
+p_r4c2 <- plot_geom_panel(plot_data$Medium$sf_data[plot_data$Medium$sf_data$is_active, ], plot_data$Medium$obs_sf, "Medium Sampling Extents")
+p_r4c3 <- plot_geom_panel(plot_data$Large$sf_data[plot_data$Large$sf_data$is_active, ], plot_data$Large$obs_sf, "Large Sampling Extents")
+
+# Combine and save
+comb_geoms <- (p_r1c1 | p_r1c2 | p_r1c3) /
+              (p_r2c1 | p_r2c2 | p_r2c3) /
+              (p_r3c1 | p_r3c2 | p_r3c3) /
+              (p_r4c1 | p_r4c2 | p_r4c3)
+
+ggsave(file.path(output_dir, "site_geometries.png"), plot = comb_geoms, width = 10, height = 16, dpi = 300)
+
 
 ##########
 # 7. Process Results & Generate Error Boxplots

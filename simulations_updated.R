@@ -38,7 +38,7 @@ source("R/clustering/dbsc.R")
 set.seed(123) 
 
 # --- Simulation repetitions ---
-n_sims <- 10
+n_sims <- 1
 n_reps <- 30 
 
 # --- Full Landscape parameters (200x200) ---
@@ -233,7 +233,7 @@ fit_clustered_model <- function(clustered_obs, w_matrix, full_cellCovs) {
     rand_starts <- runif(n_params, min = INIT_LOWER, max = INIT_UPPER)
     fm_rep <- try(occuPPM(
       formula = ~obs_cov1 ~ cell_cov1,
-      data = umf, starts = rand_starts, se = TRUE,
+      data = umf, starts = rand_starts, se = FALSE,
       method = selected_optimizer, lower = PARAM_LOWER, upper = PARAM_UPPER
     ), silent = TRUE)
     
@@ -280,23 +280,31 @@ for (sim in 1:n_sims) {
                          xmin=0, xmax=full_grid_dim, ymin=0, ymax=full_grid_dim,
                          vals=rnorm(full_n_cells))
   terra::crs(r_noise) <- ""
-  
-  fw <- terra::focalMat(r_noise, sac_sigma, type = "Gauss")
-  r_smooth <- terra::focal(r_noise, w = fw, fun = sum, na.rm = TRUE)
-  terra::values(r_smooth) <- as.vector(scale(terra::values(r_smooth)))
-  
+  # 1. Macro trend (broad gradients)
+  fw_macro <- terra::focalMat(r_noise, 5, type = "Gauss")
+  r_macro <- terra::focal(r_noise, w = fw_macro, fun = sum, na.rm = TRUE)
+
+  # 2. Micro patchiness (sharp, local changes)
+  fw_micro <- terra::focalMat(r_noise, 0.5, type = "Gauss") 
+  r_micro <- terra::focal(r_noise, w = fw_micro, fun = sum, na.rm = TRUE)
+
+  # 3. Combine them to create a realistic base landscape
+  r_base <- scale(r_macro) + 1.5 * scale(r_micro)
+
+  # 4. Add the Covariate Centers (using r_base as the template)
   seeds <- cov_center_seeds[[sim]]
-  r_centers <- terra::rast(r_smooth)
+  r_centers <- terra::rast(r_base)
   terra::values(r_centers) <- 0
-  rows <- terra::init(r_smooth, "y")
-  cols <- terra::init(r_smooth, "x")
+  rows <- terra::init(r_base, "y")
+  cols <- terra::init(r_base, "x")
   
   for(k in seq_along(seeds$x)) {
     d2 <- (cols - seeds$x[k])^2 + (rows - seeds$y[k])^2
     r_centers <- r_centers + exp(-d2 / (2 * decay_scale))
   }
   
-  r_trend <- r_smooth + (r_centers * centers_scale)
+  # Final Covariate: Base Roughness + High-Intensity Centers
+  r_trend <- r_base + (r_centers * centers_scale)
   terra::values(r_trend) <- as.vector(scale(terra::values(r_trend)))
   
   full_cellCovs <- data.frame(cell_cov1 = terra::values(r_trend, mat=FALSE))
@@ -308,12 +316,13 @@ for (sim in 1:n_sims) {
   full_N_j <- rpois(full_n_cells, full_lambda_j)
   full_Z_j <- factor(ifelse(full_N_j > 0, 1, 0), levels = c("0", "1"))
   
+  # 5. Spatial Sampling Bias (using fw_macro instead of the deleted fw)
   r_acc_noise <- terra::rast(nrows=full_grid_dim, ncols=full_grid_dim, 
                              xmin=0, xmax=full_grid_dim, ymin=0, ymax=full_grid_dim,
                              vals=rnorm(full_n_cells))
-  r_acc <- terra::focal(r_acc_noise, w = fw, fun = sum, na.rm = TRUE)
+  r_acc <- terra::focal(r_acc_noise, w = fw_macro, fun = sum, na.rm = TRUE)
   acc_vals <- as.vector(scale(terra::values(r_acc)))
-  acc_weights <- exp(acc_vals * 2) 
+  acc_weights <- exp(acc_vals * 2)
   
   set.seed(100 + sim)
   sampled_loc_ids <- sample(1:full_n_cells, n_hotspot_locs + n_double_locs + n_single_locs, prob = acc_weights)
@@ -323,9 +332,19 @@ for (sim in 1:n_sims) {
   single_idx <- sampled_loc_ids[(n_hotspot_locs+n_double_locs+1):length(sampled_loc_ids)]
   
   obs_list <- list()
-  obs_list[[1]] <- data.frame(reported_cell = single_idx, true_cell = single_idx)
-  obs_list[[2]] <- data.frame(reported_cell = rep(double_idx, each=2), true_cell = rep(double_idx, each=2))
+
+  # Single visits get unique loc_ids
+  obs_list[[1]] <- data.frame(
+    reported_cell = single_idx, true_cell = single_idx, 
+    loc_id = paste0("S_", 1:n_single_locs) 
+  )
   
+  # Double visits repeat the loc_id so they share the exact coordinate later
+  obs_list[[2]] <- data.frame(
+    reported_cell = rep(double_idx, each=2), true_cell = rep(double_idx, each=2), 
+    loc_id = rep(paste0("D_", 1:n_double_locs), each=2) 
+  )
+
   hotspot_reported <- rep(hotspot_idx, each = hotspot_visits)
   hotspot_true <- numeric(length(hotspot_reported))
   
@@ -347,12 +366,43 @@ for (sim in 1:n_sims) {
     }
     hotspot_true[((i-1)*hotspot_visits + 1):(i*hotspot_visits)] <- t_cells
   }
-  obs_list[[3]] <- data.frame(reported_cell = hotspot_reported, true_cell = hotspot_true)
+  
+  obs_list[[3]] <- data.frame(
+    reported_cell = hotspot_reported, true_cell = hotspot_true, 
+    loc_id = rep(paste0("H_", 1:n_hotspot_locs), each = hotspot_visits) 
+  )
   
   all_obs <- do.call(rbind, obs_list)
-  all_obs$reported_x <- full_cell_col[all_obs$reported_cell]
-  all_obs$reported_y <- full_cell_row[all_obs$reported_cell]
   all_obs$checklist_id <- 1:nrow(all_obs)
+
+  # 1. Get the base integer cells
+  all_obs$reported_cell_x <- full_cell_col[all_obs$reported_cell]
+  all_obs$reported_cell_y <- full_cell_row[all_obs$reported_cell]
+  
+  # 2. Create a lookup table of unique continuous offsets for each loc_id
+  unique_locs <- data.frame(loc_id = unique(all_obs$loc_id))
+  unique_locs$x_offset <- runif(nrow(unique_locs), -0.45, 0.45)
+  unique_locs$y_offset <- runif(nrow(unique_locs), -0.45, 0.45)
+  
+  # 3. Merge the offsets back to the observation dataframe
+  all_obs <- merge(all_obs, unique_locs, by = "loc_id")
+  all_obs <- all_obs[order(all_obs$checklist_id), ] # restore original order
+  
+  # 4. Add the offset to the base cell and round to 5 decimals
+  all_obs$reported_x <- round(all_obs$reported_cell_x + all_obs$x_offset, 5)
+  all_obs$reported_y <- round(all_obs$reported_cell_y + all_obs$y_offset, 5)
+
+
+  # --- Print Location Distribution Stats ---
+  loc_counts <- table(paste0(all_obs$reported_x, "_", all_obs$reported_y))
+  
+  cat("  - Observation Points Summary:\n")
+  cat(sprintf("    * Points at unique locations (1 visit): %d\n", sum(loc_counts[loc_counts == 1])))
+  cat(sprintf("    * Points at double locations (2 visits): %d\n", sum(loc_counts[loc_counts == 2])))
+  cat(sprintf("    * Points at hotspot locations (>2 visits): %d\n", sum(loc_counts[loc_counts > 2])))
+  # ----------------------------------------------
+
+
   obs_sf <- sf::st_as_sf(all_obs, coords = c("reported_x", "reported_y"))
   
   if (sim == 1) {
@@ -683,8 +733,8 @@ plot_geom_panel <- function(geoms_sf, pts_sf, title) {
   p <- p +
     base_theme +
     ggtitle(title) +
-    theme(plot.title = element_text(size = 13, face = "bold", hjust = 0.5, margin = margin(t = 10, b = 5)),
-          plot.margin = margin(t = 10, r = 5, b = 5, l = 5), # Increases space above the plot
+    theme(plot.title = element_text(size = 13, face = "bold", hjust = 0.5, margin = margin(t = 7, b = 5)),
+          plot.margin = margin(t = 7, r = 5, b = 5, l = 5), # Increases space above the plot
           panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.5)) +
     coord_sf(xlim = c(0, full_grid_dim), ylim = c(0, full_grid_dim), expand = FALSE)
   return(p)
