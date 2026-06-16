@@ -38,7 +38,7 @@ source("R/clustering/dbsc.R")
 set.seed(123) 
 
 # --- Simulation repetitions ---
-n_sims <- 10
+n_sims <- 1
 n_reps <- 30 
 
 # --- Full Landscape parameters (200x200) ---
@@ -58,7 +58,7 @@ hotspot_noise_radius <- 10 # cells
 # --- True parameter values ---
 true_alphas <- c(alpha_int = 0.5, alpha_cov = -1.0)
 true_betas <- c(beta_int = -5.0, beta_cov = 1.0)
-# true_betas <- c(beta_int = -3.0, beta_cov = 1.0)
+true_betas <- c(beta_int = -3.0, beta_cov = 1.0)
 
 # --- Model settings ---
 selected_optimizer <- "nlminb"
@@ -280,31 +280,23 @@ for (sim in 1:n_sims) {
                          xmin=0, xmax=full_grid_dim, ymin=0, ymax=full_grid_dim,
                          vals=rnorm(full_n_cells))
   terra::crs(r_noise) <- ""
-  # 1. Macro trend (broad gradients)
-  fw_macro <- terra::focalMat(r_noise, 5, type = "Gauss")
-  r_macro <- terra::focal(r_noise, w = fw_macro, fun = sum, na.rm = TRUE)
-
-  # 2. Micro patchiness (sharp, local changes)
-  fw_micro <- terra::focalMat(r_noise, 0.5, type = "Gauss") 
-  r_micro <- terra::focal(r_noise, w = fw_micro, fun = sum, na.rm = TRUE)
-
-  # 3. Combine them to create a realistic base landscape
-  r_base <- scale(r_macro) + 1.5 * scale(r_micro)
-
-  # 4. Add the Covariate Centers (using r_base as the template)
+  
+  fw <- terra::focalMat(r_noise, sac_sigma, type = "Gauss")
+  r_smooth <- terra::focal(r_noise, w = fw, fun = sum, na.rm = TRUE)
+  terra::values(r_smooth) <- as.vector(scale(terra::values(r_smooth)))
+  
   seeds <- cov_center_seeds[[sim]]
-  r_centers <- terra::rast(r_base)
+  r_centers <- terra::rast(r_smooth)
   terra::values(r_centers) <- 0
-  rows <- terra::init(r_base, "y")
-  cols <- terra::init(r_base, "x")
+  rows <- terra::init(r_smooth, "y")
+  cols <- terra::init(r_smooth, "x")
   
   for(k in seq_along(seeds$x)) {
     d2 <- (cols - seeds$x[k])^2 + (rows - seeds$y[k])^2
     r_centers <- r_centers + exp(-d2 / (2 * decay_scale))
   }
   
-  # Final Covariate: Base Roughness + High-Intensity Centers
-  r_trend <- r_base + (r_centers * centers_scale)
+  r_trend <- r_smooth + (r_centers * centers_scale)
   terra::values(r_trend) <- as.vector(scale(terra::values(r_trend)))
   
   full_cellCovs <- data.frame(cell_cov1 = terra::values(r_trend, mat=FALSE))
@@ -320,7 +312,12 @@ for (sim in 1:n_sims) {
   r_acc_noise <- terra::rast(nrows=full_grid_dim, ncols=full_grid_dim, 
                              xmin=0, xmax=full_grid_dim, ymin=0, ymax=full_grid_dim,
                              vals=rnorm(full_n_cells))
+
+  # Define the focal weights for macro sampling bias (e.g., a 20-cell Gaussian blur)
+  fw_macro <- terra::focalMat(r_acc_noise, 20, "Gauss")
+
   r_acc <- terra::focal(r_acc_noise, w = fw_macro, fun = sum, na.rm = TRUE)
+
   acc_vals <- as.vector(scale(terra::values(r_acc)))
   acc_weights <- exp(acc_vals * 2)
   
@@ -462,12 +459,17 @@ for (sim in 1:n_sims) {
     all_obs$true_site <- def$site_ids[all_obs$true_cell]
     
     # 1. GENERATE FIXED DETECTIONS BASED ON GROUND TRUTH POLYGONS
+    # Tweak to your generation step to penalize single visits
     all_obs$obs_cov <- rnorm(nrow(all_obs))
-    all_obs$detection <- 0
+    # Make singletons (S_) have terrible/noisy detection baselines
+    all_obs$is_single <- grepl("S_", all_obs$loc_id)
+    all_obs$det_penalty <- ifelse(all_obs$is_single, runif(nrow(all_obs), -3, 0), 0)
+
     for(r_idx in 1:nrow(all_obs)) {
       Z_t <- Z_i[all_obs$true_site[r_idx]]
       if (Z_t == "1") {
-        logit_p <- true_alphas[1] + true_alphas[2] * all_obs$obs_cov[r_idx]
+        # Add the penalty to the logit detection
+        logit_p <- true_alphas[1] + true_alphas[2] * all_obs$obs_cov[r_idx] + all_obs$det_penalty[r_idx]
         all_obs$detection[r_idx] <- rbinom(1, 1, plogis(logit_p))
       }
     }
