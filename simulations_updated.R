@@ -57,8 +57,8 @@ hotspot_noise_radius <- 10 # cells
 
 # --- True parameter values ---
 true_alphas <- c(alpha_int = 0.5, alpha_cov = -1.0)
-true_betas <- c(beta_int = -5.0, beta_cov = 1.0)
-true_betas <- c(beta_int = -3.0, beta_cov = 1.0)
+# true_betas <- c(beta_int = -5.0, beta_cov = 1.0)
+true_betas <- c(beta_int = -4.0, beta_cov = 1.0)
 
 # --- Model settings ---
 selected_optimizer <- "nlminb"
@@ -308,25 +308,46 @@ for (sim in 1:n_sims) {
   full_N_j <- rpois(full_n_cells, full_lambda_j)
   full_Z_j <- factor(ifelse(full_N_j > 0, 1, 0), levels = c("0", "1"))
   
-  # 5. Spatial Sampling Bias (using fw_macro instead of the deleted fw)
+  # 5. Spatial Sampling Bias (Hotspots First, then Proximity-Based Sampling)
+  
+  # --- Step A: Generate standard landscape noise ---
   r_acc_noise <- terra::rast(nrows=full_grid_dim, ncols=full_grid_dim, 
-                             xmin=0, xmax=full_grid_dim, ymin=0, ymax=full_grid_dim,
-                             vals=rnorm(full_n_cells))
-
-  # Define the focal weights for macro sampling bias (e.g., a 20-cell Gaussian blur)
-  fw_macro <- terra::focalMat(r_acc_noise, 20, "Gauss")
-
+                            xmin=0, xmax=full_grid_dim, ymin=0, ymax=full_grid_dim,
+                            vals=rnorm(full_n_cells))
+  fw_macro <- terra::focalMat(r_acc_noise, 5, "Gauss")
   r_acc <- terra::focal(r_acc_noise, w = fw_macro, fun = sum, na.rm = TRUE)
-
   acc_vals <- as.vector(scale(terra::values(r_acc)))
-  acc_weights <- exp(acc_vals * 2)
   
+  # --- Step B: Sample ONLY the Hotspots first ---
+  hotspot_weights <- exp(acc_vals * 1.25)
   set.seed(100 + sim)
-  sampled_loc_ids <- sample(1:full_n_cells, n_hotspot_locs + n_double_locs + n_single_locs, prob = acc_weights)
+  hotspot_idx <- sample(1:full_n_cells, n_hotspot_locs, prob = hotspot_weights)
   
-  hotspot_idx <- sampled_loc_ids[1:n_hotspot_locs]
-  double_idx <- sampled_loc_ids[(n_hotspot_locs+1):(n_hotspot_locs+n_double_locs)]
-  single_idx <- sampled_loc_ids[(n_hotspot_locs+n_double_locs+1):length(sampled_loc_ids)]
+  # --- Step C: Calculate Distances to Hotspots ---
+  # Create an empty raster and mark the hotspot cells
+  r_hotspots <- terra::rast(nrows=full_grid_dim, ncols=full_grid_dim, 
+                            xmin=0, xmax=full_grid_dim, ymin=0, ymax=full_grid_dim, 
+                            vals=NA)
+  r_hotspots[hotspot_idx] <- 1
+  
+  # Calculate the distance from every cell to the nearest hotspot
+  r_dist <- terra::distance(r_hotspots)
+  dist_vals <- as.vector(terra::values(r_dist))
+  
+  # Convert distances to probabilities (closer = higher probability)
+  # TUNING KNOB: Increase 'spread_factor' to push single visits further outward between hotspots.
+  # Decrease it to pull them tightly around the exact hotspot center.
+  spread_factor <- 5 
+  proximity_weights <- exp(-dist_vals / spread_factor)
+  
+  # --- Step D: Sample Single & Double visits based on Proximity ---
+  # Ensure we don't accidentally sample the exact same cell as a hotspot center for single/double
+  proximity_weights[hotspot_idx] <- 0 
+  
+  other_idx <- sample(1:full_n_cells, n_double_locs + n_single_locs, prob = proximity_weights)
+  
+  double_idx <- other_idx[1:n_double_locs]
+  single_idx <- other_idx[(n_double_locs + 1):length(other_idx)]
   
   obs_list <- list()
 
