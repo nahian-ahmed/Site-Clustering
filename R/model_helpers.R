@@ -228,7 +228,7 @@ disjoint_site_geometries <- function(site_geoms_sf, point_data_df, crs_points = 
     dplyr::rename(site = new_site_id) %>%
     dplyr::select(site, geometry)
   
-  message(sprintf("  - Filtered empty islands: Reduced to %d occupied sites.", nrow(sites_final)))
+  message(sprintf("  - Filtered empty islands: Reduced to %d sites.", nrow(sites_final)))
 
   return(list(geoms = sites_final, data = point_data_updated))
 }
