@@ -1,5 +1,6 @@
 #################################################################
 # Simulation Experiments using clustGeo Sites
+# Spatial Clustering with uniform sampling and cell-level visualizations
 #################################################################
 
 ###
@@ -21,7 +22,6 @@ library(Matrix)
 library(scales) 
 library(sf)
 library(dplyr)
-library(tidyr)
 library(ClustGeo)
 
 # Source required helpers
@@ -37,7 +37,7 @@ source(file.path("R", "analysis_helpers.R"))
 set.seed(123) 
 
 # --- Simulation repetitions ---
-n_sims <- 3 
+n_sims <- 3
 n_reps <- 30 
 
 # --- Landscape Configuration ---
@@ -46,8 +46,8 @@ full_n_cells <- full_grid_dim * full_grid_dim # 40000
 
 # --- ClustGeo & Point Generation Configurations ---
 max_N_value <- 5000            # Total observation points generated 
-kappa_for_clustgeo <- 10       # percentage of points to form clusters (e.g., 10% of 5000 = 500 sites)
-buffer_cells <- 2              # Buffer in arbitrary grid units (no physical units)
+kappa_for_clustgeo <- 10       # Percentage of points to form clusters (e.g., 10% of 5000 = 500 sites)
+buffer_cells <- 2              # Buffer in arbitrary grid units (not meters)
 
 # --- True parameter values ---
 true_alphas <- c(alpha_int = 0.5, alpha_cov = -1.0)
@@ -213,6 +213,10 @@ for (sac_level in sac_levels) {
     full_X_cell <- model.matrix(~cell_cov1, data = full_cellCovs)
     full_lambda_j <- exp(full_X_cell %*% true_betas)
     
+    # Generate pixel-level true occupancy based on abundance (for plotting)
+    full_pixel_psi <- 1 - exp(-full_lambda_j)
+    full_pixel_Z <- rbinom(full_n_cells, 1, full_pixel_psi)
+    
     # --- 5c. Generate Observation Points & ClustGeo ---
     pts_x <- runif(max_N_value, 0, full_grid_dim)
     pts_y <- runif(max_N_value, 0, full_grid_dim)
@@ -221,7 +225,7 @@ for (sac_level in sac_levels) {
     pts_vect <- terra::vect(pts_df, geom=c("x", "y"))
     pts_df$cell_cov1 <- terra::extract(r_final, pts_vect)$cell_cov1
     
-    # Clustering using hclustgeo
+    # Clustering
     env_dist <- dist(scale(pts_df$cell_cov1))
     geo_dist <- dist(scale(pts_df[, c("x", "y")]))
     
@@ -232,7 +236,7 @@ for (sac_level in sac_levels) {
     # --- 5d. Polygonize and Generate W Matrix ---
     points_sf <- sf::st_as_sf(pts_df, coords=c("x", "y"), remove=FALSE)
     
-    # Generate geometries (Voronoi clipping inside logical unprojected grid)
+    # Generate geometries (Voronoi clipping)
     site_geoms_sf <- voronoi_clipped_buffers(points_sf, buffer_dist = buffer_cells)
     
     # Splitting disjoint shapes into independent polygons
@@ -240,7 +244,7 @@ for (sac_level in sac_levels) {
     final_geoms <- disjoint_res$geoms
     final_points <- disjoint_res$data
     
-    # W Matrix (area based on cell fractions)
+    # W Matrix
     w_matrix <- local_generate_overlap_matrix(final_geoms, r_final)
     
     # --- 5e. Simulate True Biology and Detection ---
@@ -275,7 +279,7 @@ for (sac_level in sac_levels) {
     
     for (M_i in valid_M_values) {
       
-      # Select Uniformly Random Sites
+      # Uniformly select sites
       sel_sites <- sample(rownames(w_matrix), M_i, replace = FALSE)
       sel_sites <- sort(sel_sites)
       
@@ -348,29 +352,17 @@ for (sac_level in sac_levels) {
       # --- PLOTTING LOGIC (Inside M loop) ---
       if (sim == 1) {
         
+        # We place the cell/pixel level data into our grid
         cell_df <- data.frame(
           x = full_cell_col,
           y = full_cell_row,
-          covariate = full_cellCovs$cell_cov1
+          covariate = full_cellCovs$cell_cov1,
+          pixel_abundance = full_lambda_j,
+          pixel_occupancy = as.factor(full_pixel_Z)
         )
         
-        # Because geometries are polygons, rasterize them to the grid for viz background
+        # Geometries for plotting (Unfilled, Red borders only)
         sel_geoms <- final_geoms %>% filter(site %in% sel_sites)
-        
-        if (nrow(sel_geoms) > 0) {
-          sel_geoms$abund <- lambda_tilde_i[sel_geoms$site]
-          sel_geoms$occ <- site_Z[sel_geoms$site]
-          
-          sel_geoms_vect <- terra::vect(sel_geoms)
-          abund_rast <- terra::rasterize(sel_geoms_vect, r_final, field="abund", background=NA)
-          occ_rast <- terra::rasterize(sel_geoms_vect, r_final, field="occ", background=NA)
-          
-          cell_df$site_latent_abundance <- terra::values(abund_rast)[,1]
-          cell_df$site_true_occupancy <- as.factor(terra::values(occ_rast)[,1])
-        } else {
-          cell_df$site_latent_abundance <- NA
-          cell_df$site_true_occupancy <- NA
-        }
         
         tight_theme <- theme_minimal() + 
           theme(
@@ -383,25 +375,25 @@ for (sac_level in sac_levels) {
         p_cov <- ggplot(cell_df, aes(x=x, y=y, fill=covariate)) +
           geom_raster() +
           scale_fill_viridis_c() +
-          coord_sf(expand=FALSE, datum=NA) + 
           geom_sf(data=sel_geoms, color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
           geom_point(data=sf::st_drop_geometry(sub_pts), aes(x=x, y=y), color="black", size=0.5, inherit.aes=FALSE) +
+          coord_sf(expand=FALSE, datum=NA) + 
           labs(title=sprintf("Covariate (M=%d)", M_i), fill="Covariate") +
           tight_theme
         
-        p_abund <- ggplot(cell_df, aes(x=x, y=y, fill=site_latent_abundance)) +
+        p_abund <- ggplot(cell_df, aes(x=x, y=y, fill=pixel_abundance)) +
           geom_raster() +
-          scale_fill_viridis_c(option = "magma", na.value="transparent") +
-          coord_sf(expand=FALSE, datum=NA) + 
+          scale_fill_viridis_c(option = "magma") +
           geom_sf(data=sel_geoms, color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
+          coord_sf(expand=FALSE, datum=NA) + 
           labs(title=sprintf("Abundance (M=%d)", M_i), fill="Abundance") +
           tight_theme
         
-        p_occ <- ggplot(cell_df, aes(x=x, y=y, fill=site_true_occupancy)) +
+        p_occ <- ggplot(cell_df, aes(x=x, y=y, fill=pixel_occupancy)) +
           geom_raster() +
-          scale_fill_manual(values=c("0"="navyblue", "1"="yellow"), na.translate=FALSE) +
-          coord_sf(expand=FALSE, datum=NA) + 
+          scale_fill_manual(values=c("0"="navyblue", "1"="yellow")) +
           geom_sf(data=sel_geoms, color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
+          coord_sf(expand=FALSE, datum=NA) + 
           labs(title=sprintf("Occupancy (M=%d)", M_i), fill="Occupancy") +
           tight_theme
           
@@ -420,7 +412,8 @@ for (sac_level in sac_levels) {
       col_abund <- patchwork::wrap_plots(plots_abund, ncol = 1) 
       col_occ <- patchwork::wrap_plots(plots_occ, ncol = 1)
       
-      final_comb_plot <- (col_cov | col_abund | col_occ) + patchwork::plot_layout(guides = "collect") 
+
+      final_comb_plot <- (col_cov | col_abund | col_occ) + patchwork::plot_layout(guides = "collect")
       
       fname <- sprintf("plot_SAC=%s.png", sac_level)
       
@@ -450,19 +443,20 @@ if (!is.null(results_df) && nrow(results_df) > 0) {
     write.csv(results_df, file.path(output_dir, "params_clustgeo.csv"), row.names = FALSE)
     
     # Boxplots
-    results_df$Error <- results_df$True_Value - results_df$Estimated_Value
-    results_df$M_factor <- as.factor(results_df$M)
-    results_df$SAC_Level <- factor(results_df$SAC_Level, levels = c("Low", "Medium", "High"))
+    strat_df <- results_df
+    strat_df$Error <- strat_df$True_Value - strat_df$Estimated_Value
+    strat_df$M_factor <- as.factor(strat_df$M)
+    strat_df$SAC_Level <- factor(strat_df$SAC_Level, levels = c("Low", "Medium", "High"))
     
     create_error_plot <- function(param_name, title) {
-      ggplot(results_df[results_df$Parameter == param_name, ], 
+      ggplot(strat_df[strat_df$Parameter == param_name, ], 
              aes(x = M_factor, y = Error, fill = SAC_Level)) +
         geom_boxplot(outlier.size = 0.5) +
         geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
         scale_fill_manual(values = c("Low" = "yellow", "Medium" = "orange", "High" = "red")) +
         labs(title = title, x = "M (Sites)", y = "Error (True - Estimate)", fill = "Spatial Autocorrelation") +
         theme_bw() + 
-        theme(legend.position = "bottom", legend.direction = "horizontal") 
+        theme(legend.position = "none") # Handled by plot_layout below
     }
     
     p1 <- create_error_plot("beta (state_int)", "State Intercept")
@@ -470,8 +464,10 @@ if (!is.null(results_df) && nrow(results_df) > 0) {
     p3 <- create_error_plot("alpha (det_int)", "Observation Intercept")
     p4 <- create_error_plot("alpha (det_cov1)", "Observation Slope")
     
-    # Combined natively
-    combined_error_plot <- (p1 | p2) / (p3 | p4) + patchwork::plot_layout(guides = "collect")
+    # Combined natively with bottom horizontal legend
+    combined_error_plot <- (p1 | p2) / (p3 | p4) + 
+      patchwork::plot_layout(guides = "collect") & 
+      theme(legend.position = "bottom", legend.direction = "horizontal")
     
     suppressMessages(suppressWarnings({
         ggsave(file.path(output_dir, "error_boxplots.png"), plot = combined_error_plot, dpi = 300, width = 10, height = 10)
