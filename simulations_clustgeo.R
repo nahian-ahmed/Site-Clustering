@@ -239,6 +239,20 @@ for (sac_level in sac_levels) {
     # Generate geometries (Voronoi clipping)
     site_geoms_sf <- voronoi_clipped_buffers(points_sf, buffer_dist = buffer_cells)
     
+    # NEW: Create a hard boundary for the 200x200 landscape
+    landscape_boundary <- sf::st_polygon(list(matrix(c(
+      0, 0, 
+      full_grid_dim, 0, 
+      full_grid_dim, full_grid_dim, 
+      0, full_grid_dim, 
+      0, 0
+    ), ncol = 2, byrow = TRUE))) %>%
+      sf::st_sfc() %>%
+      sf::st_sf(geometry = .)
+    
+    # NEW: Clip all site geometries so they cannot spill off the map
+    site_geoms_sf <- sf::st_intersection(site_geoms_sf, landscape_boundary)
+    
     # Splitting disjoint shapes into independent polygons
     disjoint_res <- local_disjoint_site_geometries(site_geoms_sf, points_sf)
     final_geoms <- disjoint_res$geoms
