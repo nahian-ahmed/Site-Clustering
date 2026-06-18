@@ -380,7 +380,7 @@ for (sac_level in sac_levels) {
         p_cov <- ggplot(cell_df, aes(x=x, y=y, fill=covariate)) +
           geom_raster() +
           scale_fill_viridis_c() +
-          coord_sf(expand=FALSE, datum=NA) + # <--- Replaced coord_fixed
+          coord_sf(expand=FALSE, datum=NA) + # <--- Replaced coord_fixed to stop the clashing
           geom_sf(data=sel_geoms, color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
           geom_point(data=sf::st_drop_geometry(sub_pts), aes(x=x, y=y), color="black", size=0.5, inherit.aes=FALSE) +
           labs(title=sprintf("Covariate (M=%d)", M_i), fill="Covariate") +
@@ -413,22 +413,28 @@ for (sac_level in sac_levels) {
     if (sim == 1) {
       cat(sprintf("\nSaving plots for SAC=%s...\n", sac_level))
       
-      col_cov <- ( patchwork::wrap_plots(plots_cov, ncol = 1) + 
-        patchwork::plot_layout(guides = "collect") ) & 
+      # Removed the outer parentheses to restore native S3 patchwork dispatch
+      col_cov <- patchwork::wrap_plots(plots_cov, ncol = 1) + 
+        patchwork::plot_layout(guides = "collect") & 
         theme(legend.position = "bottom", legend.direction = "horizontal")
       
-      col_abund <- ( patchwork::wrap_plots(plots_abund, ncol = 1) + 
-        patchwork::plot_layout(guides = "collect") ) & 
+      col_abund <- patchwork::wrap_plots(plots_abund, ncol = 1) + 
+        patchwork::plot_layout(guides = "collect") & 
         theme(legend.position = "bottom", legend.direction = "horizontal")
       
-      col_occ <- ( patchwork::wrap_plots(plots_occ, ncol = 1) + 
-        patchwork::plot_layout(guides = "collect") ) & 
+      col_occ <- patchwork::wrap_plots(plots_occ, ncol = 1) + 
+        patchwork::plot_layout(guides = "collect") & 
         theme(legend.position = "bottom", legend.direction = "horizontal")
       
       final_comb_plot <- col_cov | col_abund | col_occ
       
       fname <- sprintf("plot_SAC=%s.png", sac_level)
-      ggsave(file.path(output_dir, fname), plot=final_comb_plot, dpi=300, width=11, height=20)
+      
+      # Suppress the harmless "Coordinate system already present" messages 
+      # that get triggered when the plot is actually built/rendered.
+      suppressMessages({
+        ggsave(file.path(output_dir, fname), plot=final_comb_plot, dpi=300, width=11, height=20)
+      })
     }
     
     gc()
@@ -472,8 +478,10 @@ if (!is.null(results_df) && nrow(results_df) > 0) {
     p3 <- create_error_plot("alpha (det_int)", "Observation Intercept")
     p4 <- create_error_plot("alpha (det_cov1)", "Observation Slope")
     
-    combined_error_plot <- ( (p1 | p2) / (p3 | p4) + plot_layout(guides = "collect") ) & 
-    theme(legend.position = "bottom", legend.direction = "horizontal")
+    # Removed the outer parentheses to match the exact syntax from simulations.R
+    combined_error_plot <- (p1 | p2) / (p3 | p4) + 
+      plot_layout(guides = "collect") & 
+      theme(legend.position = "bottom", legend.direction = "horizontal")
     
     ggsave(file.path(output_dir, "error_boxplots.png"), plot = combined_error_plot, dpi = 300, width = 10, height = 10)
     
