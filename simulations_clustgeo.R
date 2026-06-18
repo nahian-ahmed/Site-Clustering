@@ -41,7 +41,7 @@ n_sims <- 3
 n_reps <- 30 
 
 # --- Landscape Configuration ---
-full_grid_dim <- 400 
+full_grid_dim <- 200 
 full_n_cells <- full_grid_dim * full_grid_dim # 40000
 
 # --- ClustGeo & Point Generation Configurations ---
