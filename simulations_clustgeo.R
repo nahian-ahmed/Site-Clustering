@@ -127,7 +127,8 @@ for (sac_level in sac_levels) {
     names(r_noise) <- "cell_cov1"
     
     if (current_sigma > 0) {
-      fw <- terra::focalMat(r_noise, current_sigma, type = "Gauss")
+      # Multiply sigma by cell_size so 3 becomes 300m (i.e., 3 pixels)
+      fw <- terra::focalMat(r_noise, current_sigma * cell_size, type = "Gauss")
       r_smooth <- terra::focal(r_noise, w = fw, fun = sum, na.rm = TRUE)
     } else {
       r_smooth <- r_noise
