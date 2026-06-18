@@ -41,11 +41,11 @@ n_sims <- 3
 n_reps <- 30 
 
 # --- Landscape Configuration ---
-full_grid_dim <- 200 
+full_grid_dim <- 400 
 full_n_cells <- full_grid_dim * full_grid_dim # 40000
 
 # --- ClustGeo & Point Generation Configurations ---
-max_N_value <- 5000            # Total observation points generated 
+max_N_value <- 16000            # Total observation points generated 
 kappa_for_clustgeo <- 10       # Percentage of points to form clusters (e.g., 10% of 5000 = 500 sites)
 buffer_cells <- 2              # Buffer in arbitrary grid units (not meters)
 
@@ -250,8 +250,11 @@ for (sac_level in sac_levels) {
       sf::st_sfc() %>%
       sf::st_sf(geometry = .)
     
-    # NEW: Clip all site geometries so they cannot spill off the map
-    site_geoms_sf <- sf::st_intersection(site_geoms_sf, landscape_boundary)
+    # FIX: Repair microscopic topological anomalies before intersecting
+    site_geoms_sf <- sf::st_make_valid(site_geoms_sf)
+    
+    # NEW: Clip all site geometries (silencing the spatial constant warning)
+    site_geoms_sf <- suppressWarnings(sf::st_intersection(site_geoms_sf, landscape_boundary))
     
     # Splitting disjoint shapes into independent polygons
     disjoint_res <- local_disjoint_site_geometries(site_geoms_sf, points_sf)
@@ -269,6 +272,10 @@ for (sac_level in sac_levels) {
     
     # Simulate for points directly inside these generated geometries
     final_points$obs_cov1 <- rnorm(nrow(final_points))
+    
+    # FIX: Filter points to only those that belong to valid sites in the w_matrix
+    final_points <- final_points[as.character(final_points$site) %in% rownames(w_matrix), ]
+    
     final_points$Z_i <- site_Z[as.character(final_points$site)]
     
     logit_p <- true_alphas["alpha_int"] + true_alphas["alpha_cov"] * final_points$obs_cov1
@@ -470,7 +477,7 @@ if (!is.null(results_df) && nrow(results_df) > 0) {
         scale_fill_manual(values = c("Low" = "yellow", "Medium" = "orange", "High" = "red")) +
         labs(title = title, x = "M (Sites)", y = "Error (True - Estimate)", fill = "Spatial Autocorrelation") +
         theme_bw() + 
-        theme(legend.position = "none") # Handled by plot_layout below
+        theme(legend.position = "bottom", legend.direction = "horizontal") # Add legend to individual plots
     }
     
     p1 <- create_error_plot("beta (state_int)", "State Intercept")
@@ -478,10 +485,9 @@ if (!is.null(results_df) && nrow(results_df) > 0) {
     p3 <- create_error_plot("alpha (det_int)", "Observation Intercept")
     p4 <- create_error_plot("alpha (det_cov1)", "Observation Slope")
     
-    # Combined natively with bottom horizontal legend
+    # Combine natively without the problematic '&' operator
     combined_error_plot <- (p1 | p2) / (p3 | p4) + 
-      patchwork::plot_layout(guides = "collect") & 
-      theme(legend.position = "bottom", legend.direction = "horizontal")
+      patchwork::plot_layout(guides = "collect")
     
     suppressMessages(suppressWarnings({
         ggsave(file.path(output_dir, "error_boxplots.png"), plot = combined_error_plot, dpi = 300, width = 10, height = 10)
