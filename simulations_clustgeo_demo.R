@@ -371,16 +371,19 @@ for (sac_level in sac_levels) {
           cell_df$site_true_occupancy <- NA
         }
         
+        # Added Legend theme directly here
         tight_theme <- theme_minimal() + 
           theme(
             axis.title = element_blank(),
-            plot.margin = margin(t=10, r=10, b=10, l=10, unit="pt")
+            plot.margin = margin(t=10, r=10, b=10, l=10, unit="pt"),
+            legend.position = "bottom",
+            legend.direction = "horizontal"
           )
         
         p_cov <- ggplot(cell_df, aes(x=x, y=y, fill=covariate)) +
           geom_raster() +
           scale_fill_viridis_c() +
-          coord_sf(expand=FALSE, datum=NA) + # <--- Replaced coord_fixed to stop the clashing
+          coord_sf(expand=FALSE, datum=NA) + 
           geom_sf(data=sel_geoms, color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
           geom_point(data=sf::st_drop_geometry(sub_pts), aes(x=x, y=y), color="black", size=0.5, inherit.aes=FALSE) +
           labs(title=sprintf("Covariate (M=%d)", M_i), fill="Covariate") +
@@ -389,7 +392,7 @@ for (sac_level in sac_levels) {
         p_abund <- ggplot(cell_df, aes(x=x, y=y, fill=site_latent_abundance)) +
           geom_raster() +
           scale_fill_viridis_c(option = "magma", na.value="transparent") +
-          coord_sf(expand=FALSE, datum=NA) + # <--- Replaced coord_fixed
+          coord_sf(expand=FALSE, datum=NA) + 
           geom_sf(data=sel_geoms, color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
           labs(title=sprintf("Abundance (M=%d)", M_i), fill="Abundance") +
           tight_theme
@@ -397,7 +400,7 @@ for (sac_level in sac_levels) {
         p_occ <- ggplot(cell_df, aes(x=x, y=y, fill=site_true_occupancy)) +
           geom_raster() +
           scale_fill_manual(values=c("0"="navyblue", "1"="yellow"), na.translate=FALSE) +
-          coord_sf(expand=FALSE, datum=NA) + # <--- Replaced coord_fixed
+          coord_sf(expand=FALSE, datum=NA) + 
           geom_sf(data=sel_geoms, color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
           labs(title=sprintf("Occupancy (M=%d)", M_i), fill="Occupancy") +
           tight_theme
@@ -413,28 +416,18 @@ for (sac_level in sac_levels) {
     if (sim == 1) {
       cat(sprintf("\nSaving plots for SAC=%s...\n", sac_level))
       
-      # Removed the outer parentheses to restore native S3 patchwork dispatch
-      col_cov <- patchwork::wrap_plots(plots_cov, ncol = 1) + 
-        patchwork::plot_layout(guides = "collect") & 
-        theme(legend.position = "bottom", legend.direction = "horizontal")
+      col_cov <- patchwork::wrap_plots(plots_cov, ncol = 1) 
+      col_abund <- patchwork::wrap_plots(plots_abund, ncol = 1) 
+      col_occ <- patchwork::wrap_plots(plots_occ, ncol = 1)
       
-      col_abund <- patchwork::wrap_plots(plots_abund, ncol = 1) + 
-        patchwork::plot_layout(guides = "collect") & 
-        theme(legend.position = "bottom", legend.direction = "horizontal")
-      
-      col_occ <- patchwork::wrap_plots(plots_occ, ncol = 1) + 
-        patchwork::plot_layout(guides = "collect") & 
-        theme(legend.position = "bottom", legend.direction = "horizontal")
-      
-      final_comb_plot <- col_cov | col_abund | col_occ
+      final_comb_plot <- (col_cov | col_abund | col_occ) + patchwork::plot_layout(guides = "collect") 
       
       fname <- sprintf("plot_SAC=%s.png", sac_level)
       
-      # Suppress the harmless "Coordinate system already present" messages 
-      # that get triggered when the plot is actually built/rendered.
-      suppressMessages({
+      # Suppress the harmless messages/warnings during render
+      suppressMessages(suppressWarnings({
         ggsave(file.path(output_dir, fname), plot=final_comb_plot, dpi=300, width=11, height=20)
-      })
+      }))
     }
     
     gc()
@@ -470,7 +463,8 @@ if (!is.null(results_df) && nrow(results_df) > 0) {
         geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
         scale_fill_manual(values = c("Low" = "yellow", "Medium" = "orange", "High" = "red")) +
         labs(title = title, x = "M (Sites)", y = "Error (True - Estimate)", fill = "Spatial Autocorrelation") +
-        theme_bw() + theme(legend.position = "none")
+        theme_bw() + 
+        theme(legend.position = "bottom", legend.direction = "horizontal") # Added here natively
     }
     
     p1 <- create_error_plot("beta (state_int)", "State Intercept")
@@ -478,14 +472,14 @@ if (!is.null(results_df) && nrow(results_df) > 0) {
     p3 <- create_error_plot("alpha (det_int)", "Observation Intercept")
     p4 <- create_error_plot("alpha (det_cov1)", "Observation Slope")
     
-    # Removed the outer parentheses to match the exact syntax from simulations.R
-    combined_error_plot <- (p1 | p2) / (p3 | p4) + 
-      plot_layout(guides = "collect") & 
-      theme(legend.position = "bottom", legend.direction = "horizontal")
+    # Combined natively
+    combined_error_plot <- (p1 | p2) / (p3 | p4) + patchwork::plot_layout(guides = "collect")
     
-    ggsave(file.path(output_dir, "error_boxplots.png"), plot = combined_error_plot, dpi = 300, width = 10, height = 10)
+    suppressMessages(suppressWarnings({
+        ggsave(file.path(output_dir, "error_boxplots.png"), plot = combined_error_plot, dpi = 300, width = 10, height = 10)
+    }))
     
-    cat("Saved results and error boxplots.")
+    cat("\nSaved results and error boxplots.")
 }
 
 cat("\n--- Script Finished Successfully ---\n")
