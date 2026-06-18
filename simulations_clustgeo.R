@@ -380,7 +380,7 @@ for (sac_level in sac_levels) {
         p_cov <- ggplot(cell_df, aes(x=x, y=y, fill=covariate)) +
           geom_raster() +
           scale_fill_viridis_c() +
-          coord_fixed(expand=FALSE) +
+          coord_sf(expand=FALSE, datum=NA) + # <--- Replaced coord_fixed
           geom_sf(data=sel_geoms, color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
           geom_point(data=sf::st_drop_geometry(sub_pts), aes(x=x, y=y), color="black", size=0.5, inherit.aes=FALSE) +
           labs(title=sprintf("Covariate (M=%d)", M_i), fill="Covariate") +
@@ -389,7 +389,7 @@ for (sac_level in sac_levels) {
         p_abund <- ggplot(cell_df, aes(x=x, y=y, fill=site_latent_abundance)) +
           geom_raster() +
           scale_fill_viridis_c(option = "magma", na.value="transparent") +
-          coord_fixed(expand=FALSE) +
+          coord_sf(expand=FALSE, datum=NA) + # <--- Replaced coord_fixed
           geom_sf(data=sel_geoms, color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
           labs(title=sprintf("Abundance (M=%d)", M_i), fill="Abundance") +
           tight_theme
@@ -397,7 +397,7 @@ for (sac_level in sac_levels) {
         p_occ <- ggplot(cell_df, aes(x=x, y=y, fill=site_true_occupancy)) +
           geom_raster() +
           scale_fill_manual(values=c("0"="navyblue", "1"="yellow"), na.translate=FALSE) +
-          coord_fixed(expand=FALSE) +
+          coord_sf(expand=FALSE, datum=NA) + # <--- Replaced coord_fixed
           geom_sf(data=sel_geoms, color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
           labs(title=sprintf("Occupancy (M=%d)", M_i), fill="Occupancy") +
           tight_theme
@@ -413,16 +413,16 @@ for (sac_level in sac_levels) {
     if (sim == 1) {
       cat(sprintf("\nSaving plots for SAC=%s...\n", sac_level))
       
-      col_cov <- patchwork::wrap_plots(plots_cov, ncol = 1) + 
-        patchwork::plot_layout(guides = "collect") & 
+      col_cov <- ( patchwork::wrap_plots(plots_cov, ncol = 1) + 
+        patchwork::plot_layout(guides = "collect") ) & 
         theme(legend.position = "bottom", legend.direction = "horizontal")
       
-      col_abund <- patchwork::wrap_plots(plots_abund, ncol = 1) + 
-        patchwork::plot_layout(guides = "collect") & 
+      col_abund <- ( patchwork::wrap_plots(plots_abund, ncol = 1) + 
+        patchwork::plot_layout(guides = "collect") ) & 
         theme(legend.position = "bottom", legend.direction = "horizontal")
       
-      col_occ <- patchwork::wrap_plots(plots_occ, ncol = 1) + 
-        patchwork::plot_layout(guides = "collect") & 
+      col_occ <- ( patchwork::wrap_plots(plots_occ, ncol = 1) + 
+        patchwork::plot_layout(guides = "collect") ) & 
         theme(legend.position = "bottom", legend.direction = "horizontal")
       
       final_comb_plot <- col_cov | col_abund | col_occ
@@ -472,8 +472,8 @@ if (!is.null(results_df) && nrow(results_df) > 0) {
     p3 <- create_error_plot("alpha (det_int)", "Observation Intercept")
     p4 <- create_error_plot("alpha (det_cov1)", "Observation Slope")
     
-    combined_error_plot <- (p1 | p2) / (p3 | p4) +
-      plot_layout(guides = "collect") & theme(legend.position = "bottom", legend.direction = "horizontal")
+    combined_error_plot <- ( (p1 | p2) / (p3 | p4) + plot_layout(guides = "collect") ) & 
+    theme(legend.position = "bottom", legend.direction = "horizontal")
     
     ggsave(file.path(output_dir, "error_boxplots.png"), plot = combined_error_plot, dpi = 300, width = 10, height = 10)
     
