@@ -1,6 +1,7 @@
 #################################################################
 # Simulation Experiments using clustGeo Sites
-# Spatial Clustering with uniform sampling and cell-level visualizations
+# Decoupled Data Generating Process: 
+# Sites defined organically via ClustGeo + Voronoi, uniformly sampled (J=3)
 #################################################################
 
 ###
@@ -22,6 +23,7 @@ library(Matrix)
 library(scales) 
 library(sf)
 library(dplyr)
+library(tidyr)
 library(ClustGeo)
 
 # Source required helpers
@@ -44,13 +46,13 @@ n_reps <- 30
 full_grid_dim <- 200 
 full_n_cells <- full_grid_dim * full_grid_dim # 40000
 
-# --- ClustGeo & Point Generation Configurations ---
-max_N_value <- 4800            # Total observation points generated 
-kappa_for_clustgeo <- 33.3     # 33.3% of 4800 = ~1600 sites (Average 3 visits per site)
+# --- ClustGeo Sampling Frame Configurations ---
+dummy_N_value <- 4800          # Anchor points used to draw geometries (NOT the final visits)
+M_total_sites <- 1600          # Total number of contiguous territories to form
+visits_per_site <- 3           # J=3 virtual observers per site (eliminates area-visit confounding)
+clustgeo_alpha <- 0.5          # Blends environment and spatial distance to define territory shapes
 
-buffer_cells <- 2              # Buffer in arbitrary grid units (not meters)
-
-# --- True parameter values ---
+# --- True parameter values (Restored to optimal simulation biology) ---
 true_alphas <- c(alpha_int = 0.5, alpha_cov = -1.0)
 true_betas <- c(beta_int = -5.0, beta_cov = 1.0)
 
@@ -77,9 +79,8 @@ if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 cat("--- Simulation Starting ---\n")
 cat(sprintf("Running %d full simulations per SAC level.\n", n_sims))
-cat(sprintf("Points generated: %d | ClustGeo Kappa: %.1f\n", max_N_value, kappa_for_clustgeo))
+cat(sprintf("Dummy Anchors: %d | Clusters: %d | Alpha: %.1f\n", dummy_N_value, M_total_sites, clustgeo_alpha))
 cat(sprintf("SAC Levels: %s\n", paste(sac_levels, collapse=", ")))
-
 
 ##########
 # 3. Local Spatial Helpers (Coordinate-Agnostic)
@@ -95,7 +96,6 @@ local_generate_overlap_matrix <- function(site_geoms_sf, reference_raster) {
   val_col_name <- names(reference_raster)[1]
   overlap_df <- overlap_df[!is.na(overlap_df[[val_col_name]]), ]
   
-  # Because each cell is 1x1, area is literally just the fraction
   if (!("fraction" %in% names(overlap_df))) {
     overlap_df$fraction <- 1.0
   }
@@ -112,84 +112,6 @@ local_generate_overlap_matrix <- function(site_geoms_sf, reference_raster) {
     dimnames = list(site_geoms_sf$site, NULL) 
   )
   return(w)
-}
-
-# Processes disjoint shapes safely in our un-projected spatial frame
-local_disjoint_site_geometries <- function(site_geoms_sf, points_sf) {
-  sites_split <- site_geoms_sf %>%
-    sf::st_make_valid() %>%
-    sf::st_cast("MULTIPOLYGON", warn = FALSE) %>% 
-    sf::st_cast("POLYGON", warn = FALSE)
-  
-  if (nrow(sites_split) == nrow(site_geoms_sf)) {
-    return(list(geoms = site_geoms_sf, data = points_sf))
-  }
-  
-  sites_split <- sites_split %>%
-    dplyr::group_by(site) %>%
-    dplyr::mutate(sub_id = dplyr::row_number(), new_site_id = paste0(site, "_", sub_id)) %>%
-    dplyr::ungroup()
-  
-  join_res <- sf::st_join(points_sf, sites_split["new_site_id"], join = sf::st_intersects, left = TRUE)
-  join_res <- join_res[!duplicated(join_res$checklist_id), ]
-  
-  points_sf$site <- ifelse(!is.na(join_res$new_site_id), join_res$new_site_id, as.character(points_sf$site))
-  
-  occupied_new_ids <- unique(na.omit(points_sf$site))
-  
-  sites_final <- sites_split %>%
-    dplyr::filter(new_site_id %in% occupied_new_ids) %>%
-    dplyr::select(-site, -sub_id) %>%
-    dplyr::rename(site = new_site_id) %>%
-    dplyr::select(site, geometry)
-  
-  return(list(geoms = sites_final, data = points_sf))
-}
-
-# Generates Non-Overlapping shapes scaled for a 200x200 grid
-local_voronoi_clipped_buffers <- function(points_sf, buffer_dist) {
-  bbox_polygon <- sf::st_as_sfc(sf::st_bbox(points_sf) + buffer_dist * 3)
-  
-  voronoi_tiles <- sf::st_voronoi(sf::st_union(points_sf), envelope = bbox_polygon, dTolerance = 0) %>%
-    sf::st_collection_extract(type = "POLYGON") %>%
-    sf::st_sf()
-  
-  voronoi_w_id <- sf::st_join(voronoi_tiles, points_sf, join = sf::st_contains)
-  
-  site_territories <- voronoi_w_id %>%
-    dplyr::group_by(site) %>%
-    dplyr::summarise(geometry = sf::st_union(geometry), .groups = "drop") %>%
-    sf::st_make_valid()
-  
-  site_buffers <- points_sf %>%
-    dplyr::group_by(site) %>%
-    dplyr::summarise(geometry = sf::st_convex_hull(sf::st_union(geometry)), .groups = "drop") %>%
-    sf::st_buffer(dist = buffer_dist) %>%
-    sf::st_make_valid()
-  
-  site_territories <- dplyr::rename(site_territories, site_t = site)
-  site_buffers <- dplyr::rename(site_buffers, site_b = site)
-  
-  sf::st_agr(site_territories) <- "constant"
-  sf::st_agr(site_buffers) <- "constant"
-  
-  intersections <- suppressWarnings(sf::st_intersection(site_territories, site_buffers))
-  
-  final_geoms <- intersections %>%
-    dplyr::filter(site_t == site_b) %>%
-    dplyr::rename(site = site_t) %>%
-    dplyr::select(site, geometry) %>%
-    sf::st_make_valid() 
-  
-  # THE FIX: Scale dTolerance down for a 200x200 coordinate grid
-  final_geoms <- sf::st_simplify(final_geoms, dTolerance = 0.1, preserveTopology = TRUE)
-
-  geom_type <- sf::st_geometry_type(final_geoms, by_geometry = FALSE)
-  if (inherits(geom_type, "GEOMETRYCOLLECTION") || any(geom_type == "GEOMETRYCOLLECTION")) {
-      final_geoms <- sf::st_collection_extract(final_geoms, "POLYGON")
-  }
-
-  return(final_geoms)
 }
 
 ##########
@@ -264,29 +186,23 @@ for (sac_level in sac_levels) {
     full_pixel_psi <- 1 - exp(-full_lambda_j)
     full_pixel_Z <- rbinom(full_n_cells, 1, full_pixel_psi)
     
-    # --- 5c. Generate Observation Points & ClustGeo ---
-    pts_x <- runif(max_N_value, 0, full_grid_dim)
-    pts_y <- runif(max_N_value, 0, full_grid_dim)
-    pts_df <- data.frame(checklist_id = 1:max_N_value, x = pts_x, y = pts_y)
+    # --- 5c. PHASE 1: Create Dummy Anchor Points for Geometry ---
+    dummy_x <- runif(dummy_N_value, 0, full_grid_dim)
+    dummy_y <- runif(dummy_N_value, 0, full_grid_dim)
+    dummy_df <- data.frame(id = 1:dummy_N_value, x = dummy_x, y = dummy_y)
     
-    pts_vect <- terra::vect(pts_df, geom=c("x", "y"))
-    pts_df$cell_cov1 <- terra::extract(r_final, pts_vect)$cell_cov1
+    dummy_vect <- terra::vect(dummy_df, geom=c("x", "y"))
+    dummy_df$cell_cov1 <- terra::extract(r_final, dummy_vect)$cell_cov1
     
-    # Clustering
-    env_dist <- dist(scale(pts_df$cell_cov1))
-    geo_dist <- dist(scale(pts_df[, c("x", "y")]))
+    # ClustGeo grouping of the dummy anchors
+    env_dist <- dist(scale(dummy_df$cell_cov1))
+    geo_dist <- dist(scale(dummy_df[, c("x", "y")]))
+    tree <- ClustGeo::hclustgeo(env_dist, geo_dist, alpha = clustgeo_alpha)
+    dummy_df$site <- cutree(tree, M_total_sites)
     
-    tree <- ClustGeo::hclustgeo(env_dist, geo_dist, alpha = 1.0)
-    num_clusters <- max(2, round(max_N_value * (kappa_for_clustgeo / 100.0)))
-    pts_df$site <- cutree(tree, num_clusters)
+    dummy_sf <- sf::st_as_sf(dummy_df, coords=c("x", "y"), remove=FALSE)
     
-    # --- 5d. Polygonize and Generate W Matrix ---
-    points_sf <- sf::st_as_sf(pts_df, coords=c("x", "y"), remove=FALSE)
-    
-    # Generate geometries using our local scale-adjusted function
-    site_geoms_sf <- local_voronoi_clipped_buffers(points_sf, buffer_dist = buffer_cells)
-    
-    # NEW: Create a hard boundary for the 200x200 landscape
+    # --- 5d. PHASE 2: Voronoi Tessellation & Dissolve (Creates Puzzle Pieces) ---
     landscape_boundary <- sf::st_polygon(list(matrix(c(
       0, 0, 
       full_grid_dim, 0, 
@@ -297,38 +213,53 @@ for (sac_level in sac_levels) {
       sf::st_sfc() %>%
       sf::st_sf(geometry = .)
     
-    # FIX: Repair microscopic topological anomalies before intersecting
-    site_geoms_sf <- sf::st_make_valid(site_geoms_sf)
+    bbox_polygon <- sf::st_as_sfc(sf::st_bbox(landscape_boundary))
     
-    # NEW: Clip all site geometries (silencing the spatial constant warning)
-    site_geoms_sf <- suppressWarnings(sf::st_intersection(site_geoms_sf, landscape_boundary))
+    # Generate gapless grid of Voronoi tiles
+    voronoi_tiles <- sf::st_voronoi(sf::st_union(dummy_sf), envelope = bbox_polygon, dTolerance = 0) %>%
+      sf::st_collection_extract(type = "POLYGON") %>%
+      sf::st_sf()
     
-    # Splitting disjoint shapes into independent polygons
-    disjoint_res <- local_disjoint_site_geometries(site_geoms_sf, points_sf)
-    final_geoms <- disjoint_res$geoms
-    final_points <- disjoint_res$data
+    # Merge tiles based on ClustGeo ID to form large, non-overlapping territories
+    voronoi_w_id <- sf::st_join(voronoi_tiles, dummy_sf, join = sf::st_contains)
     
-    # W Matrix
-    w_matrix <- local_generate_overlap_matrix(final_geoms, r_final)
+    final_site_geoms <- voronoi_w_id %>%
+      dplyr::group_by(site) %>%
+      dplyr::summarise(geometry = sf::st_union(geometry), .groups = "drop") %>%
+      sf::st_make_valid()
     
-    # --- 5e. Simulate True Biology and Detection ---
+    final_site_geoms <- suppressWarnings(sf::st_intersection(final_site_geoms, landscape_boundary))
+    
+    w_matrix <- local_generate_overlap_matrix(final_site_geoms, r_final)
+    
+    # --- 5e. PHASE 3: True Biology and Standardized J=3 Observers ---
     lambda_tilde_i <- as.numeric(w_matrix %*% full_lambda_j)
     psi_i <- 1 - exp(-lambda_tilde_i)
     Z_i <- rbinom(length(psi_i), 1, psi_i)
     site_Z <- setNames(Z_i, rownames(w_matrix))
     
-    # Simulate for points directly inside these generated geometries
+    # Decoupling: Drop exactly 3 uniform observation points inside every site
+    pts_list <- lapply(1:nrow(final_site_geoms), function(i) {
+      site_geom <- final_site_geoms[i, ]
+      pts <- suppressMessages(sf::st_sample(site_geom, size = visits_per_site, type = "random", exact = TRUE))
+      
+      # Safety fallback for exceptionally tiny polygons
+      if (length(pts) < visits_per_site) {
+        centroid <- sf::st_centroid(site_geom)
+        pts <- c(pts, rep(centroid$geometry, visits_per_site - length(pts)))
+      } else if (length(pts) > visits_per_site) {
+        pts <- pts[1:visits_per_site]
+      }
+      sf::st_sf(site = as.character(site_geom$site), geometry = pts)
+    })
+    
+    final_points <- do.call(rbind, pts_list)
     final_points$obs_cov1 <- rnorm(nrow(final_points))
-    
-    # FIX: Filter points to only those that belong to valid sites in the w_matrix
-    final_points <- final_points[as.character(final_points$site) %in% rownames(w_matrix), ]
-    
-    final_points$Z_i <- site_Z[as.character(final_points$site)]
+    final_points$Z_i <- site_Z[final_points$site]
     
     logit_p <- true_alphas["alpha_int"] + true_alphas["alpha_cov"] * final_points$obs_cov1
     p <- plogis(logit_p)
     final_points$y <- rbinom(nrow(final_points), 1, p * final_points$Z_i)
-    
     
     # Initialize plotting list for this sim
     if (sim == 1) {
@@ -340,10 +271,6 @@ for (sac_level in sac_levels) {
     # --- 5f. Loop Over M (Sample Size) ---
     total_sites <- nrow(w_matrix)
     valid_M_values <- M_values_to_test[M_values_to_test <= total_sites]
-    
-    if (length(valid_M_values) < length(M_values_to_test)) {
-      cat(sprintf("  (Note: Available clusters %d limits max M tested)\n", total_sites))
-    }
     
     for (M_i in valid_M_values) {
       
@@ -361,17 +288,16 @@ for (sac_level in sac_levels) {
         mutate(visit = row_number()) %>%
         ungroup()
       
-      # 1. Create and specifically align y_wide
-      y_df <- occu_df %>% select(site, visit, y) %>%
-        pivot_wider(names_from=visit, values_from=y)
-      y_df <- y_df[match(rownames(sub_w), y_df$site), ] # CRITICAL: Align rows to w_matrix
-      y_wide <- y_df %>% select(-site) %>% as.matrix()
+      # PERFECT ROW ALIGNMENT: Match pivoted data to the exact row order of sub_w
+      y_df <- occu_df %>% dplyr::select(site, visit, y) %>%
+        tidyr::pivot_wider(names_from=visit, values_from=y)
+      y_df <- y_df[match(rownames(sub_w), y_df$site), ] 
+      y_wide <- y_df %>% dplyr::select(-site) %>% as.matrix()
       
-      # 2. Create and specifically align obs_cov1_wide
-      obs_cov1_df <- occu_df %>% select(site, visit, obs_cov1) %>%
-        pivot_wider(names_from=visit, values_from=obs_cov1)
-      obs_cov1_df <- obs_cov1_df[match(rownames(sub_w), obs_cov1_df$site), ] # CRITICAL: Align rows
-      obs_cov1_wide <- obs_cov1_df %>% select(-site) %>% as.matrix()
+      obs_cov1_df <- occu_df %>% dplyr::select(site, visit, obs_cov1) %>%
+        tidyr::pivot_wider(names_from=visit, values_from=obs_cov1)
+      obs_cov1_df <- obs_cov1_df[match(rownames(sub_w), obs_cov1_df$site), ] 
+      obs_cov1_wide <- obs_cov1_df %>% dplyr::select(-site) %>% as.matrix()
       
       # Fit Model
       umf <- unmarkedFrameOccuPPM(
@@ -387,7 +313,7 @@ for (sac_level in sac_levels) {
       
       for (rep in 1:n_reps) {
         rand_starts <- runif(n_params, -6, 2) 
-        fm_rep <- try(occuPPM(
+        fm_rep <- try(suppressWarnings(occuPPM(
           formula = ~obs_cov1 ~ cell_cov1,
           data = umf,
           starts = rand_starts,
@@ -395,7 +321,7 @@ for (sac_level in sac_levels) {
           method = selected_optimizer,
           lower = PARAM_LOWER, 
           upper = PARAM_UPPER 
-        ), silent = TRUE)
+        )), silent = TRUE)
         
         if (inherits(fm_rep, "try-error")) next
         
@@ -424,7 +350,6 @@ for (sac_level in sac_levels) {
       # --- PLOTTING LOGIC (Inside M loop) ---
       if (sim == 1) {
         
-        # We place the cell/pixel level data into our grid
         cell_df <- data.frame(
           x = full_cell_col,
           y = full_cell_row,
@@ -433,8 +358,7 @@ for (sac_level in sac_levels) {
           pixel_occupancy = as.factor(full_pixel_Z)
         )
         
-        # Geometries for plotting (Unfilled, Red borders only)
-        sel_geoms <- final_geoms %>% filter(site %in% sel_sites)
+        sel_geoms <- final_site_geoms %>% filter(site %in% sel_sites)
         
         tight_theme <- theme_minimal() + 
           theme(
@@ -444,6 +368,7 @@ for (sac_level in sac_levels) {
             legend.direction = "horizontal"
           )
         
+        # Col 1: Covariate + Red Borders + Black Points
         p_cov <- ggplot(cell_df, aes(x=x, y=y, fill=covariate)) +
           geom_raster() +
           scale_fill_viridis_c() +
@@ -453,6 +378,7 @@ for (sac_level in sac_levels) {
           labs(title=sprintf("Covariate (M=%d)", M_i), fill="Covariate") +
           tight_theme
         
+        # Col 2: Abundance + Red Borders
         p_abund <- ggplot(cell_df, aes(x=x, y=y, fill=pixel_abundance)) +
           geom_raster() +
           scale_fill_viridis_c(option = "magma") +
@@ -461,6 +387,7 @@ for (sac_level in sac_levels) {
           labs(title=sprintf("Abundance (M=%d)", M_i), fill="Abundance") +
           tight_theme
         
+        # Col 3: Occupancy + Red Borders
         p_occ <- ggplot(cell_df, aes(x=x, y=y, fill=pixel_occupancy)) +
           geom_raster() +
           scale_fill_manual(values=c("0"="navyblue", "1"="yellow")) +
@@ -484,7 +411,6 @@ for (sac_level in sac_levels) {
       col_abund <- patchwork::wrap_plots(plots_abund, ncol = 1) 
       col_occ <- patchwork::wrap_plots(plots_occ, ncol = 1)
       
-
       final_comb_plot <- (col_cov | col_abund | col_occ) + patchwork::plot_layout(guides = "collect")
       
       fname <- sprintf("plot_SAC=%s.png", sac_level)
@@ -497,7 +423,6 @@ for (sac_level in sac_levels) {
     gc()
   } # End Sim Loop
 } # End SAC Loop
-
 
 ##########
 # 6. Save Results & Generate Error Plots 
@@ -528,7 +453,7 @@ if (!is.null(results_df) && nrow(results_df) > 0) {
         scale_fill_manual(values = c("Low" = "yellow", "Medium" = "orange", "High" = "red")) +
         labs(title = title, x = "M (Sites)", y = "Error (True - Estimate)", fill = "Spatial Autocorrelation") +
         theme_bw() + 
-        theme(legend.position = "bottom", legend.direction = "horizontal") # Add legend to individual plots
+        theme(legend.position = "bottom", legend.direction = "horizontal") 
     }
     
     p1 <- create_error_plot("beta (state_int)", "State Intercept")
@@ -537,8 +462,7 @@ if (!is.null(results_df) && nrow(results_df) > 0) {
     p4 <- create_error_plot("alpha (det_cov1)", "Observation Slope")
     
     # Combine natively without the problematic '&' operator
-    combined_error_plot <- (p1 | p2) / (p3 | p4) + 
-      patchwork::plot_layout(guides = "collect")
+    combined_error_plot <- (p1 | p2) / (p3 | p4) + patchwork::plot_layout(guides = "collect")
     
     suppressMessages(suppressWarnings({
         ggsave(file.path(output_dir, "error_boxplots.png"), plot = combined_error_plot, dpi = 300, width = 10, height = 10)
