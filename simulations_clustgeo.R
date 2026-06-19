@@ -30,7 +30,7 @@ library(dplyr)
 set.seed(123) 
 
 # --- ClustGeo Specific Parameters ---
-kappa_for_clustgeo <- 10  # Used as percentage: 10% of total cells
+kappa_for_clustgeo <- 1  # Used as percentage: 10% of total cells
 alpha_for_clustgeo <- 0.50
 
 # --- Simulation repetitions ---
