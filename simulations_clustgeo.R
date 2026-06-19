@@ -29,9 +29,18 @@ library(dplyr)
 
 set.seed(123) 
 
-# --- ClustGeo Specific Parameters ---
-kappa_for_clustgeo <- 1  # Used as percentage: 10% of total cells
-alpha_for_clustgeo <- 0.50
+
+# --- Nested Site Selection ---
+M_values_to_test <- c(100, 200, 400, 800, 1600)
+
+max_M <- max(M_values_to_test)
+
+aggreg_factor <- 2
+target_K <- max_M
+
+split_factor <- 2
+
+
 
 # --- Simulation repetitions ---
 n_sims <- 3
@@ -43,8 +52,16 @@ n_reps <- 30
 full_grid_dim <- 200 
 full_n_cells <- full_grid_dim * full_grid_dim # 40000
 
+
+
+# --- ClustGeo Specific Parameters ---
+kappa_for_clustgeo <- (max_M / ((full_grid_dim * full_grid_dim)/(aggreg_factor * aggreg_factor)))*100
+# kappa_for_clustgeo <- 1  # Used as percentage: 10% of total cells
+alpha_for_clustgeo <- 0.9
+
+
 # --- Observation parameters ---
-J_obs <- 3 
+J_obs <- 5 
 
 # --- True parameter values ---
 true_alphas <- c(alpha_int = 0.5, alpha_cov = -1.0)
@@ -55,8 +72,7 @@ selected_optimizer <- "nlminb"
 PARAM_LOWER <- -20
 PARAM_UPPER <- 20
 
-# --- Nested Site Selection ---
-M_values_to_test <- c(100, 200, 400, 800, 1600)
+
 
 # --- Spatial Autocorrelation (SAC) Settings ---
 sac_levels <- c("Low", "Medium", "High") 
@@ -167,7 +183,7 @@ for (sac_level in sac_levels) {
     cat("  Running ClustGeo spatial clustering...\n")
     
     # 1. Aggregate 4 cells (2x2)
-    r_agg <- terra::aggregate(r_final, fact=2, fun=mean) 
+    r_agg <- terra::aggregate(r_final, fact=aggreg_factor, fun=mean) 
     df_agg <- as.data.frame(r_agg, xy=TRUE)
     names(df_agg) <- c("x", "y", "cov")
     
@@ -177,7 +193,8 @@ for (sac_level in sac_levels) {
     tree <- ClustGeo::hclustgeo(env_dist, geo_dist, alpha = alpha_for_clustgeo)
     
     # K parameter: user specified kappa=10 => 10% of 40,000 cells = 4,000 clusters
-    K_target <- (kappa_for_clustgeo / 100) * full_n_cells
+    # K_target <- (kappa_for_clustgeo / 100) * full_n_cells
+    K_target <- as.integer(target_K /split_factor)
     cluster_ids <- cutree(tree, k = K_target)
     
     # 3. Map back and Disaggregate
