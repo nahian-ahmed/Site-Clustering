@@ -31,7 +31,7 @@ library(sf)
 set.seed(123) 
 
 # --- ClustGeo Parameters ---
-kappa_for_clustgeo <- 10  # Percentage of cells to form initial clusters (10% of 40k = 4000)
+kappa_for_clustgeo <- 1  # Percentage of cells to form initial clusters (10% of 40k = 4000)
 alpha_for_clustgeo <- 0.50 # Weight between spatial and environmental distance
 
 # --- Simulation repetitions ---
@@ -337,15 +337,13 @@ for (sac_level in sac_levels) {
         # Group by polygon IDs (L1, L2) to draw continuous boundaries properly
         poly_coords$group_id <- if("L2" %in% names(poly_coords)) interaction(poly_coords$L1, poly_coords$L2) else poly_coords$L1
         
+        # EXACT match to simulations.R tight_theme
         tight_theme <- theme_minimal() + 
           theme(
             axis.title = element_blank(),
-            plot.margin = margin(t=10, r=10, b=10, l=10, unit="pt"),
-            legend.position = "bottom", 
-            legend.direction = "horizontal"
+            plot.margin = margin(t=10, r=10, b=10, l=10, unit="pt")
           )
         
-        # Reverted back to coord_fixed() and replaced geom_sf with geom_path
         p_cov <- ggplot(cell_df, aes(x=x, y=y, fill=covariate)) +
           geom_raster() +
           scale_fill_viridis_c() +
@@ -381,15 +379,18 @@ for (sac_level in sac_levels) {
     if (sim == 1) {
       cat(sprintf("\nSaving plots for SAC=%s...\n", sac_level))
       
-      # Removed the '& theme(...)' operator since it's now handled natively in tight_theme
+      # EXACT match to simulations.R patchwork logic using the & operator
       col_cov <- patchwork::wrap_plots(plots_cov, ncol = 1) + 
-        patchwork::plot_layout(guides = "collect")
+        patchwork::plot_layout(guides = "collect") & 
+        theme(legend.position = "bottom", legend.direction = "horizontal")
       
       col_abund <- patchwork::wrap_plots(plots_abund, ncol = 1) + 
-        patchwork::plot_layout(guides = "collect")
+        patchwork::plot_layout(guides = "collect") & 
+        theme(legend.position = "bottom", legend.direction = "horizontal")
       
       col_occ <- patchwork::wrap_plots(plots_occ, ncol = 1) + 
-        patchwork::plot_layout(guides = "collect")
+        patchwork::plot_layout(guides = "collect") & 
+        theme(legend.position = "bottom", legend.direction = "horizontal")
       
       final_comb_plot <- col_cov | col_abund | col_occ
       
