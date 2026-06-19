@@ -16,11 +16,11 @@ if (install_now){
 
 # EXACT PARITY WITH simulations.R LIBRARIES:
 library(unmarked)
-library(ggplot2)
-library(patchwork)
 library(terra) 
 library(Matrix) 
 library(scales)
+library(ggplot2)
+library(patchwork)
 
 # CRITICAL FIX: We do NOT use library(ClustGeo) or library(sf) here. 
 # Attaching them automatically loads legacy spatial dependencies (like 'sp') 
