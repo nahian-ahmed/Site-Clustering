@@ -47,6 +47,11 @@ full_n_cells <- full_grid_dim * full_grid_dim # 40000
 # --- ClustGeo & Point Generation Configurations ---
 max_N_value <- 16000            # Total observation points generated 
 kappa_for_clustgeo <- 10       # Percentage of points to form clusters (e.g., 10% of 5000 = 500 sites)
+
+# --- ClustGeo & Point Generation Configurations ---
+max_N_value <- 4800            # Total observation points generated 
+kappa_for_clustgeo <- 33.3     # 33.3% of 4800 = ~1600 sites (Average 3 visits per site)
+
 buffer_cells <- 2              # Buffer in arbitrary grid units (not meters)
 
 # --- True parameter values ---
@@ -360,13 +365,17 @@ for (sac_level in sac_levels) {
         mutate(visit = row_number()) %>%
         ungroup()
       
-      y_wide <- occu_df %>% select(site, visit, y) %>%
-        pivot_wider(names_from=visit, values_from=y) %>%
-        select(-site) %>% as.matrix()
+      # 1. Create and specifically align y_wide
+      y_df <- occu_df %>% select(site, visit, y) %>%
+        pivot_wider(names_from=visit, values_from=y)
+      y_df <- y_df[match(rownames(sub_w), y_df$site), ] # CRITICAL: Align rows to w_matrix
+      y_wide <- y_df %>% select(-site) %>% as.matrix()
       
-      obs_cov1_wide <- occu_df %>% select(site, visit, obs_cov1) %>%
-        pivot_wider(names_from=visit, values_from=obs_cov1) %>%
-        select(-site) %>% as.matrix()
+      # 2. Create and specifically align obs_cov1_wide
+      obs_cov1_df <- occu_df %>% select(site, visit, obs_cov1) %>%
+        pivot_wider(names_from=visit, values_from=obs_cov1)
+      obs_cov1_df <- obs_cov1_df[match(rownames(sub_w), obs_cov1_df$site), ] # CRITICAL: Align rows
+      obs_cov1_wide <- obs_cov1_df %>% select(-site) %>% as.matrix()
       
       # Fit Model
       umf <- unmarkedFrameOccuPPM(
