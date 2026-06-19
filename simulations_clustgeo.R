@@ -45,10 +45,6 @@ full_grid_dim <- 200
 full_n_cells <- full_grid_dim * full_grid_dim # 40000
 
 # --- ClustGeo & Point Generation Configurations ---
-max_N_value <- 16000            # Total observation points generated 
-kappa_for_clustgeo <- 10       # Percentage of points to form clusters (e.g., 10% of 5000 = 500 sites)
-
-# --- ClustGeo & Point Generation Configurations ---
 max_N_value <- 4800            # Total observation points generated 
 kappa_for_clustgeo <- 33.3     # 33.3% of 4800 = ~1600 sites (Average 3 visits per site)
 
@@ -280,7 +276,7 @@ for (sac_level in sac_levels) {
     env_dist <- dist(scale(pts_df$cell_cov1))
     geo_dist <- dist(scale(pts_df[, c("x", "y")]))
     
-    tree <- ClustGeo::hclustgeo(env_dist, geo_dist, alpha = 0.5)
+    tree <- ClustGeo::hclustgeo(env_dist, geo_dist, alpha = 0.9)
     num_clusters <- max(2, round(max_N_value * (kappa_for_clustgeo / 100.0)))
     pts_df$site <- cutree(tree, num_clusters)
     
@@ -390,7 +386,7 @@ for (sac_level in sac_levels) {
       n_params <- length(true_alphas) + length(true_betas)
       
       for (rep in 1:n_reps) {
-        rand_starts <- runif(n_params, -2, 2) 
+        rand_starts <- runif(n_params, -6, 2) 
         fm_rep <- try(occuPPM(
           formula = ~obs_cov1 ~ cell_cov1,
           data = umf,
