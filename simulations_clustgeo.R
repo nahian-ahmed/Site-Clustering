@@ -332,33 +332,41 @@ for (sac_level in sac_levels) {
         # Get Polygon boundaries for selected sites only
         selected_polys <- sf_polys[sf_polys$site_id %in% selected_site_indices, ]
         
+        # BYPASS geom_sf: Extract raw X/Y coordinates from the sf polygons
+        poly_coords <- as.data.frame(sf::st_coordinates(selected_polys))
+        # Group by polygon IDs (L1, L2) to draw continuous boundaries properly
+        poly_coords$group_id <- if("L2" %in% names(poly_coords)) interaction(poly_coords$L1, poly_coords$L2) else poly_coords$L1
+        
         tight_theme <- theme_minimal() + 
           theme(
             axis.title = element_blank(),
-            plot.margin = margin(t=10, r=10, b=10, l=10, unit="pt")
+            plot.margin = margin(t=10, r=10, b=10, l=10, unit="pt"),
+            legend.position = "bottom", 
+            legend.direction = "horizontal"
           )
         
+        # Reverted back to coord_fixed() and replaced geom_sf with geom_path
         p_cov <- ggplot(cell_df, aes(x=x, y=y, fill=covariate)) +
           geom_raster() +
           scale_fill_viridis_c() +
+          geom_path(data=poly_coords, aes(x=X, y=Y, group=group_id), color="red", linewidth=0.3, inherit.aes=FALSE) +
           coord_fixed(expand=FALSE) +
-          geom_sf(data=selected_polys, color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
           labs(title=sprintf("Covariate (M=%d)", M_i), fill="Covariate") +
           tight_theme
         
         p_abund <- ggplot(cell_df, aes(x=x, y=y, fill=site_latent_abundance)) +
           geom_raster() +
           scale_fill_viridis_c(option = "magma") +
+          geom_path(data=poly_coords, aes(x=X, y=Y, group=group_id), color="red", linewidth=0.3, inherit.aes=FALSE) +
           coord_fixed(expand=FALSE) +
-          geom_sf(data=selected_polys, color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
           labs(title=sprintf("Abundance (M=%d)", M_i), fill="Abundance") +
           tight_theme
         
         p_occ <- ggplot(cell_df, aes(x=x, y=y, fill=site_true_occupancy)) +
           geom_raster() +
           scale_fill_manual(values=c("0"="navyblue", "1"="yellow")) +
+          geom_path(data=poly_coords, aes(x=X, y=Y, group=group_id), color="red", linewidth=0.3, inherit.aes=FALSE) +
           coord_fixed(expand=FALSE) +
-          geom_sf(data=selected_polys, color="red", fill=NA, linewidth=0.3, inherit.aes=FALSE) +
           labs(title=sprintf("Occupancy (M=%d)", M_i), fill="Occupancy") +
           tight_theme
           
@@ -373,17 +381,15 @@ for (sac_level in sac_levels) {
     if (sim == 1) {
       cat(sprintf("\nSaving plots for SAC=%s...\n", sac_level))
       
+      # Removed the '& theme(...)' operator since it's now handled natively in tight_theme
       col_cov <- patchwork::wrap_plots(plots_cov, ncol = 1) + 
-        patchwork::plot_layout(guides = "collect") & 
-        theme(legend.position = "bottom", legend.direction = "horizontal")
+        patchwork::plot_layout(guides = "collect")
       
       col_abund <- patchwork::wrap_plots(plots_abund, ncol = 1) + 
-        patchwork::plot_layout(guides = "collect") & 
-        theme(legend.position = "bottom", legend.direction = "horizontal")
+        patchwork::plot_layout(guides = "collect")
       
       col_occ <- patchwork::wrap_plots(plots_occ, ncol = 1) + 
-        patchwork::plot_layout(guides = "collect") & 
-        theme(legend.position = "bottom", legend.direction = "horizontal")
+        patchwork::plot_layout(guides = "collect")
       
       final_comb_plot <- col_cov | col_abund | col_occ
       
