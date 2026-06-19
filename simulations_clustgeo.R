@@ -276,7 +276,7 @@ for (sac_level in sac_levels) {
     env_dist <- dist(scale(pts_df$cell_cov1))
     geo_dist <- dist(scale(pts_df[, c("x", "y")]))
     
-    tree <- ClustGeo::hclustgeo(env_dist, geo_dist, alpha = 0.9)
+    tree <- ClustGeo::hclustgeo(env_dist, geo_dist, alpha = 1.0)
     num_clusters <- max(2, round(max_N_value * (kappa_for_clustgeo / 100.0)))
     pts_df$site <- cutree(tree, num_clusters)
     
