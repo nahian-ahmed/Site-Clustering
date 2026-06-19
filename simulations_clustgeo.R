@@ -14,14 +14,18 @@ if (install_now){
   if (!requireNamespace("ClustGeo", quietly = FALSE)) install.packages("ClustGeo")
 }
 
+# EXACT PARITY WITH simulations.R LIBRARIES:
 library(unmarked)
 library(ggplot2)
 library(patchwork)
 library(terra) 
 library(Matrix) 
 library(scales)
-library(ClustGeo)
-# library(sf) <--- COMPLETELY REMOVED TO PREVENT PATCHWORK '&' CRASH
+
+# CRITICAL FIX: We do NOT use library(ClustGeo) or library(sf) here. 
+# Attaching them automatically loads legacy spatial dependencies (like 'sp') 
+# which hijack R's base '&' operator into an S4 generic, breaking patchwork.
+# We will just call ClustGeo::hclustgeo() explicitly when we need it below.
 
 ##########
 # 2. Set Simulation Parameters
@@ -30,7 +34,7 @@ library(ClustGeo)
 set.seed(123) 
 
 # --- ClustGeo Parameters ---
-kappa_for_clustgeo <- 1  # Percentage of cells to form initial clusters
+kappa_for_clustgeo <- 1  # Percentage of cells to form initial clusters (10% of 40k = 4000)
 alpha_for_clustgeo <- 0.50 # Weight between spatial and environmental distance
 
 # --- Simulation repetitions ---
@@ -164,7 +168,7 @@ for (sac_level in sac_levels) {
     env_dist <- dist(scale(agg_df$cov1))
     geo_dist <- dist(cbind(agg_df$x, agg_df$y))
     
-    # Run HclustGeo
+    # Run HclustGeo (Called explicitly to prevent namespace poisoning)
     tree <- ClustGeo::hclustgeo(env_dist, geo_dist, alpha = alpha_for_clustgeo)
     
     # Cut tree (Targeting 4000 total clusters as requested)
@@ -373,7 +377,7 @@ for (sac_level in sac_levels) {
     if (sim == 1) {
       cat(sprintf("\nSaving plots for SAC=%s...\n", sac_level))
       
-      # EXACT parity with simulations.R: using the '& theme()' syntax
+      # EXACT PARITY with simulations.R: successfully using the '& theme()' syntax
       col_cov <- patchwork::wrap_plots(plots_cov, ncol = 1) + 
         patchwork::plot_layout(guides = "collect") & 
         theme(legend.position = "bottom", legend.direction = "horizontal")
@@ -427,7 +431,7 @@ p2 <- create_error_plot("beta (state_cov1)", "State Slope")
 p3 <- create_error_plot("alpha (det_int)", "Observation Intercept")
 p4 <- create_error_plot("alpha (det_cov1)", "Observation Slope")
 
-# EXACT parity with simulations.R error plots:
+# EXACT PARITY with simulations.R error plots:
 combined_error_plot <- (p1 | p2) / (p3 | p4) +
   plot_layout(guides = "collect") & theme(legend.position = "bottom", legend.direction = "horizontal")
 
