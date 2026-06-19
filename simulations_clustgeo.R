@@ -12,7 +12,6 @@ if (install_now){
   if (!requireNamespace("devtools", quietly = FALSE)) install.packages("devtools")
   suppressMessages(devtools::install_github("anonymous97331/unmarked", ref = "main", force = TRUE))
   if (!requireNamespace("ClustGeo", quietly = FALSE)) install.packages("ClustGeo")
-  if (!requireNamespace("sf", quietly = FALSE)) install.packages("sf")
 }
 
 library(unmarked)
@@ -22,7 +21,7 @@ library(terra)
 library(Matrix) 
 library(scales)
 library(ClustGeo)
-library(sf)
+# library(sf) <--- COMPLETELY REMOVED TO PREVENT PATCHWORK '&' CRASH
 
 ##########
 # 2. Set Simulation Parameters
@@ -31,7 +30,7 @@ library(sf)
 set.seed(123) 
 
 # --- ClustGeo Parameters ---
-kappa_for_clustgeo <- 1  # Percentage of cells to form initial clusters (10% of 40k = 4000)
+kappa_for_clustgeo <- 1  # Percentage of cells to form initial clusters
 alpha_for_clustgeo <- 0.50 # Weight between spatial and environmental distance
 
 # --- Simulation repetitions ---
@@ -186,14 +185,12 @@ for (sac_level in sac_levels) {
     # --- Split Spatially Disjoint Subclusters ---
     cat("  Splitting disjoint geometries...\n")
     
-    # Convert clusters to polygons and separate disconnected parts
-    polys <- terra::as.polygons(r_clusters, dissolve=TRUE)
-    sf_polys <- sf::st_as_sf(polys) %>% 
-      sf::st_cast("MULTIPOLYGON") %>% 
-      sf::st_cast("POLYGON", warn = FALSE)
+    # Convert clusters to polygons and separate disconnected parts using purely terra
+    polys_multipart <- terra::as.polygons(r_clusters, dissolve=TRUE)
+    single_polys <- terra::disagg(polys_multipart)
     
-    sf_polys$site_id <- 1:nrow(sf_polys)
-    M_max <- nrow(sf_polys)
+    single_polys$site_id <- 1:nrow(single_polys)
+    M_max <- nrow(single_polys)
     
     cat(sprintf("  Generated %d spatially contiguous sites (M_max).\n", M_max))
     
@@ -201,7 +198,7 @@ for (sac_level in sac_levels) {
     r_cells <- terra::rast(nrows=full_grid_dim, ncols=full_grid_dim, xmin=0, xmax=full_grid_dim, ymin=0, ymax=full_grid_dim)
     terra::values(r_cells) <- 1:full_n_cells
     
-    extracted <- terra::extract(r_cells, terra::vect(sf_polys), cells=FALSE)
+    extracted <- terra::extract(r_cells, single_polys, cells=FALSE)
     
     full_w <- Matrix::sparseMatrix(
       i = extracted$ID,
@@ -319,7 +316,6 @@ for (sac_level in sac_levels) {
           covariate = full_cellCovs$cell_cov1
         )
         
-        # We need a cell-to-site map for the *full* generated M_max sites to plot global truth
         cell_df$site_latent_abundance <- 0
         cell_df$site_true_occupancy <- 0
         for(i in 1:M_max) {
@@ -329,15 +325,13 @@ for (sac_level in sac_levels) {
         }
         cell_df$site_true_occupancy <- as.factor(cell_df$site_true_occupancy)
         
-        # Get Polygon boundaries for selected sites only
-        selected_polys <- sf_polys[sf_polys$site_id %in% selected_site_indices, ]
+        # BYPASS sf entirely: Use terra::geom to extract plot coordinates directly
+        selected_polys <- single_polys[single_polys$site_id %in% selected_site_indices, ]
+        poly_geom_mat <- terra::geom(selected_polys)
+        poly_coords <- as.data.frame(poly_geom_mat)
+        poly_coords$group_id <- interaction(poly_coords$geom, poly_coords$part)
         
-        # BYPASS geom_sf: Extract raw X/Y coordinates from the sf polygons
-        poly_coords <- as.data.frame(sf::st_coordinates(selected_polys))
-        # Group by polygon IDs (L1, L2) to draw continuous boundaries properly
-        poly_coords$group_id <- if("L2" %in% names(poly_coords)) interaction(poly_coords$L1, poly_coords$L2) else poly_coords$L1
-        
-        # EXACT match to simulations.R tight_theme
+        # Exact match to simulations.R
         tight_theme <- theme_minimal() + 
           theme(
             axis.title = element_blank(),
@@ -347,7 +341,7 @@ for (sac_level in sac_levels) {
         p_cov <- ggplot(cell_df, aes(x=x, y=y, fill=covariate)) +
           geom_raster() +
           scale_fill_viridis_c() +
-          geom_path(data=poly_coords, aes(x=X, y=Y, group=group_id), color="red", linewidth=0.3, inherit.aes=FALSE) +
+          geom_path(data=poly_coords, aes(x=x, y=y, group=group_id), color="red", linewidth=0.3, inherit.aes=FALSE) +
           coord_fixed(expand=FALSE) +
           labs(title=sprintf("Covariate (M=%d)", M_i), fill="Covariate") +
           tight_theme
@@ -355,7 +349,7 @@ for (sac_level in sac_levels) {
         p_abund <- ggplot(cell_df, aes(x=x, y=y, fill=site_latent_abundance)) +
           geom_raster() +
           scale_fill_viridis_c(option = "magma") +
-          geom_path(data=poly_coords, aes(x=X, y=Y, group=group_id), color="red", linewidth=0.3, inherit.aes=FALSE) +
+          geom_path(data=poly_coords, aes(x=x, y=y, group=group_id), color="red", linewidth=0.3, inherit.aes=FALSE) +
           coord_fixed(expand=FALSE) +
           labs(title=sprintf("Abundance (M=%d)", M_i), fill="Abundance") +
           tight_theme
@@ -363,7 +357,7 @@ for (sac_level in sac_levels) {
         p_occ <- ggplot(cell_df, aes(x=x, y=y, fill=site_true_occupancy)) +
           geom_raster() +
           scale_fill_manual(values=c("0"="navyblue", "1"="yellow")) +
-          geom_path(data=poly_coords, aes(x=X, y=Y, group=group_id), color="red", linewidth=0.3, inherit.aes=FALSE) +
+          geom_path(data=poly_coords, aes(x=x, y=y, group=group_id), color="red", linewidth=0.3, inherit.aes=FALSE) +
           coord_fixed(expand=FALSE) +
           labs(title=sprintf("Occupancy (M=%d)", M_i), fill="Occupancy") +
           tight_theme
@@ -379,7 +373,7 @@ for (sac_level in sac_levels) {
     if (sim == 1) {
       cat(sprintf("\nSaving plots for SAC=%s...\n", sac_level))
       
-      # EXACT match to simulations.R patchwork logic using the & operator
+      # EXACT parity with simulations.R: using the '& theme()' syntax
       col_cov <- patchwork::wrap_plots(plots_cov, ncol = 1) + 
         patchwork::plot_layout(guides = "collect") & 
         theme(legend.position = "bottom", legend.direction = "horizontal")
@@ -433,6 +427,7 @@ p2 <- create_error_plot("beta (state_cov1)", "State Slope")
 p3 <- create_error_plot("alpha (det_int)", "Observation Intercept")
 p4 <- create_error_plot("alpha (det_cov1)", "Observation Slope")
 
+# EXACT parity with simulations.R error plots:
 combined_error_plot <- (p1 | p2) / (p3 | p4) +
   plot_layout(guides = "collect") & theme(legend.position = "bottom", legend.direction = "horizontal")
 
