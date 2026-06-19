@@ -6,7 +6,7 @@
 # 1. SETUP
 ###
 
-install_now = TRUE
+install_now = FALSE
 if (install_now){
   options(repos = c(CRAN = "https://cloud.r-project.org/"))
   if (!requireNamespace("devtools", quietly = FALSE)) install.packages("devtools")
@@ -35,7 +35,7 @@ kappa_for_clustgeo <- 10  # Percentage of cells to form initial clusters (10% of
 alpha_for_clustgeo <- 0.50 # Weight between spatial and environmental distance
 
 # --- Simulation repetitions ---
-n_sims <- 100 
+n_sims <- 3
 n_reps <- 30 
 
 # --- Full Landscape parameters (200x200) ---
@@ -148,30 +148,43 @@ for (sac_level in sac_levels) {
     if(any(is.na(full_cellCovs$cell_cov1))) full_cellCovs$cell_cov1[is.na(full_cellCovs$cell_cov1)] <- 0
     
     ##########
-    # 8. ClustGeo Site Generation
+    # 8. ClustGeo Site Generation (Memory-Safe via Aggregation)
     ##########
-    cat("  Running ClustGeo on landscape cells...\n")
+    cat("  Running ClustGeo on landscape cells (Using 2x Aggregation for Memory Safety)...\n")
     
-    # Calculate Distances
-    # Note: dist() on 40k points uses ~6GB RAM per matrix. 
-    env_dist <- dist(scale(full_cellCovs$cell_cov1))
-    geo_dist <- dist(cbind(full_cell_col, full_cell_row))
+    # Convert full covariates into a Raster
+    r_cov <- terra::rast(nrows=full_grid_dim, ncols=full_grid_dim, xmin=0, xmax=full_grid_dim, ymin=0, ymax=full_grid_dim)
+    terra::values(r_cov) <- full_cellCovs$cell_cov1
+    
+    # AGGREGATION: Reduce 40k cells to 10k cells (Factor of 2)
+    r_cov_agg <- terra::aggregate(r_cov, fact = 2, fun = "mean")
+    agg_df <- as.data.frame(r_cov_agg, xy = TRUE)
+    names(agg_df)[3] <- "cov1"
+    
+    # Calculate Distances on 10k cells (~380MB per matrix, perfectly safe for Mac RAM)
+    env_dist <- dist(scale(agg_df$cov1))
+    geo_dist <- dist(cbind(agg_df$x, agg_df$y))
     
     # Run HclustGeo
     tree <- ClustGeo::hclustgeo(env_dist, geo_dist, alpha = alpha_for_clustgeo)
     
-    # Cut tree
+    # Cut tree (Targeting 4000 total clusters as requested)
     init_K <- round(full_n_cells * (kappa_for_clustgeo / 100))
-    cluster_assignments <- cutree(tree, init_K)
+    cluster_assignments_agg <- cutree(tree, init_K)
     
-    # Clean up massive dist matrices to free RAM
+    # Clean up massive dist matrices to free RAM immediately
     rm(env_dist, geo_dist, tree)
     gc()
     
+    # Map clusters back to aggregated raster
+    r_clust_agg <- terra::rast(r_cov_agg)
+    terra::values(r_clust_agg) <- cluster_assignments_agg
+    
+    # DISAGGREGATION: Map the 10k clusters back to the 40k biological cell resolution
+    r_clusters <- terra::disagg(r_clust_agg, fact = 2)
+    
     # --- Split Spatially Disjoint Subclusters ---
     cat("  Splitting disjoint geometries...\n")
-    r_clusters <- terra::rast(nrows=full_grid_dim, ncols=full_grid_dim, xmin=0, xmax=full_grid_dim, ymin=0, ymax=full_grid_dim)
-    terra::values(r_clusters) <- cluster_assignments
     
     # Convert clusters to polygons and separate disconnected parts
     polys <- terra::as.polygons(r_clusters, dissolve=TRUE)
