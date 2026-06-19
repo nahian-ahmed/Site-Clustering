@@ -34,7 +34,7 @@ kappa_for_clustgeo <- 10  # Used as percentage: 10% of total cells
 alpha_for_clustgeo <- 0.50
 
 # --- Simulation repetitions ---
-n_sims <- 3 
+n_sims <- 3
 
 # --- Model fitting repetitions ---
 n_reps <- 30 
@@ -250,9 +250,7 @@ for (sac_level in sac_levels) {
     site_permutation <- sample(1:full_M_max, full_M_max, replace = FALSE)
     
     if (sim == 1) {
-      plots_cov   <- list()
-      plots_abund <- list()
-      plots_occ   <- list()
+      all_plots_list <- list()
     }
     
     for (M_i in M_values_to_test) {
@@ -334,33 +332,32 @@ for (sac_level in sac_levels) {
             plot.margin = margin(t=10, r=10, b=10, l=10, unit="pt")
           )
         
+        # Note: Using coord_sf(expand=FALSE, datum=NA) avoids coordinate system warnings
         p_cov <- ggplot(cell_df, aes(x=x, y=y, fill=covariate)) +
           geom_raster() +
           scale_fill_viridis_c() +
-          coord_fixed(expand=FALSE) +
-          geom_sf(data=selected_polys, fill=NA, color="red", linewidth=0.3, inherit.aes=FALSE) +
+          geom_sf(data=selected_polys, fill=NA, color="red", linewidth=0.5, inherit.aes=FALSE) +
+          coord_sf(expand=FALSE, datum=NA) +
           labs(title=sprintf("Covariate (M=%d)", M), fill="Covariate") +
           tight_theme
         
         p_abund <- ggplot(cell_df, aes(x=x, y=y, fill=site_latent_abundance)) +
           geom_raster() +
           scale_fill_viridis_c(option = "magma") +
-          coord_fixed(expand=FALSE) +
-          geom_sf(data=selected_polys, fill=NA, color="red", linewidth=0.3, inherit.aes=FALSE) +
+          geom_sf(data=selected_polys, fill=NA, color="red", linewidth=0.5, inherit.aes=FALSE) +
+          coord_sf(expand=FALSE, datum=NA) +
           labs(title=sprintf("Abundance (M=%d)", M), fill="Abundance") +
           tight_theme
         
         p_occ <- ggplot(cell_df, aes(x=x, y=y, fill=site_true_occupancy)) +
           geom_raster() +
           scale_fill_manual(values=c("0"="navyblue", "1"="yellow")) +
-          coord_fixed(expand=FALSE) +
-          geom_sf(data=selected_polys, fill=NA, color="red", linewidth=0.3, inherit.aes=FALSE) +
+          geom_sf(data=selected_polys, fill=NA, color="red", linewidth=0.5, inherit.aes=FALSE) +
+          coord_sf(expand=FALSE, datum=NA) +
           labs(title=sprintf("Occupancy (M=%d)", M), fill="Occupancy") +
           tight_theme
           
-        plots_cov[[length(plots_cov)+1]]     <- p_cov
-        plots_abund[[length(plots_abund)+1]] <- p_abund
-        plots_occ[[length(plots_occ)+1]]     <- p_occ
+        all_plots_list <- c(all_plots_list, list(p_cov, p_abund, p_occ))
       }
       
     } # End M Loop
@@ -369,22 +366,12 @@ for (sac_level in sac_levels) {
     if (sim == 1) {
       cat(sprintf("\nSaving landscape plots for SAC=%s...\n", sac_level))
       
-      col_cov <- patchwork::wrap_plots(plots_cov, ncol = 1) + 
-        patchwork::plot_layout(guides = "collect") & 
-        theme(legend.position = "bottom", legend.direction = "horizontal")
-      
-      col_abund <- patchwork::wrap_plots(plots_abund, ncol = 1) + 
-        patchwork::plot_layout(guides = "collect") & 
-        theme(legend.position = "bottom", legend.direction = "horizontal")
-      
-      col_occ <- patchwork::wrap_plots(plots_occ, ncol = 1) + 
-        patchwork::plot_layout(guides = "collect") & 
-        theme(legend.position = "bottom", legend.direction = "horizontal")
-      
-      final_comb_plot <- col_cov | col_abund | col_occ
+      combined_plot <- patchwork::wrap_plots(all_plots_list, 
+                                             nrow = length(M_values_to_test), 
+                                             ncol = 3)
       
       fname <- sprintf("plot_%s.png", sac_level)
-      ggsave(file.path(output_dir, fname), plot=final_comb_plot, dpi=300, width=11, height=20)
+      ggsave(file.path(output_dir, fname), plot=combined_plot, dpi=300, width=12, height=16)
     }
     
     gc()
@@ -414,15 +401,16 @@ if (!is.null(all_results_df) && nrow(all_results_df) > 0) {
     all_results_df$M_factor <- as.factor(all_results_df$M)
     all_results_df$SAC_Level <- factor(all_results_df$SAC_Level, levels = c("Low", "Medium", "High"))
     
+    # Notice we include the legend positions explicitly here in the theme
     create_error_plot <- function(param_name, title) {
       ggplot(all_results_df[all_results_df$Parameter == param_name, ], 
              aes(x = M_factor, y = Error, fill = SAC_Level)) +
         geom_boxplot(outlier.size = 0.5) +
-        geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+        geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 1) +
         scale_fill_manual(values = c("Low" = "yellow", "Medium" = "orange", "High" = "red")) +
         labs(title = title, x = "M (Sites)", y = "Error (True - Estimate)", fill = "Spatial Autocorrelation") +
         theme_bw() + 
-        theme(legend.position = "none") # Remove individual legends
+        theme(legend.position = "bottom", legend.direction = "horizontal")
     }
     
     p1 <- create_error_plot("beta (state_int)", "State Intercept")
@@ -430,10 +418,8 @@ if (!is.null(all_results_df) && nrow(all_results_df) > 0) {
     p3 <- create_error_plot("alpha (det_int)", "Observation Intercept")
     p4 <- create_error_plot("alpha (det_cov1)", "Observation Slope")
     
-    # Combine and place the legend horizontally at the bottom
-    combined_error_plot <- (p1 | p2) / (p3 | p4) +
-      plot_layout(guides = "collect") & 
-      theme(legend.position = "bottom", legend.direction = "horizontal")
+    # Avoid the `&` operator by passing guides="collect", patchwork will grab the matching themes natively.
+    combined_error_plot <- (p1 | p2) / (p3 | p4) + plot_layout(guides = "collect")
     
     ggsave(file.path(output_dir, "error_boxplots.png"), plot = combined_error_plot, dpi = 300, width = 10, height = 10)
     
