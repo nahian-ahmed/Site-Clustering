@@ -1,7 +1,7 @@
 ################################################################
 # Simulation Experiments with clustGeo Spatial Clustering
 
-# June 19, 2026
+# June 20, 2026
 #################################################################
 
 ###
@@ -42,10 +42,9 @@ n_reps <- 30
 # --- Nested Site Selection ---
 M_values_to_test <- c(50, 100, 200, 400, 800)
 
-max_M <- max(M_values_to_test)
+target_K <- max(M_values_to_test)
 
 aggreg_factor <- 2
-target_K <- max_M
 
 split_factor <- 1
 
@@ -55,7 +54,13 @@ full_grid_dim <- 200
 full_n_cells <- full_grid_dim * full_grid_dim # 40000
 
 # --- clustGeo Specific Parameters ---
-kappa_for_clustgeo <- (max_M / ((full_grid_dim * full_grid_dim)/(aggreg_factor * aggreg_factor)))*100
+
+
+# For logging/reporting only
+effective_landscape_kappa <- (target_K / full_n_cells) * 100
+computational_kappa <- (target_K / (full_n_cells / aggreg_factor^2)) * 100
+
+
 alpha_for_clustgeo <- 0.9
 
 # --- Observation parameters ---
@@ -87,7 +92,10 @@ if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 cat("--- Simulation Starting ---\n")
 cat(sprintf("Running %d full simulations.\n", n_sims))
-cat(sprintf("clustGeo Settings: Kappa = %d%%, Alpha = %.2f\n", kappa_for_clustgeo, alpha_for_clustgeo))
+cat(sprintf("clustGeo Settings:\n"))
+cat(sprintf("\tEffective Landscape Kappa: %.1f%%\n", effective_landscape_kappa))
+cat(sprintf("\tAlgorithm Computational Kappa: %.1f%%\n", computational_kappa))
+cat(sprintf("\tAlpha/Rho: %.2f\n", alpha_for_clustgeo))
 cat(sprintf("SAC Level (Sigma): %d\n", current_sigma))
 cat(sprintf("Nested M Values: %s\n", paste(M_values_to_test, collapse=", ")))
 cat(sprintf("TOTAL MODEL FITS: %d\n\n", 
@@ -187,7 +195,7 @@ for (sim in 1:n_sims) {
   tree <- ClustGeo::hclustgeo(env_dist, geo_dist, alpha = alpha_for_clustgeo)
   
   # K parameter: user specified kappa=10 => 10% of 40,000 cells = 4,000 clusters
-  # K_target <- (kappa_for_clustgeo / 100) * full_n_cells
+
   K_target <- as.integer(target_K /split_factor)
   cluster_ids <- cutree(tree, k = K_target)
   
