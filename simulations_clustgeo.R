@@ -38,7 +38,7 @@ n_reps <- 30
 
 
 # --- Nested Site Selection ---
-M_values_to_test <- c(100, 200, 400, 800, 1600)
+M_values_to_test <- c(50, 100, 200, 400, 800)
 
 max_M <- max(M_values_to_test)
 
@@ -52,7 +52,7 @@ split_factor <- 1
 full_grid_dim <- 200 
 full_n_cells <- full_grid_dim * full_grid_dim # 40000
 
-# --- ClustGeo Specific Parameters ---
+# --- clustGeo Specific Parameters ---
 kappa_for_clustgeo <- (max_M / ((full_grid_dim * full_grid_dim)/(aggreg_factor * aggreg_factor)))*100
 alpha_for_clustgeo <- 0.9
 
@@ -86,7 +86,7 @@ if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 cat("--- Simulation Starting ---\n")
 cat(sprintf("Running %d full simulations.\n", n_sims))
-cat(sprintf("ClustGeo Settings: Kappa = %d%%, Alpha = %.2f\n", kappa_for_clustgeo, alpha_for_clustgeo))
+cat(sprintf("clustGeo Settings: Kappa = %d%%, Alpha = %.2f\n", kappa_for_clustgeo, alpha_for_clustgeo))
 cat(sprintf("SAC Level (Sigma): %d\n", current_sigma))
 cat(sprintf("Nested M Values: %s\n", paste(M_values_to_test, collapse=", ")))
 cat(sprintf("TOTAL MODEL FITS: %d\n\n", 
@@ -170,17 +170,17 @@ for (sim in 1:n_sims) {
   
   
   ##########
-  # 7. ClustGeo Workflow (2x2 Aggregation -> Cluster -> Disaggregate)
+  # 7. clustGeo Workflow (2x2 Aggregation -> Cluster -> Disaggregate)
   ##########
   
-  cat("  Running ClustGeo spatial clustering...\n")
+  cat("  Running clustGeo spatial clustering...\n")
   
   # 1. Aggregate 4 cells (2x2)
   r_agg <- terra::aggregate(r_final, fact=aggreg_factor, fun=mean) 
   df_agg <- as.data.frame(r_agg, xy=TRUE)
   names(df_agg) <- c("x", "y", "cov")
   
-  # 2. ClustGeo execution
+  # 2. clustGeo execution
   env_dist <- dist(df_agg$cov)
   geo_dist <- dist(df_agg[, c("x", "y")])
   tree <- ClustGeo::hclustgeo(env_dist, geo_dist, alpha = alpha_for_clustgeo)
@@ -208,7 +208,7 @@ for (sim in 1:n_sims) {
   full_M_max <- nrow(polys_split)
   polys_split$site_id <- 1:full_M_max
   
-  cat(sprintf("  ClustGeo yielded %d final disjoint site geometries.\n", full_M_max))
+  cat(sprintf("  clustGeo yielded %d final disjoint site geometries.\n", full_M_max))
   
   # Map cells back to new disjoint site geometries
   inter <- sf::st_intersects(centers_sf, polys_split)
