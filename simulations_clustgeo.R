@@ -31,7 +31,7 @@ set.seed(123)
 
 
 # --- Simulation repetitions ---
-n_sims <- 100
+n_sims <- 10
 
 # --- Model fitting repetitions ---
 n_reps <- 30 
@@ -73,6 +73,7 @@ INIT_UPPER <- 5
 # --- Spatial Autocorrelation (SAC) Settings ---
 # Fixed to a single "High" value
 current_sigma <- 6
+# current_sigma <- 3
 
 # --- Skew Patterns ---
 skew <- "Centers"
