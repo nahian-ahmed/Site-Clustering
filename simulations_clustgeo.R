@@ -443,7 +443,8 @@ if (!is.null(all_results_df) && nrow(all_results_df) > 0) {
         geom_boxplot(color = "black", fill = "grey", outlier.size = 0.5, alpha = 0.25) +
         geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 1) +
         labs(title = title, x = "M (Sites)", y = "Error (True - Estimate)") +
-        theme_bw()
+        theme_bw()+ 
+        theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
     }
     
     p1 <- create_error_plot("beta (state_int)", "State Intercept")
