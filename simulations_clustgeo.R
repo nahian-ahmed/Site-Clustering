@@ -1,5 +1,5 @@
 ################################################################
-# Simulation Experiments with ClustGeo Spatial Clustering
+# Simulation Experiments with clustGeo Spatial Clustering
 #################################################################
 
 ###
@@ -54,7 +54,6 @@ full_n_cells <- full_grid_dim * full_grid_dim # 40000
 
 # --- ClustGeo Specific Parameters ---
 kappa_for_clustgeo <- (max_M / ((full_grid_dim * full_grid_dim)/(aggreg_factor * aggreg_factor)))*100
-# kappa_for_clustgeo <- 1  # Used as percentage: 10% of total cells
 alpha_for_clustgeo <- 0.9
 
 # --- Observation parameters ---
