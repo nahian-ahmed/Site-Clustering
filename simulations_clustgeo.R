@@ -78,7 +78,6 @@ INIT_LOWER <- -5
 INIT_UPPER <- 5
 
 # --- Spatial Autocorrelation (SAC) Settings ---
-# Fixed to a single "High" value
 current_sigma <- 3
 
 # --- Skew Patterns ---
@@ -115,7 +114,7 @@ for(i in 1:n_sims){
   )
 }
 
-# Base Abstract Raster (No physical units)
+# Base Raster
 r_base <- terra::rast(nrows=full_grid_dim, ncols=full_grid_dim, 
                       xmin=0, xmax=full_grid_dim, ymin=0, ymax=full_grid_dim)
 
@@ -179,7 +178,7 @@ for (sim in 1:n_sims) {
   
   
   ##########
-  # 7. clustGeo Workflow (2x2 Aggregation -> Cluster -> Disaggregate)
+  # 7. clustGeo Workflow (Aggregation -> Cluster -> Disaggregate)
   ##########
   
   cat("  Running clustGeo spatial clustering...\n")
@@ -194,8 +193,7 @@ for (sim in 1:n_sims) {
   geo_dist <- dist(df_agg[, c("x", "y")])
   tree <- ClustGeo::hclustgeo(env_dist, geo_dist, alpha = alpha_for_clustgeo)
   
-  # K parameter: user specified kappa=10 => 10% of 40,000 cells = 4,000 clusters
-
+  # K parameter
   K_target <- as.integer(target_K /split_factor)
   cluster_ids <- cutree(tree, k = K_target)
   
@@ -204,7 +202,7 @@ for (sim in 1:n_sims) {
   terra::values(r_clust_agg) <- cluster_ids
   r_clust <- terra::disagg(r_clust_agg, fact=2, method="near")
   
-  # 4. Spatially disjoint splitting using SF
+  # 4. Spatially disjoint splitting
   polys <- terra::as.polygons(r_clust, dissolve=TRUE)
   polys_sf <- sf::st_as_sf(polys)
   sf::st_crs(polys_sf) <- NA
@@ -244,7 +242,7 @@ for (sim in 1:n_sims) {
   full_psi_i <- 1 - exp(-full_lambda_tilde_i)
   full_Z_i <- rbinom(full_M_max, 1, full_psi_i)
   
-  # Observations (J=3)
+  # Observations
   full_obs_cov1 <- matrix(rnorm(full_M_max * J_obs), full_M_max, J_obs)
   full_obsCovs <- list(obs_cov1 = full_obs_cov1)
   
@@ -265,7 +263,7 @@ for (sim in 1:n_sims) {
   # 9. Nested Sampling & Model Fitting
   ##########
   
-  # Create a random permutation for perfectly nested sampling
+  # Create a random permutation for nested sampling
   site_permutation <- sample(1:full_M_max, full_M_max, replace = FALSE)
   
   if (sim == 1) {
@@ -274,7 +272,7 @@ for (sim in 1:n_sims) {
   
   for (M_i in M_values_to_test) {
     
-    # Select perfectly nested subset
+    # Select nested subset
     selected_site_indices <- sort(site_permutation[1:M_i])
     M <- length(selected_site_indices)
     
@@ -375,7 +373,7 @@ for (sim in 1:n_sims) {
         labs(title=sprintf("Occupancy (M=%d)", M), fill="Occupancy") +
         tight_theme
         
-      # --- NEW LOGIC: Format legends flat and ONLY on the last row ---
+      # --- Format legends flat and only on the last row ---
       if (M_i == max(M_values_to_test)) {
         # For the last row: position bottom, format horizontally, put title on top
         p_cov <- p_cov + 
@@ -405,7 +403,7 @@ for (sim in 1:n_sims) {
   if (sim == 1) {
     cat("\nSaving landscape plots...\n")
     
-    # Just wrap the plots. The bottom three already have horizontal legends attached!
+    # Wrap the plots. 
     combined_plot <- patchwork::wrap_plots(all_plots_list, 
                                            nrow = length(M_values_to_test), 
                                            ncol = 3)
