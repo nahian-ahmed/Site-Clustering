@@ -29,6 +29,14 @@ library(dplyr)
 
 set.seed(123) 
 
+
+# --- Simulation repetitions ---
+n_sims <- 100
+
+# --- Model fitting repetitions ---
+n_reps <- 30 
+
+
 # --- Nested Site Selection ---
 M_values_to_test <- c(100, 200, 400, 800, 1600)
 
@@ -39,11 +47,6 @@ target_K <- max_M
 
 split_factor <- 1
 
-# --- Simulation repetitions ---
-n_sims <- 100
-
-# --- Model fitting repetitions ---
-n_reps <- 30 
 
 # --- Full Landscape parameters (200x200) ---
 full_grid_dim <- 200 
