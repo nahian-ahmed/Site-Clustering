@@ -40,7 +40,7 @@ target_K <- max_M
 split_factor <- 1
 
 # --- Simulation repetitions ---
-n_sims <- 3
+n_sims <- 100
 
 # --- Model fitting repetitions ---
 n_reps <- 30 
@@ -399,7 +399,7 @@ for (sim in 1:n_sims) {
                                            ncol = 3)
                                                
     fname <- "plot.png"
-    ggsave(file.path(output_dir, fname), plot=combined_plot, dpi=300, width=10, height=16)
+    ggsave(file.path(output_dir, fname), plot=combined_plot, dpi=300, width=9, height=16)
   }
   
   gc()
@@ -430,7 +430,7 @@ if (!is.null(all_results_df) && nrow(all_results_df) > 0) {
       ggplot(all_results_df[all_results_df$Parameter == param_name, ], 
              aes(x = M_factor, y = Error)) +
         # --- CHANGED: color="red" for the outline, fill=NA for no fill ---
-        geom_boxplot(color = "black", fill = "grey", outlier.size = 0.5, alpha = 0.7) +
+        geom_boxplot(color = "black", fill = "grey", outlier.size = 0.5, alpha = 0.25) +
         geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 1) +
         labs(title = title, x = "M (Sites)", y = "Error (True - Estimate)") +
         theme_bw()
@@ -443,7 +443,7 @@ if (!is.null(all_results_df) && nrow(all_results_df) > 0) {
     
     combined_error_plot <- (p1 | p2) / (p3 | p4)
     
-    ggsave(file.path(output_dir, "error_boxplots.png"), plot = combined_error_plot, dpi = 300, width = 9, height = 10)
+    ggsave(file.path(output_dir, "error_boxplots.png"), plot = combined_error_plot, dpi = 300, width = 8, height = 8)
     
     cat("Saved results and error boxplots.\n")
 }
