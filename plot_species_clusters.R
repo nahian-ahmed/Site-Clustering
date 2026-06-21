@@ -502,7 +502,7 @@ alg_order <- c("lat-long", "1-kmSq", "DBSC", "1to10", "2to10-sameObs",
 trait_df <- trait_df %>% filter(method %in% alg_order)
 trait_df$method <- factor(trait_df$method, levels = alg_order)
 
-# Set global theme for sjPlot with FLAT x-axis labels (0 degrees)
+# Set global theme for sjPlot
 # sjPlot::set_theme(base = theme_classic(), axis.angle.x = 0)
 
 sjPlot::set_theme(base = theme_classic() + theme(legend.direction = "horizontal"), axis.angle.x = 0, legend.pos = "bottom")
@@ -543,7 +543,7 @@ plot_lmer_effects <- function(model, trait_col, title_str) {
 #   plot_annotation(title = NULL) + 
 #   theme(legend.position = "bottom")
 
-# Create 4 panels (sjPlot global theme already handles the legend now)
+# Create 4 panels
 p_prev <- plot_lmer_effects(m_prev, "Prevalence.Level", "Prevalence")
 p_hab  <- plot_lmer_effects(m_hab, "Habitat", "Habitat")
 p_spec <- plot_lmer_effects(m_spec, "Generalist.Specialist", "Generalist/Specialist")
