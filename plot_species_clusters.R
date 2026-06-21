@@ -1,7 +1,7 @@
 ################################################################
 # Plot Species Cluster-Based Experiments
 
-# February 21, 2026
+# June 21, 2026
 ################################################################
 
 library(dplyr)
@@ -16,6 +16,7 @@ library(sf)
 library(lme4)     # Mixed-effects models
 library(sjPlot)   # Plotting estimates
 library(scales)   # For squishing scale limits
+
 
 # Create output directory
 output_dir <- file.path("output", "species_experiments", "clusters")
@@ -155,16 +156,32 @@ plot_raw_performance <- function(df, metric_col, y_label, output_filename) {
       labs(x = if(show_y_title) "Species" else NULL, y = y_label)
   }
   
+  # # Create left and right plots
+  # p1 <- build_panel(df1, TRUE)
+  # p2 <- build_panel(df2, FALSE)
+  
+  # Combine side-by-side using patchwork, collect shared legend at bottom
+  # final_plot <- p1 + p2 + plot_layout(ncol = 2, guides = "collect") + 
+  #   theme(legend.position = "bottom")
+
+  # # Adjusted dimensions: wider and slightly shorter to accommodate the side-by-side layout
+  # ggsave(output_filename, plot = final_plot, width = 12, height = 8, dpi = 300)
+
   # Create left and right plots
   p1 <- build_panel(df1, TRUE)
   p2 <- build_panel(df2, FALSE)
   
-  # Combine side-by-side using patchwork, collect shared legend at bottom
-  final_plot <- p1 + p2 + plot_layout(ncol = 2, guides = "collect") & 
-    theme(legend.position = "bottom")
+  # Temporarily update the global theme so patchwork's collected legend inherits it
+  orig_theme <- theme_get()
+  theme_update(legend.position = "bottom", legend.direction = "horizontal", legend.box = "horizontal")
+  
+  final_plot <- p1 + p2 + plot_layout(ncol = 2, guides = "collect")
   
   # Adjusted dimensions: wider and slightly shorter to accommodate the side-by-side layout
   ggsave(output_filename, plot = final_plot, width = 12, height = 8, dpi = 300)
+  
+  # Restore the original global theme
+  theme_set(orig_theme)
 }
 
 plot_raw_performance(final_data_auc, "auc", "AUC", file.path(output_plot_dir, "auc.png"))
@@ -486,7 +503,9 @@ trait_df <- trait_df %>% filter(method %in% alg_order)
 trait_df$method <- factor(trait_df$method, levels = alg_order)
 
 # Set global theme for sjPlot with FLAT x-axis labels (0 degrees)
-sjPlot::set_theme(base = theme_classic(), axis.angle.x = 0)
+# sjPlot::set_theme(base = theme_classic(), axis.angle.x = 0)
+
+sjPlot::set_theme(base = theme_classic() + theme(legend.direction = "horizontal"), axis.angle.x = 0, legend.pos = "bottom")
 
 # --- RUN LMER MODELS (Response = mean_auc) ---
 m_prev <- lmer(mean_auc ~ method:Prevalence.Level + (1|species), data=trait_df, control=lmerControl(check.rankX="silent.drop.cols"))
@@ -512,7 +531,19 @@ plot_lmer_effects <- function(model, trait_col, title_str) {
   ) 
 }
 
-# Create 4 panels
+# # Create 4 panels
+# p_prev <- plot_lmer_effects(m_prev, "Prevalence.Level", "Prevalence")
+# p_hab  <- plot_lmer_effects(m_hab, "Habitat", "Habitat")
+# p_spec <- plot_lmer_effects(m_spec, "Generalist.Specialist", "Generalist/Specialist")
+# p_home <- plot_lmer_effects(m_home, "Home.Range", "Home Range")
+
+# Combine with Common Legend
+# p_traits <- ( (p_prev + p_hab) / (p_spec + p_home) ) + 
+#   plot_layout(guides = "collect") + 
+#   plot_annotation(title = NULL) + 
+#   theme(legend.position = "bottom")
+
+# Create 4 panels (sjPlot global theme already handles the legend now)
 p_prev <- plot_lmer_effects(m_prev, "Prevalence.Level", "Prevalence")
 p_hab  <- plot_lmer_effects(m_hab, "Habitat", "Habitat")
 p_spec <- plot_lmer_effects(m_spec, "Generalist.Specialist", "Generalist/Specialist")
@@ -521,8 +552,7 @@ p_home <- plot_lmer_effects(m_home, "Home.Range", "Home Range")
 # Combine with Common Legend
 p_traits <- ( (p_prev + p_hab) / (p_spec + p_home) ) + 
   plot_layout(guides = "collect") + 
-  plot_annotation(title = NULL) & 
-  theme(legend.position = "bottom")
+  plot_annotation(title = NULL)
 
 ggsave(file.path(output_plot_dir, "traits.png"), plot = p_traits, width = 12, height = 10, dpi = 300)
 cat("Traits plot saved.\n")
@@ -706,7 +736,7 @@ for (sp in species_list) {
     scale_color_manual(name = "Observation", values = c("Detection" = "black", "Non-detection" = "black")) +
     scale_fill_manual(name = "Observation", values = c("Detection" = "#39FF14", "Non-detection" = "#83A1CD")) +
     scale_shape_manual(name = "Observation", values = c("Detection" = 24, "Non-detection" = 22)) +
-    scale_size_manual(name = "Observation", values = c("Detection" = 1.6, "Non-detection" = 1.5)) +
+    scale_size_manual(name = "Observation", values = c("Detection" = 3, "Non-detection" = 2)) +
     labs(title = "Species Observations") +
     theme_void() +
     coord_fixed(ratio = 1.0, xlim = c(bbox_full$xmin, bbox_full$xmax), ylim = c(bbox_full$ymin, bbox_full$ymax), expand = FALSE) +
