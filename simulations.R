@@ -45,7 +45,7 @@ full_n_sites_x <- full_grid_dim / site_dim # 40
 full_n_sites_y <- full_grid_dim / site_dim # 40
 full_M <- full_n_sites_x * full_n_sites_y # 1600
 
-# --- Observation parameters ---
+# --- Detection repeats ---
 J_obs <- 3 
 
 # --- True parameter values ---
@@ -506,8 +506,8 @@ for (strat in sampling_strategies) {
       
       p1 <- create_error_plot("beta (state_int)", "State Intercept")
       p2 <- create_error_plot("beta (state_cov1)", "State Slope")
-      p3 <- create_error_plot("alpha (det_int)", "Observation Intercept")
-      p4 <- create_error_plot("alpha (det_cov1)", "Observation Slope")
+      p3 <- create_error_plot("alpha (det_int)", "Detection Intercept")
+      p4 <- create_error_plot("alpha (det_cov1)", "Detection Slope")
       
       combined_error_plot <- (p1 | p2) / (p3 | p4) +
         plot_layout(guides = "collect") & theme(legend.position = "bottom")
