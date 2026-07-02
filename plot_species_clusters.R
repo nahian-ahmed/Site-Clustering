@@ -135,6 +135,31 @@ plot_raw_performance <- function(df, metric_col, y_label, output_filename) {
   df <- df %>% filter(method %in% alg_order)
   df$method <- factor(df$method, levels = alg_order)
   
+
+  # # --- SPLIT DATA FOR TWO PANELS ---
+  # # Group 1: First 16 species based on the sorted order
+  # df1 <- df %>% filter(as.integer(species) <= 16)
+  # # Group 2: Remaining species (next 15)
+  # df2 <- df %>% filter(as.integer(species) > 16)
+  
+  # # Helper function to build individual plot panels
+  # build_panel <- function(data_subset, show_y_title) {
+  #   ggplot(data_subset, aes(x = species, y = .data[[metric_col]], fill = method)) +
+  #     geom_boxplot(outlier.size = 0.5, lwd = 0.3) +
+  #     theme_classic() +
+  #     coord_flip() +
+  #     scale_fill_manual(values = colors) +
+  #     theme(
+  #       axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 14),
+  #       legend.position = "bottom",
+  #       legend.title = element_blank()
+  #     ) +
+  #     labs(x = if(show_y_title) "Species" else NULL, y = y_label)
+  # }
+  
+  # --- NEW: Calculate the global min and max for the axis limits ---
+  y_limits <- c(min(df[[metric_col]], na.rm = TRUE), max(df[[metric_col]], na.rm = TRUE))
+  
   # --- SPLIT DATA FOR TWO PANELS ---
   # Group 1: First 16 species based on the sorted order
   df1 <- df %>% filter(as.integer(species) <= 16)
@@ -153,7 +178,8 @@ plot_raw_performance <- function(df, metric_col, y_label, output_filename) {
         legend.position = "bottom",
         legend.title = element_blank()
       ) +
-      labs(x = if(show_y_title) "Species" else NULL, y = y_label)
+      labs(x = if(show_y_title) "Species" else NULL, y = y_label) +
+      ylim(y_limits) # <-- Apply the global limits here
   }
   
   # # Create left and right plots
