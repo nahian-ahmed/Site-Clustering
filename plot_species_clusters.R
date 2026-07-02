@@ -1,7 +1,7 @@
 ################################################################
 # Plot Species Cluster-Based Experiments
 
-# June 21, 2026
+# July 2, 2026
 ################################################################
 
 library(dplyr)
@@ -136,28 +136,8 @@ plot_raw_performance <- function(df, metric_col, y_label, output_filename) {
   df$method <- factor(df$method, levels = alg_order)
   
 
-  # # --- SPLIT DATA FOR TWO PANELS ---
-  # # Group 1: First 16 species based on the sorted order
-  # df1 <- df %>% filter(as.integer(species) <= 16)
-  # # Group 2: Remaining species (next 15)
-  # df2 <- df %>% filter(as.integer(species) > 16)
   
-  # # Helper function to build individual plot panels
-  # build_panel <- function(data_subset, show_y_title) {
-  #   ggplot(data_subset, aes(x = species, y = .data[[metric_col]], fill = method)) +
-  #     geom_boxplot(outlier.size = 0.5, lwd = 0.3) +
-  #     theme_classic() +
-  #     coord_flip() +
-  #     scale_fill_manual(values = colors) +
-  #     theme(
-  #       axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 14),
-  #       legend.position = "bottom",
-  #       legend.title = element_blank()
-  #     ) +
-  #     labs(x = if(show_y_title) "Species" else NULL, y = y_label)
-  # }
-  
-  # --- NEW: Calculate the global min and max for the axis limits ---
+  # --- Calculate the global min and max for the axis limits ---
   y_limits <- c(min(df[[metric_col]], na.rm = TRUE), max(df[[metric_col]], na.rm = TRUE))
   
   # --- SPLIT DATA FOR TWO PANELS ---
@@ -181,17 +161,6 @@ plot_raw_performance <- function(df, metric_col, y_label, output_filename) {
       labs(x = if(show_y_title) "Species" else NULL, y = y_label) +
       ylim(y_limits) # <-- Apply the global limits here
   }
-  
-  # # Create left and right plots
-  # p1 <- build_panel(df1, TRUE)
-  # p2 <- build_panel(df2, FALSE)
-  
-  # Combine side-by-side using patchwork, collect shared legend at bottom
-  # final_plot <- p1 + p2 + plot_layout(ncol = 2, guides = "collect") + 
-  #   theme(legend.position = "bottom")
-
-  # # Adjusted dimensions: wider and slightly shorter to accommodate the side-by-side layout
-  # ggsave(output_filename, plot = final_plot, width = 12, height = 8, dpi = 300)
 
   # Create left and right plots
   p1 <- build_panel(df1, TRUE)
